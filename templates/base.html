@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>{% block title %}{{ SITE_NAME }}{% endblock %}</title>
+    <meta name="description" content="{% block description %}{{ SITE_TAGLINE }}{% endblock %}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
+    <script src="https://unpkg.com/htmx.org@2/dist/htmx.min.js"></script>
+    <style type="text/tailwindcss">
+        @layer components {
+            .btn { @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition; }
+            .btn-primary { @apply btn bg-slate-900 text-white hover:bg-slate-700; }
+            .btn-secondary { @apply btn border border-slate-300 text-slate-700 hover:bg-slate-50; }
+            .card { @apply rounded-xl border border-slate-200 bg-white p-5; }
+            .chip { @apply inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700; }
+        }
+    </style>
+    {% block head %}{% endblock %}
+</head>
+<body class="bg-slate-50 text-slate-900" style="font-family: 'Inter', sans-serif; font-optical-sizing: auto;">
+    {% include "partials/_nav.html" %}
+    <main class="mx-auto w-full max-w-5xl px-4 py-8">
+        {% include "partials/_messages.html" %}
+        {% block content %}{% endblock %}
+    </main>
+    {% include "partials/_footer.html" %}
+    {% block scripts %}{% endblock %}
+</body>
+</html>

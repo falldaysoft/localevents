@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.appName }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Values.appName }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.appName }}
+    spec:
+      imagePullSecrets:
+      - name: ghcr-secret
+      containers:
+      - name: {{ .Values.containerName }}
+        image: {{ .Values.image }}
+        ports:
+        - containerPort: {{ .Values.containerPort }}
+        envFrom:
+        - secretRef:
+            name: postgres-secret
+        env:
+        {{- include "localevents.env" . | nindent 8 }}
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: {{ .Values.containerPort }}
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: {{ .Values.containerPort }}
+          initialDelaySeconds: 15
+          periodSeconds: 30

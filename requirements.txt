@@ -1,0 +1,27 @@
+django>=6,<7
+dj-database-url>=2.3
+gunicorn>=23.0
+psycopg[binary]>=3.2
+whitenoise>=6.8
+
+# Accounts. Email is the login identifier; mfa provides passkeys.
+django-allauth[mfa]>=65.0
+
+# Background tasks. Django 6 ships the `django.tasks` API; this package
+# supplies the DatabaseBackend and the `db_worker` management command.
+# Pinned <0.12 because 0.12 dropped the database backend module.
+django-tasks[database]>=0.11,<0.12
+
+# Enrichment: fetching, parsing, and geocoding.
+httpx>=0.27
+beautifulsoup4>=4.12
+icalendar>=6.0
+pydantic>=2.0
+
+# LLM providers. Both are optional at runtime (lazy-imported); which one is
+# used is chosen in the admin. `openai` is the client for OpenRouter.
+anthropic>=0.40
+openai>=1.0
+
+pytest>=8.0
+pytest-django>=4.9

@@ -1,0 +1,33 @@
+{{- if .Values.worker.enabled }}
+# Same image as the web deployment, different command. This is what runs AI
+# enrichment, geocoding, and outbound email off the request path.
+#
+# Keep replicaCount at 1 unless you have a reason: geocoding is throttled to
+# Nominatim's 1 req/sec via a database lease, so extra workers add throughput
+# for everything *except* geocoding, which stays serialised either way.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.appName }}-db-worker
+spec:
+  replicas: {{ .Values.worker.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Values.appName }}-db-worker
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.appName }}-db-worker
+    spec:
+      imagePullSecrets:
+      - name: ghcr-secret
+      containers:
+      - name: db-worker
+        image: {{ .Values.image }}
+        command: ["python", "manage.py", "db_worker"]
+        envFrom:
+        - secretRef:
+            name: postgres-secret
+        env:
+        {{- include "localevents.env" . | nindent 8 }}
+{{- end }}

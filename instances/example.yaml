@@ -1,0 +1,51 @@
+# Instance overlay template.
+#
+# Copy this to instances/<yourinstance>.yaml and fill it in, then deploy with:
+#
+#   make deploy INSTANCE=<yourinstance> TAG=<git-sha>
+#
+# Files in this directory (other than this example) are NOT committed — see
+# .gitignore. That keeps community-specific configuration out of the reusable
+# product. If you want yours version controlled, keep it in your own deployment
+# repository rather than adding it here.
+
+namespace: yourtown            # k8s namespace; also the helm release name
+host: events.example.org       # public hostname, no scheme, no www
+
+replicaCount: 1
+
+worker:
+  enabled: true
+  replicaCount: 1
+
+cron:
+  schedule: "17 * * * *"
+
+site:
+  name: "Yourtown Events"
+  tagline: "What's on in Yourtown"
+  contactEmail: "hello@events.example.org"
+
+  # An IANA timezone name, e.g. America/Toronto, Europe/Lisbon.
+  timezone: "UTC"
+
+  # Where the map opens.
+  mapCenterLat: "0"
+  mapCenterLng: "0"
+  mapZoom: "12"
+
+  # min_lat,min_lng,max_lat,max_lng
+  #
+  # This is also the region gate: a submitted event that geocodes outside these
+  # bounds is flagged for a moderator rather than published. Draw it generously
+  # enough to include the surrounding area people actually travel to.
+  mapBbox: "-90,-180,90,180"
+
+  tileUrl: "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+  tileAttribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+
+email:
+  host: "email-smtp.us-east-1.amazonaws.com"
+  port: "587"
+  useTls: "true"
+  defaultFrom: "noreply@events.example.org"

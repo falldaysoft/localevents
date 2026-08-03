@@ -1,0 +1,47 @@
+# Neutral defaults for the localevents product.
+#
+# These describe *no particular community*. A deployment supplies its own
+# values file (see instances/example.yaml) naming its host, namespace, and
+# region. Do not put a real place name in this file — tests/test_reusability.py
+# enforces that.
+
+namespace: localevents
+appName: site
+containerName: localevents
+containerPort: 8080
+host: localevents.example
+replicaCount: 1
+
+image: ghcr.io/falldaysoft/localevents:latest
+
+# Secret holding SECRET_KEY, the SMTP credentials, and the LLM API key.
+secretsName: localevents-secrets
+
+worker:
+  enabled: true
+  replicaCount: 1
+
+cron:
+  # Poll configured import sources and run housekeeping (series expiry,
+  # renewal emails). Hourly is plenty for community calendars.
+  schedule: "17 * * * *"
+
+# Instance identity. Every one of these is expected to be overridden.
+site:
+  name: "Local Events"
+  tagline: "What's on near you"
+  contactEmail: "hello@localevents.example"
+  timezone: "UTC"
+  mapCenterLat: "0"
+  mapCenterLng: "0"
+  mapZoom: "12"
+  # min_lat,min_lng,max_lat,max_lng — also the region gate for geocoded events.
+  mapBbox: "-90,-180,90,180"
+  tileUrl: "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+  tileAttribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+
+email:
+  host: "email-smtp.us-east-1.amazonaws.com"
+  port: "587"
+  useTls: "true"
+  defaultFrom: "noreply@localevents.example"

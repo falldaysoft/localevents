@@ -1,0 +1,21 @@
+<header class="border-b border-slate-200 bg-white">
+    <nav class="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 py-4">
+        <a href="{% url 'index' %}" class="text-lg font-semibold tracking-tight">{{ SITE_NAME }}</a>
+
+        <div class="flex items-center gap-3 text-sm">
+            {% if user.is_authenticated %}
+                {% if user.is_moderator %}
+                    <a href="{% url 'admin:index' %}" class="text-slate-600 hover:text-slate-900">Moderate</a>
+                {% endif %}
+                <span class="hidden text-slate-500 sm:inline">{{ user.display_name }}</span>
+                <form method="post" action="{% url 'account_logout' %}">
+                    {% csrf_token %}
+                    <button type="submit" class="text-slate-600 hover:text-slate-900">Sign out</button>
+                </form>
+            {% else %}
+                <a href="{% url 'account_login' %}" class="text-slate-600 hover:text-slate-900">Sign in</a>
+                <a href="{% url 'account_signup' %}" class="btn-primary">Add an event</a>
+            {% endif %}
+        </div>
+    </nav>
+</header>

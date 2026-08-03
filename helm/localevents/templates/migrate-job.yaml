@@ -1,0 +1,24 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Values.appName }}-migrate-{{ .Release.Revision }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: 1
+  template:
+    spec:
+      imagePullSecrets:
+      - name: ghcr-secret
+      restartPolicy: Never
+      containers:
+      - name: migrate
+        image: {{ .Values.image }}
+        command: ["python", "manage.py", "migrate", "--noinput"]
+        envFrom:
+        - secretRef:
+            name: postgres-secret
+        env:
+        - name: SECRET_KEY
+          value: "migrate"

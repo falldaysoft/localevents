@@ -1,0 +1,6 @@
+apiVersion: v2
+name: localevents
+description: A Helm chart for a localevents instance
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

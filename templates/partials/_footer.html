@@ -1,0 +1,10 @@
+<footer class="mt-16 border-t border-slate-200 bg-white">
+    <div class="mx-auto flex w-full max-w-5xl flex-col gap-3 px-4 py-8 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+        <p>{{ SITE_NAME }} &mdash; a community-run listing. <a href="mailto:{{ CONTACT_EMAIL }}" class="underline hover:text-slate-700">Get in touch</a>.</p>
+        <div class="flex flex-wrap gap-4">
+            {% for link in site_config.footer_links %}
+                <a href="{{ link.url }}" class="hover:text-slate-700">{{ link.label }}</a>
+            {% endfor %}
+        </div>
+    </div>
+</footer>

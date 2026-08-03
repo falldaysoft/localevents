@@ -1,0 +1,28 @@
+# Polls import sources and runs housekeeping. Separate from the worker because
+# this is a schedule, not a queue — if a run is missed, the next one catches up.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Values.appName }}-housekeeping
+spec:
+  schedule: {{ .Values.cron.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          imagePullSecrets:
+          - name: ghcr-secret
+          restartPolicy: Never
+          containers:
+          - name: housekeeping
+            image: {{ .Values.image }}
+            command: ["python", "manage.py", "run_housekeeping"]
+            envFrom:
+            - secretRef:
+                name: postgres-secret
+            env:
+            {{- include "localevents.env" . | nindent 12 }}

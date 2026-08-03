@@ -1,0 +1,33 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+*.manifest
+*.spec
+pip-log.txt
+pip-delete-this-directory.txt
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+.env
+.venv/
+env/
+venv/
+*.swp
+*.swo
+*~
+.DS_Store
+.pytest_cache/
+
+# Instance overlays name a specific community and are not part of the reusable
+# product. Keep yours here locally, or in your own deployment repository.
+instances/*
+!instances/example.yaml

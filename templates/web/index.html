@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <section class="py-12 text-center">
+        <h1 class="text-4xl font-semibold tracking-tight sm:text-5xl">{{ SITE_NAME }}</h1>
+        <p class="mx-auto mt-4 max-w-xl text-lg text-slate-600">{{ SITE_TAGLINE }}</p>
+
+        <div class="mt-8 flex justify-center gap-3">
+            <a href="{% url 'account_signup' %}" class="btn-primary">Add an event</a>
+        </div>
+    </section>
+
+    {% if site_config.about_text %}
+        <section class="card mx-auto max-w-2xl">
+            <p class="whitespace-pre-line text-slate-700">{{ site_config.about_text }}</p>
+        </section>
+    {% endif %}
+{% endblock %}
