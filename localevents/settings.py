@@ -234,17 +234,15 @@ TASKS = {
 # LLM enrichment
 #
 # These are fallbacks only. The live configuration is an admin-editable
-# singleton (core.models.AIConfig) so the provider, model and spend cap can be
+# singleton (core.models.AIConfig) so the endpoint, model and spend cap can be
 # changed without a redeploy.
 # ---------------------------------------------------------------------------
 
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 
 # Seeds the admin singleton the first time it is created. Changing it later is
 # an admin edit, not a redeploy — the point of keeping model choice in the
 # database is being able to compare models against recorded costs.
-DEFAULT_ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-opus-5")
 DEFAULT_OPENROUTER_MODEL = os.environ.get(
     "OPENROUTER_MODEL", "anthropic/claude-sonnet-5"
 )

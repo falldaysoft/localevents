@@ -19,8 +19,8 @@ mechanics.
 
 ## Status
 
-Early. The project skeleton, accounts, deployment, and the reusability guards
-are in place; the domain model and public site are being built next.
+Early but working end to end. Accounts, the public site with map and filters,
+and the AI-assisted submission flow are in place. Moderation tooling is next.
 
 ## Running it locally
 
@@ -130,7 +130,7 @@ kubectl create secret generic localevents-secrets --namespace "$NS" \
   --from-literal=secret-key="$(python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())')" \
   --from-literal=email-host-user="..." \
   --from-literal=email-host-password="..." \
-  --from-literal=anthropic-api-key="..." \
+  --from-literal=openrouter-api-key="..." \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
@@ -144,25 +144,42 @@ kubectl exec -n "$NS" deploy/site -- python manage.py createsuperuser
 kubectl exec -n "$NS" deploy/site -- python manage.py verify_email you@example.com
 ```
 
-## Enrichment providers
+## Reading event pages
 
-Reading an event out of a web page tries the cheap path first: if the page
+When someone submits a link, the cheap path is tried first: if the page
 publishes schema.org `Event` markup, that is exact, instant, and free. Only
 pages without it reach a language model.
 
-Which model is configured in the admin under *AI configuration*, not in code,
-so it can be changed and compared without a redeploy:
+**Prefer primary sources.** A link to the organiser's own page — the hall, the
+library, the band — makes a better listing than a ticketing platform's page
+about them: it stays useful after tickets sell out, and it credits whoever is
+actually doing the work. Submitting an aggregator link is allowed, because
+sometimes it genuinely is the only place an event is published, but the
+submitter is shown a note suggesting otherwise. See `submissions/sources.py`.
 
-- **Anthropic** — best extraction quality; schema conformance is guaranteed by
-  the API.
-- **OpenRouter** — one base URL, any model, so an instance can run something
-  much cheaper. Schema conformance is *not* guaranteed here, because OpenRouter
-  passes the request through to the upstream model and not all of them honour
-  it, so responses are validated and retried once before failing.
+Fetching is deliberately modest: one page at a time, on a signed-in person's
+behalf, with a contactable User-Agent, honouring `robots.txt`, capped at 2 MB,
+and refusing any address that resolves to a private network. There is no
+headless browser and no JavaScript execution. Measured against real sites,
+plain HTTP returned usable text from every one that permitted it — small
+community and municipal sites are server-rendered precisely because they need
+to be found in search.
 
-Every call is recorded with its provider, model, token counts, and estimated
-cost, which is what lets you answer "is the cheap model good enough" with data
-rather than a guess. There is a daily spend cap.
+The model is configured in the admin under *AI configuration*, not in code, so
+it can be changed and compared without a redeploy. Any OpenAI-compatible
+endpoint works; OpenRouter is the default because it reaches every model worth
+using behind a single URL. Schema conformance is *not* guaranteed there —
+OpenRouter forwards the request to the upstream model, which may ignore it — so
+replies are validated locally and retried once with the error fed back.
+
+Every attempt is recorded with its method, model, endpoint, token counts,
+duration, and estimated cost, including the free ones and the failures. That
+record is what makes "is the cheaper model good enough" a question with an
+answer. There is a daily spend cap.
+
+Expect extraction to be slow — a measured run against a busy page took nearly
+two minutes — which is why it happens on a background worker with a progress
+page rather than in the request.
 
 ## Licence
 

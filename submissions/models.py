@@ -53,6 +53,11 @@ class Submission(models.Model):
     enrichment_message = models.CharField(max_length=300, blank=True)
     enrichment_failed = models.BooleanField(default=False)
 
+    # Shown to the submitter when the link is a ticketing or social page and
+    # the organiser probably has their own. Advisory only — see
+    # submissions.sources for why this nudges rather than blocks.
+    source_advice = models.CharField(max_length=400, blank=True)
+
     event = models.ForeignKey(
         "events.Event", null=True, blank=True, on_delete=models.SET_NULL,
         related_name="submissions",

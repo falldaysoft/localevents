@@ -1,15 +1,18 @@
 """Reading an event out of a page with a language model.
 
-Two backends behind one function. The difference that matters is not the SDK,
-it is what each guarantees about the shape of the reply:
+One backend: OpenRouter, which fronts every model worth using including
+Anthropic's. A direct Anthropic client was removed once it was clear it only
+duplicated what OpenRouter already reaches, at the cost of a second code path
+that would never be exercised.
 
-Anthropic's structured outputs enforce the schema server-side, so a response
-that parses is a response that conforms.
-
-OpenRouter forwards `response_format` to whichever upstream model you picked,
-and not all of them honour it — which is precisely the models you would choose
-OpenRouter to reach. So that path validates the reply itself and retries once
-with the validation error fed back. That retry is load-bearing, not padding.
+The consequence is worth stating plainly, because it shapes everything below.
+Anthropic's own API enforces structured output server-side, so a reply that
+parses is guaranteed to match the schema. OpenRouter forwards `response_format`
+to whichever model is behind it, and that model may ignore it — observed live,
+with `claude-sonnet-5` returning no choices at all for a strict schema request.
+So this module assumes nothing: it degrades through progressively weaker format
+requests, keeps the schema in the prompt regardless, and validates every reply
+itself with one corrective retry.
 """
 
 import json
@@ -25,10 +28,12 @@ logger = logging.getLogger("enrichment.llm")
 
 MAX_PAGE_CHARS = 24_000
 
-# Both SDKs default to a ten-minute timeout, which is far too long here: a
-# submitter is watching a spinner and a worker is blocked for the duration.
-# Better to fail over to the manual form than to hold either hostage.
+# The SDK default is ten minutes, which would block a worker while a submitter
+# watches a spinner. Note this is a *read* timeout, not a wall-clock budget: a
+# slowly streaming reply can still exceed it, as one measured 116s run did.
 REQUEST_TIMEOUT = 90.0
+
+DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 
 
 class LLMError(Exception):
@@ -49,6 +54,8 @@ occurrences and set is_series when they follow a repeating pattern.
 primarily about.
 - Times are local to the venue. Use ISO 8601 without a timezone offset unless \
 the page states one.
+- Include the year exactly as the page gives it. If the page shows a date with \
+no year, use the next occurrence of that date in the future — never a past one.
 - Use category slugs only from the list provided. If none fit, return none.
 - Put anything ambiguous in notes_for_submitter, addressed to the person who \
 submitted the link.
@@ -68,7 +75,7 @@ def _extract_json(raw):
 
     Cheaper models routinely wrap JSON in ```json fences or add a sentence of
     preamble despite being told not to. Salvaging that is much better than
-    discarding an otherwise-correct extraction.
+    discarding an otherwise-correct extraction over formatting.
     """
     raw = raw.strip()
 
@@ -92,50 +99,48 @@ def _extract_json(raw):
     raise LLMError("Reply contained no usable JSON.")
 
 
-def _call_anthropic(config, text, source_url, category_slugs):
-    try:
-        import anthropic
-    except ImportError as exc:
+def _error_detail(response):
+    """Dig the provider's own explanation out of a choice-less response.
+
+    OpenRouter reports an unsupported parameter in the response body rather
+    than as an HTTP error, so `choices` is absent instead of empty. Reading the
+    reason out beats the TypeError you get from indexing a missing list, which
+    is what the first live run produced.
+    """
+    error = getattr(response, "error", None)
+    if isinstance(error, dict):
+        return str(error.get("message") or error)
+    if error:
+        return str(error)
+
+    for attr in ("model_dump_json", "to_json"):
+        dump = getattr(response, attr, None)
+        if callable(dump):
+            try:
+                return dump()[:400]
+            except Exception:
+                pass
+    return repr(response)[:400]
+
+
+def _usage(response):
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return {}
+    return {
+        "input_tokens": getattr(usage, "prompt_tokens", 0) or 0,
+        "output_tokens": getattr(usage, "completion_tokens", 0) or 0,
+    }
+
+
+def extract(config, text, source_url, category_slugs):
+    """Extract an EventDraft from page text. Returns (draft, usage_dict)."""
+    if not config.resolved_api_key():
         raise LLMError(
-            "The anthropic package is not installed; run pip install -r requirements.txt."
-        ) from exc
-
-    client = anthropic.Anthropic(
-        api_key=config.resolved_api_key(), timeout=REQUEST_TIMEOUT
-    )
-
-    try:
-        response = client.messages.parse(
-            model=config.model,
-            max_tokens=config.max_tokens,
-            output_config={"effort": config.effort},
-            system=SYSTEM_PROMPT,
-            messages=[
-                {
-                    "role": "user",
-                    "content": _user_prompt(text, source_url, category_slugs),
-                }
-            ],
-            output_format=EventDraft,
+            "No API key configured. Set one in the admin under AI "
+            "configuration, or as OPENROUTER_API_KEY in the environment."
         )
-    except anthropic.APIStatusError as exc:
-        raise LLMError(f"Anthropic returned {exc.status_code}: {exc.message}") from exc
-    except anthropic.APIConnectionError as exc:
-        raise LLMError(f"Could not reach Anthropic: {exc}") from exc
 
-    # A refusal arrives as a successful response with no parsed output, so
-    # check before reading it.
-    if getattr(response, "stop_reason", None) == "refusal":
-        raise LLMError("The model declined to process that page.")
-
-    draft = response.parsed_output
-    if draft is None:
-        raise LLMError("The model returned no structured output.")
-
-    return draft, _usage(response)
-
-
-def _call_openrouter(config, text, source_url, category_slugs):
     try:
         from openai import OpenAI
     except ImportError as exc:
@@ -145,7 +150,7 @@ def _call_openrouter(config, text, source_url, category_slugs):
 
     client = OpenAI(
         api_key=config.resolved_api_key(),
-        base_url=config.base_url or "https://openrouter.ai/api/v1",
+        base_url=config.base_url or DEFAULT_BASE_URL,
         timeout=REQUEST_TIMEOUT,
         max_retries=1,
     )
@@ -162,15 +167,9 @@ def _call_openrouter(config, text, source_url, category_slugs):
         },
     ]
 
-    last_error = None
-    usage = {}
-
-    # Response-format support varies wildly across the models OpenRouter
-    # fronts, which is the whole reason to use it. Rather than assume, degrade:
-    # ask for schema-shaped JSON, fall back to "just JSON", then to nothing at
-    # all. The schema is in the prompt either way, and the reply is validated
-    # regardless, so the weakest rung still produces a correct draft or a clean
-    # failure.
+    # Ask for the strongest guarantee first and fall back. The schema is in the
+    # prompt at every rung and the reply is validated regardless, so the
+    # weakest still yields a correct draft or a clean failure.
     formats = [
         {"type": "json_schema",
          "json_schema": {"name": "event_draft", "strict": False, "schema": schema}},
@@ -178,6 +177,8 @@ def _call_openrouter(config, text, source_url, category_slugs):
         None,
     ]
     format_index = 0
+    last_error = None
+    usage = {}
 
     # Two validation attempts. The second shows the model exactly what was
     # wrong with the first, which recovers most cheap-model failures.
@@ -198,11 +199,8 @@ def _call_openrouter(config, text, source_url, category_slugs):
             try:
                 response = client.chat.completions.create(**kwargs)
             except Exception as exc:  # openai raises a family of transport errors
-                raise LLMError(f"OpenRouter request failed: {exc}") from exc
+                raise LLMError(f"Request failed: {exc}") from exc
 
-            # OpenRouter reports an unsupported parameter in the response body
-            # rather than as an HTTP error, so `choices` is absent instead of
-            # empty. Read the reason out before assuming a reply is there.
             if getattr(response, "choices", None):
                 break
 
@@ -224,7 +222,7 @@ def _call_openrouter(config, text, source_url, category_slugs):
         except (LLMError, ValidationError) as exc:
             last_error = exc
             logger.info(
-                "openrouter attempt %s did not match the schema: %s", attempt + 1, exc
+                "attempt %s did not match the schema: %s", attempt + 1, exc
             )
             messages.append({"role": "assistant", "content": content})
             messages.append(
@@ -238,54 +236,3 @@ def _call_openrouter(config, text, source_url, category_slugs):
             )
 
     raise LLMError(f"Model did not return valid JSON after two attempts: {last_error}")
-
-
-def _error_detail(response):
-    """Dig the provider's own explanation out of a choice-less response.
-
-    Worth the effort: "this model does not support response_format" is
-    actionable, while the TypeError you get from indexing a missing `choices`
-    is not.
-    """
-    error = getattr(response, "error", None)
-    if isinstance(error, dict):
-        return str(error.get("message") or error)
-    if error:
-        return str(error)
-
-    for attr in ("model_dump_json", "to_json"):
-        dump = getattr(response, attr, None)
-        if callable(dump):
-            try:
-                return dump()[:400]
-            except Exception:
-                pass
-    return repr(response)[:400]
-
-
-def _usage(response):
-    """Normalise token counts across the two SDKs."""
-    usage = getattr(response, "usage", None)
-    if usage is None:
-        return {}
-    return {
-        "input_tokens": getattr(usage, "input_tokens", None)
-        or getattr(usage, "prompt_tokens", 0)
-        or 0,
-        "output_tokens": getattr(usage, "output_tokens", None)
-        or getattr(usage, "completion_tokens", 0)
-        or 0,
-    }
-
-
-def extract(config, text, source_url, category_slugs):
-    """Extract an EventDraft. Returns (draft, usage_dict)."""
-    if not config.resolved_api_key():
-        raise LLMError(
-            f"No API key configured for {config.provider}. Set one in the admin "
-            "under AI configuration, or in the environment."
-        )
-
-    if config.provider == config.Provider.ANTHROPIC:
-        return _call_anthropic(config, text, source_url, category_slugs)
-    return _call_openrouter(config, text, source_url, category_slugs)

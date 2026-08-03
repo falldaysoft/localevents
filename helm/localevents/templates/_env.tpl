@@ -56,12 +56,6 @@ and need the same configuration; only the command differs.
       name: {{ .Values.secretsName }}
       key: email-host-password
       optional: true
-- name: ANTHROPIC_API_KEY
-  valueFrom:
-    secretKeyRef:
-      name: {{ .Values.secretsName }}
-      key: anthropic-api-key
-      optional: true
 - name: OPENROUTER_API_KEY
   valueFrom:
     secretKeyRef:

@@ -41,7 +41,11 @@ class EnrichmentRun(models.Model):
     method = models.CharField(max_length=12, choices=Method.choices)
     status = models.CharField(max_length=10, choices=Status.choices)
 
-    provider = models.CharField(max_length=20, blank=True)
+    # The endpoint host rather than a vendor name — with one OpenAI-compatible
+    # client the meaningful distinction is where the request went (OpenRouter,
+    # OpenAI direct, a local Ollama), which is what you want when comparing
+    # cost and latency.
+    endpoint = models.CharField(max_length=100, blank=True)
     model = models.CharField(max_length=100, blank=True)
 
     input_tokens = models.PositiveIntegerField(default=0)

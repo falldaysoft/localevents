@@ -19,9 +19,8 @@ beautifulsoup4>=4.12
 icalendar>=6.0
 pydantic>=2.0
 
-# LLM providers. Both are optional at runtime (lazy-imported); which one is
-# used is chosen in the admin. `openai` is the client for OpenRouter.
-anthropic>=0.40
+# LLM client. Lazy-imported, and pointed at any OpenAI-compatible endpoint —
+# OpenRouter by default. Configured in the admin, not here.
 openai>=1.0
 
 pytest>=8.0

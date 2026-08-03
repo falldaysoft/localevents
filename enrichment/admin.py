@@ -13,9 +13,9 @@ class EnrichmentRunAdmin(admin.ModelAdmin):
     """
 
     list_display = (
-        "created_at", "method", "status", "model", "tokens", "cost", "duration_ms",
+        "created_at", "method", "status", "model", "endpoint", "tokens", "cost", "duration_ms",
     )
-    list_filter = ("method", "status", "provider", "model")
+    list_filter = ("method", "status", "endpoint", "model")
     search_fields = ("source_url", "error", "model")
     date_hierarchy = "created_at"
     readonly_fields = [f.name for f in EnrichmentRun._meta.fields]

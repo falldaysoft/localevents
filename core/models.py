@@ -59,53 +59,37 @@ class SiteConfig(SingletonModel):
 class AIConfig(SingletonModel):
     """Which model enriches submissions, and how much it may spend.
 
-    Kept in the database rather than the environment so the provider and model
-    can be swapped and compared without a redeploy — the whole point of having
-    an OpenRouter path is being able to try a cheaper model and measure it. See
-    enrichment.models.EnrichmentRun for the cost record that makes that
-    comparison possible.
-    """
+    One code path, pointed at any OpenAI-compatible endpoint. OpenRouter is the
+    default because it reaches every model worth using behind a single URL,
+    but the same client works against OpenAI directly, a self-hosted LiteLLM
+    proxy, or Ollama on the same machine.
 
-    class Provider(models.TextChoices):
-        ANTHROPIC = "anthropic", "Anthropic"
-        OPENROUTER = "openrouter", "OpenRouter"
+    Kept in the database rather than the environment so the model can be
+    swapped and compared without a redeploy — see enrichment.models
+    .EnrichmentRun for the cost record that makes that comparison meaningful.
+    """
 
     enabled = models.BooleanField(
         default=False,
         help_text="When off, submissions skip AI enrichment and go straight to "
         "the submitter for manual completion.",
     )
-    provider = models.CharField(
-        max_length=20, choices=Provider.choices, default=Provider.ANTHROPIC
-    )
     base_url = models.URLField(
         blank=True,
         default="https://openrouter.ai/api/v1",
-        help_text="OpenRouter only. Ignored by the Anthropic provider.",
+        help_text="Any OpenAI-compatible endpoint. Leave as-is for OpenRouter.",
     )
     api_key = models.CharField(
         max_length=255,
         blank=True,
-        help_text="Leave blank to fall back to the ANTHROPIC_API_KEY / "
-        "OPENROUTER_API_KEY environment variable.",
+        help_text="Leave blank to fall back to the OPENROUTER_API_KEY "
+        "environment variable.",
     )
     model = models.CharField(
         max_length=100,
-        default="claude-opus-5",
-        help_text="Anthropic model id, or an OpenRouter model slug such as "
+        default="anthropic/claude-sonnet-5",
+        help_text="A model slug the endpoint understands, e.g. "
         "'anthropic/claude-sonnet-5' or 'google/gemini-2.0-flash-001'.",
-    )
-    effort = models.CharField(
-        max_length=10,
-        choices=[
-            ("low", "Low — cheapest, fine for tidy pages"),
-            ("medium", "Medium — a sensible default for extraction"),
-            ("high", "High"),
-        ],
-        default="medium",
-        help_text="Anthropic only. Extraction is not a deep-reasoning task, so "
-        "the lower settings usually hold up well — worth testing before paying "
-        "for more.",
     )
     max_tokens = models.PositiveIntegerField(
         default=8192,
@@ -136,16 +120,12 @@ class AIConfig(SingletonModel):
         verbose_name_plural = "AI configuration"
 
     def __str__(self):
-        return f"AI configuration ({self.provider}: {self.model})"
+        return f"AI configuration ({self.model})"
 
     def resolved_api_key(self):
         from django.conf import settings
 
-        if self.api_key:
-            return self.api_key
-        if self.provider == self.Provider.ANTHROPIC:
-            return settings.ANTHROPIC_API_KEY
-        return settings.OPENROUTER_API_KEY
+        return self.api_key or settings.OPENROUTER_API_KEY
 
     def estimate_cost(self, input_tokens, output_tokens):
         """USD for one call, from the configured rates."""

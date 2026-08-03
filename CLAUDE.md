@@ -28,6 +28,13 @@ make deploy INSTANCE=<name> TAG=<git-sha>   # from an IP-allowlisted machine
 looks fine but silently does no enrichment, geocoding, feed polling, or email —
 all of that runs on the queue. Run `make worker` alongside it.
 
+**Restart both after a model or migration change.** A server holding a
+pre-migration model definition omits the new column from its INSERT and fails
+with `NOT NULL constraint failed` — which looks like a schema bug and is not.
+The same goes for templates: more than once, "my fix didn't work" turned out to
+be a stray `runserver` from an earlier session still bound to the port. Check
+`ps aux | grep runserver` before believing a puzzling result.
+
 ## Architecture notes
 
 **Background tasks.** Django 6 ships the `django.tasks` API (`@task`,
@@ -35,6 +42,16 @@ all of that runs on the queue. Run `make worker` alongside it.
 `db_worker` command. Pinned `<0.12` because 0.12 dropped the database backend.
 Verified working together — `from django.tasks import task` enqueues through
 the django-tasks backend.
+
+**A single un-importable queued task kills the worker.** The backend resolves
+`task_path` with `import_string` and lets the ImportError propagate, so one bad
+row stops *all* background work — enrichment, geocoding, email, feed polling —
+and the only symptom is a worker that won't stay up. The realistic way to hit
+this is renaming or moving a task function while rows referencing the old path
+are still queued. If the worker crashes on boot with an ImportError, look at
+`DBTaskResult` for stale `task_path` values before anything else. Renaming a
+task function is therefore a two-step deploy, or needs the old queue drained
+first.
 
 **Nominatim geocoding is throttled globally.** Their policy is 1 request/second
 and it applies across every process, so an in-process sleep is not enough with

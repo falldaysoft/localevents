@@ -430,3 +430,60 @@ def test_status_fragment_keeps_polling_while_working(signed_in, submitter):
     response = signed_in.get(reverse("submission_status", args=[submission.pk]))
     assert "HX-Redirect" not in response
     assert "hx-get" in response.content.decode()
+
+
+# --- primary sources -------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://www.eventbrite.ca/e/some-event-tickets-123",
+        "https://www.facebook.com/events/123456",
+        "https://meetup.com/some-group/events/123/",
+        "https://TICKETMASTER.com/event/abc",
+    ],
+)
+def test_aggregator_links_get_a_suggestion(url):
+    from submissions.sources import advice_for
+
+    advice = advice_for(url)
+    assert advice
+    assert "organiser" in advice
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://www.somelibrary.ca/en/events.aspx",
+        "https://stpaulschurch.org/whats-on",
+        "https://thelocalvenue.co.uk/gigs",
+        "",
+    ],
+)
+def test_primary_source_links_are_left_alone(url):
+    from submissions.sources import advice_for
+
+    assert advice_for(url) == ""
+
+
+@pytest.mark.django_db
+def test_an_aggregator_link_is_never_blocked(signed_in, submitter, monkeypatch):
+    """Nudge, not a rule.
+
+    Some organisers genuinely have no other presence, and refusing those would
+    lose real local events — which is the opposite of the point.
+    """
+    monkeypatch.setattr(
+        "submissions.views.enrich_submission",
+        type("T", (), {"enqueue": staticmethod(lambda pk: None)}),
+    )
+
+    signed_in.post(
+        reverse("submit"),
+        {"source_url": "https://www.eventbrite.ca/e/village-fete-tickets-99"},
+    )
+
+    submission = Submission.objects.get()
+    assert submission.source_url  # accepted
+    assert submission.source_advice  # but advised

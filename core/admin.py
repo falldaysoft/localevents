@@ -20,4 +20,4 @@ class SiteConfigAdmin(SingletonAdmin):
 
 @admin.register(AIConfig)
 class AIConfigAdmin(SingletonAdmin):
-    list_display = ("provider", "model", "enabled", "daily_spend_cap_usd")
+    list_display = ("model", "enabled", "daily_spend_cap_usd")

@@ -31,6 +31,11 @@
                 </label>
                 <div class="mt-1">{{ form.source_url }}</div>
                 <p class="mt-1 text-sm text-slate-500">{{ form.source_url.help_text }}</p>
+                <p class="mt-1 text-sm text-slate-500">
+                    A link to the organiser's own page works best — a hall, a
+                    library, a band's site. A ticketing or social media link is
+                    fine if that's the only place it's published.
+                </p>
                 {% if form.source_url.errors %}
                     <p class="mt-1 text-sm text-red-700">{{ form.source_url.errors.0 }}</p>
                 {% endif %}

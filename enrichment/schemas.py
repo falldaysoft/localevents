@@ -5,8 +5,8 @@ useful — the submitter is going to review it either way, and a form filled in
 badly is still far less work than a form filled in from scratch. Refusing to
 return anything because one field was ambiguous would be the wrong trade.
 
-The same schema is used for both providers so the confirmation form does not
-have to know where the values came from.
+The same schema is used whichever path produced it, so the confirmation form
+does not have to know where the values came from.
 """
 
 from datetime import datetime

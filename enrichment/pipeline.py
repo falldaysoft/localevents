@@ -25,6 +25,13 @@ from .models import EnrichmentRun
 logger = logging.getLogger("enrichment.pipeline")
 
 
+def _endpoint_of(config):
+    """Host of the configured endpoint, for the cost record."""
+    from urllib.parse import urlparse
+
+    return (urlparse(config.base_url).hostname or "")[:100]
+
+
 class EnrichmentResult:
     """What the submitter's confirmation page needs to know."""
 
@@ -136,7 +143,7 @@ def enrich_url(url, submission=None):
             submission=submission, source_url=final_url,
             method=EnrichmentRun.Method.LLM,
             status=EnrichmentRun.Status.FAILED,
-            provider=config.provider, model=config.model,
+            endpoint=_endpoint_of(config), model=config.model,
             error=str(exc)[:2000],
             duration_ms=int((time.monotonic() - started) * 1000),
         )
@@ -153,7 +160,7 @@ def enrich_url(url, submission=None):
         submission=submission, source_url=final_url,
         method=EnrichmentRun.Method.LLM,
         status=EnrichmentRun.Status.OK,
-        provider=config.provider, model=config.model,
+        endpoint=_endpoint_of(config), model=config.model,
         input_tokens=input_tokens, output_tokens=output_tokens,
         estimated_cost_usd=config.estimate_cost(input_tokens, output_tokens),
         duration_ms=int((time.monotonic() - started) * 1000),

@@ -9,6 +9,7 @@ from events.models import Category
 from .forms import EventDraftForm, StartSubmissionForm
 from .models import Submission, SubmissionQuota
 from .services import create_event_from_draft
+from .sources import advice_for
 from .tasks import enrich_submission
 
 
@@ -33,6 +34,7 @@ def start(request):
             submission = Submission.objects.create(
                 submitted_by=request.user,
                 source_url=url,
+                source_advice=advice_for(url),
                 status=(
                     Submission.Status.AWAITING_SUBMITTER
                     if manual

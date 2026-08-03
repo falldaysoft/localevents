@@ -15,6 +15,18 @@ def run_tasks_immediately(settings):
 
 
 @pytest.fixture(autouse=True)
+def no_real_credentials(settings):
+    """Keep the developer's real API key out of the test run.
+
+    settings.py loads .env for local development, which means a machine with a
+    working OPENROUTER_API_KEY would let any test that reaches the enrichment
+    code make a real, billable network call — and hang for a minute or two
+    doing it. Blanking the key makes that fail fast and loudly instead.
+    """
+    settings.OPENROUTER_API_KEY = ""
+
+
+@pytest.fixture(autouse=True)
 def plain_static_storage(settings):
     """Don't require a collectstatic run to render a template.
 

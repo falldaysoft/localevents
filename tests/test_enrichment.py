@@ -275,7 +275,6 @@ class FakeCompletion:
 
 def _openrouter_config():
     config = AIConfig.load()
-    config.provider = AIConfig.Provider.OPENROUTER
     config.api_key = "test-key"
     config.model = "some/cheap-model"
     config.save()
@@ -421,6 +420,18 @@ def test_the_schema_is_always_in_the_prompt(monkeypatch):
     user_message = sent[0]["messages"][-1]["content"]
     assert "notes_for_submitter" in user_message
     assert "occurrences" in user_message
+
+
+def test_the_suite_never_sees_a_real_api_key(settings):
+    """Guard on test isolation, not on product behaviour.
+
+    settings.py loads .env so local development works without exporting
+    anything. The side effect is that on a developer's machine the enrichment
+    tests would otherwise reach a real endpoint — billable, slow enough to look
+    like a hang, and dependent on someone else's uptime. This caught exactly
+    that once already.
+    """
+    assert settings.OPENROUTER_API_KEY == ""
 
 
 @pytest.mark.django_db

@@ -14,9 +14,19 @@
             <div class="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-slate-800"></div>
 
             <h1 class="mt-6 text-xl font-semibold">Reading the page…</h1>
+            {% comment %}
+                Be honest about the wait. Pages that publish their own event
+                data come back in seconds; anything else needs a model and
+                measured about two minutes in testing. "A few seconds" would
+                have people assume it had broken.
+            {% endcomment %}
             <p class="mt-2 text-sm text-slate-600">
-                We're pulling out the date, venue and description. This usually
-                takes a few seconds.
+                We're pulling out the date, venue and description. This is
+                usually quick, but can take a minute or two on a busy page.
+            </p>
+            <p class="mt-2 text-sm text-slate-500">
+                You can leave this page — we'll keep your progress, and it'll be
+                waiting under <a href="{% url 'my_submissions' %}" class="underline">your submissions</a>.
             </p>
             <p class="mt-4 break-all text-xs text-slate-400">{{ submission.source_url }}</p>
         </div>
