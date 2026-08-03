@@ -61,6 +61,21 @@ fingerprint dedup.
 - **No deploy has ever run.** The chart lints and renders and `scripts/deploy.sh`
   fails fast if the IP allowlist blocks it, but first contact with the cluster
   is still ahead. Namespace secrets do not exist yet.
+
+  CI *is* proven as of `c5879ee`: the workflow runs green and
+  `ghcr.io/falldaysoft/localevents` now holds a `latest` and a per-SHA tag. The
+  image was also run locally — migrations applied, `/healthz` 200, browse 200,
+  `/moderate/` 302 to login, static files served by whitenoise.
+
+  **The ghcr package is private.** A workflow-created package does not inherit
+  the repository's public visibility. That is fine — every workload in the
+  chart already references a `ghcr-secret` pull secret and `deploy.sh` refuses
+  to run without it — but it is the first thing that will bite if that secret
+  is missing or copied from the wrong namespace. Making the package public in
+  the repo's package settings is the other option.
+
+  CI builds **linux/amd64 only**, which is right for LKE and means the image
+  cannot run on an Apple Silicon machine without `--platform linux/amd64`.
 - **No real email has been sent.** Console backend throughout — the moderation
   mail is proven to *render and dispatch*, not to arrive. SES credentials and
   DKIM are unproven, and `SITE_BASE_URL` (new, in settings) must be set per
