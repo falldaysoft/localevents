@@ -1,6 +1,11 @@
 {{/*
-Shared environment for the web, worker, and cron pods. They run the same image
-and need the same configuration; only the command differs.
+Shared environment for the web, worker, cron, and migrate pods. They run the
+same image and need the same configuration; only the command differs.
+
+Give this to anything running manage.py. The migrate job was the exception for
+a while, on the reasoning that schema work needs nothing but a database — which
+stopped being true the moment a post_migrate receiver started reading settings,
+and would have failed by writing plausible wrong values rather than by crashing.
 */}}
 {{- define "localevents.env" -}}
 - name: DEBUG

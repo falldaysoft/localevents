@@ -19,6 +19,12 @@ spec:
         envFrom:
         - secretRef:
             name: postgres-secret
+        # The same environment as every other pod, not the database URL and a
+        # throwaway SECRET_KEY this used to make do with. `migrate` is no
+        # longer only schema work: core.apps syncs the django.contrib.sites row
+        # from SITE_NAME and SITE_BASE_URL on post_migrate, and a job that
+        # cannot see those settings writes the defaults — stamping "Local
+        # Events" at localhost:8000 onto a live instance, which is worse than
+        # the example.com it replaced and just as silent.
         env:
-        - name: SECRET_KEY
-          value: "migrate"
+        {{- include "localevents.env" . | nindent 8 }}

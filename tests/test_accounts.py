@@ -195,3 +195,28 @@ def test_sign_in_page_offers_a_way_to_sign_up(client):
         "allauth's stock sentence is back — has the override been superseded?"
     )
 
+
+
+@pytest.mark.django_db
+def test_confirmation_email_names_this_site(client, settings, mailoutbox):
+    """The mail a new member actually receives.
+
+    Reported from a real signup: the confirmation read "Hello from
+    example.com!" and was signed example.com, because allauth takes those
+    words from the `django.contrib.sites` row rather than from SITE_NAME.
+    Mail that names the wrong site is mail that gets deleted as phishing.
+    """
+    client.post(
+        reverse("account_signup"),
+        {
+            "email": "newcomer@example.org",
+            "username": "newcomer",
+            "password1": "corn-flake-8842",
+            "password2": "corn-flake-8842",
+        },
+    )
+
+    assert len(mailoutbox) == 1
+    body = mailoutbox[0].body
+    assert settings.SITE_NAME in body
+    assert "example.com" not in body

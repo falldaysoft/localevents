@@ -93,3 +93,36 @@ def test_instance_settings_exist(name):
 def test_map_bbox_is_four_floats():
     assert len(settings.MAP_BBOX) == 4
     assert all(isinstance(v, float) for v in settings.MAP_BBOX)
+
+
+@pytest.mark.django_db
+def test_the_sites_row_is_not_djangos_default():
+    """`django.contrib.sites` must name this instance, not example.com.
+
+    allauth writes the Site row's name and domain into every confirmation and
+    password-reset email. Django creates that row saying example.com and never
+    touches it again, so without the post_migrate sync in core.apps every
+    instance mails out someone else's identity. This asserts on the database
+    the test run actually migrated, which is what proves the hook is wired up.
+    """
+    from django.contrib.sites.models import Site
+
+    site = Site.objects.get(pk=settings.SITE_ID)
+    assert site.domain != "example.com"
+    assert site.name == settings.SITE_NAME
+
+
+@pytest.mark.django_db
+def test_the_sites_row_follows_the_environment(settings):
+    """No place name is frozen into the row — it re-derives on every migrate."""
+    from django.contrib.sites.models import Site
+
+    from core.apps import sync_site
+
+    settings.SITE_NAME = "Elsewhere Events"
+    settings.SITE_BASE_URL = "https://elsewhere.example"
+    sync_site(sender=None)
+
+    site = Site.objects.get(pk=settings.SITE_ID)
+    assert site.name == "Elsewhere Events"
+    assert site.domain == "elsewhere.example"
