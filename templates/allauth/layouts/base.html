@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{# The one template that puts every allauth page inside the site.
+
+   Without this, allauth falls back to its own bare layout — no Tailwind, no
+   nav, no footer, and its own "Menu:" list of links. It renders and it works,
+   which is why it survived unnoticed: nothing errors, the sign-in page just
+   looks like it belongs to a different website.
+
+   Overriding here rather than per-page covers login, signup, logout, password
+   reset and change, email management, and the MFA and passkey flows in one
+   place — including pages that only appear in situations nobody clicks through
+   during development.
+
+   The block mapping is allauth's names on the left, this project's on the
+   right: head_title -> title, extra_head -> head, extra_body -> scripts.
+   `content` is deliberately *not* redefined; allauth's child templates fill it
+   and it lands in base.html's own content block. #}
+
+{% block title %}{% block head_title %}{% endblock %} — {{ SITE_NAME }}{% endblock %}
+
+{% block main_class %}mx-auto w-full max-w-md px-4 py-10 auth-page{% endblock %}
+
+{% block head %}
+    <style type="text/tailwindcss">
+        /* allauth renders plain Django form output with no classes of its own,
+           so style by element inside the auth shell rather than fighting it
+           field by field. Scoped to .auth-page so nothing here reaches the
+           submission or moderation forms, which set their own classes. */
+        .auth-page h1 { @apply text-2xl font-semibold tracking-tight; }
+        .auth-page p { @apply mt-2 text-sm text-slate-600; }
+        .auth-page form { @apply mt-6 space-y-4; }
+        .auth-page label { @apply block text-sm font-medium text-slate-900; }
+        .auth-page input[type="text"],
+        .auth-page input[type="email"],
+        .auth-page input[type="password"],
+        .auth-page input[type="url"],
+        .auth-page input[type="number"] {
+            @apply mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm
+                   focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500;
+        }
+        .auth-page input[type="checkbox"] { @apply rounded border-slate-300; }
+        /* allauth emits <label>…</label><input type=checkbox> inside a <p>,
+           which with block labels leaves the box stranded on its own line.
+           Reorder rather than restyle every checkbox page by hand. */
+        .auth-page p:has(> input[type="checkbox"]) { @apply flex items-center gap-2; }
+        .auth-page p:has(> input[type="checkbox"]) input { @apply order-first mt-0; }
+        .auth-page p:has(> input[type="checkbox"]) label { @apply font-normal text-slate-700; }
+
+        .auth-page button[type="submit"],
+        .auth-page button:not([type]) { @apply btn-primary w-full justify-center; }
+        /* The passkey button is an alternative, not a second primary action —
+           two identical black buttons make the page ask a question it should
+           be answering. */
+        /* bg-white is not redundant: .btn-secondary sets a border and text
+           colour but no background, so without it the bg-slate-900 from the
+           rule above shows through and the button reads as grey-on-black. */
+        .auth-page #passkey_login { @apply btn-secondary w-full justify-center bg-white; }
+        .auth-page hr { @apply my-6 border-slate-200; }
+        .auth-page a { @apply underline decoration-slate-300 underline-offset-2 hover:decoration-slate-900; }
+        .auth-page ul { @apply mt-2 space-y-1 text-sm; }
+        .auth-page .helptext { @apply mt-1 block text-xs text-slate-500; }
+        .auth-page .errorlist {
+            @apply mt-2 list-none rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800;
+        }
+    </style>
+    {% block extra_head %}{% endblock %}
+{% endblock %}
+
+{% block scripts %}{% block extra_body %}{% endblock %}{% endblock %}

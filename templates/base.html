@@ -24,7 +24,11 @@
 </head>
 <body class="bg-slate-50 text-slate-900" style="font-family: 'Inter', sans-serif; font-optical-sizing: auto;">
     {% include "partials/_nav.html" %}
-    <main class="mx-auto w-full max-w-5xl px-4 py-8">
+    {# Overridable so a page can change the shell it sits in. The auth pages   #}
+    {# are the reason: a sign-in form in a 5xl column looks lost. Wrapping the #}
+    {# content block instead does not work, because allauth's own templates    #}
+    {# override that block and would discard the wrapper.                      #}
+    <main class="{% block main_class %}mx-auto w-full max-w-5xl px-4 py-8{% endblock %}">
         {% include "partials/_messages.html" %}
         {% block content %}{% endblock %}
     </main>

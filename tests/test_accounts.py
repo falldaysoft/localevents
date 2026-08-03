@@ -126,3 +126,49 @@ def test_superuser_is_always_a_moderator(django_user_model):
         username="root", email="root@example.com", password="pw-12345678"
     )
     assert root.is_moderator
+
+
+# --- the pages allauth renders for us --------------------------------------
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "/accounts/login/",
+        "/accounts/signup/",
+        "/accounts/password/reset/",
+    ],
+)
+@pytest.mark.django_db
+def test_auth_pages_are_inside_the_site(client, url):
+    """allauth's pages must not look like a different website.
+
+    Without templates/allauth/layouts/base.html, allauth silently falls back to
+    its own bare layout: no Tailwind, no nav, no footer, and its own "Menu:"
+    list. Nothing errors and no test failed — the sign-in page just looked
+    unstyled for four phases before anyone opened it.
+    """
+    body = client.get(url).content.decode()
+
+    assert "auth-page" in body, f"{url} is not using the site's allauth layout"
+    assert "cdn.tailwindcss.com" in body, f"{url} has no stylesheet"
+    assert "</footer>" in body, f"{url} is missing the site chrome"
+    # allauth's own fallback nav, which the override replaces.
+    assert "<strong>Menu:</strong>" not in body
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["/accounts/login/", "/accounts/signup/", "/accounts/password/reset/"],
+)
+@pytest.mark.django_db
+def test_no_template_syntax_leaks_into_an_auth_page(client, url):
+    """The same guard the public and moderation pages carry.
+
+    Earned its place immediately: a multi-line {# #} comment added to base.html
+    while fixing the layout put a literal block tag into the parsed template
+    and 500'd every one of these pages.
+    """
+    body = client.get(url).content.decode()
+    for marker in ("{#", "#}", "{% ", " %}"):
+        assert marker not in body, f"raw template syntax {marker!r} in {url}"
