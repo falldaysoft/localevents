@@ -15,14 +15,14 @@
 
             <h1 class="mt-6 text-xl font-semibold">Reading the page…</h1>
             {% comment %}
-                Be honest about the wait. Pages that publish their own event
-                data come back in seconds; anything else needs a model and
-                measured about two minutes in testing. "A few seconds" would
-                have people assume it had broken.
+                Be honest about the wait. Pages publishing their own event data
+                come back in seconds, but a model call measured 116s once and
+                336s another time on the same page. Understating it makes
+                people assume the site is broken and leave.
             {% endcomment %}
             <p class="mt-2 text-sm text-slate-600">
-                We're pulling out the date, venue and description. This is
-                usually quick, but can take a minute or two on a busy page.
+                We're pulling out the date, venue and description. Some pages
+                come back in seconds; a busy one can take several minutes.
             </p>
             <p class="mt-2 text-sm text-slate-500">
                 You can leave this page — we'll keep your progress, and it'll be

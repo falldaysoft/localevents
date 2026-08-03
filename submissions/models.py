@@ -16,10 +16,11 @@ from django.utils import timezone
 
 
 # How long a submission may sit in "reading the page" before we assume the
-# worker that claimed it is gone. Generous, because a slow model legitimately
-# takes a couple of minutes — but finite, because the alternative is a
-# submitter watching a spinner forever.
-STALE_ENRICHMENT_AFTER = timedelta(minutes=10)
+# worker that claimed it is gone. Finite, because the alternative is a
+# submitter watching a spinner forever — but well clear of legitimately slow
+# work: measured runs against real pages came in at 116s and 336s, so a
+# threshold anywhere near five minutes would start cutting off live work.
+STALE_ENRICHMENT_AFTER = timedelta(minutes=20)
 
 
 class SubmissionQuerySet(models.QuerySet):
