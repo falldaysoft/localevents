@@ -79,6 +79,11 @@ def submission_detail(request, pk):
         Submission, pk=pk, submitted_by=request.user
     )
 
+    # A worker that died mid-task never releases its claim, so check before
+    # showing a spinner that would otherwise never resolve.
+    if submission.is_stranded:
+        submission.recover_from_stranding()
+
     if submission.status in {Submission.Status.NEW, Submission.Status.ENRICHING}:
         return render(
             request,
@@ -168,6 +173,9 @@ def _initial_from_draft(draft):
 def submission_status_fragment(request, pk):
     """HTMX poll target while the page is being read."""
     submission = get_object_or_404(Submission, pk=pk, submitted_by=request.user)
+
+    if submission.is_stranded:
+        submission.recover_from_stranding()
 
     if submission.status in {Submission.Status.NEW, Submission.Status.ENRICHING}:
         return render(

@@ -487,3 +487,77 @@ def test_an_aggregator_link_is_never_blocked(signed_in, submitter, monkeypatch):
     submission = Submission.objects.get()
     assert submission.source_url  # accepted
     assert submission.source_advice  # but advised
+
+
+# --- surviving a dead worker -----------------------------------------------
+
+
+@pytest.mark.django_db
+def test_a_stranded_submission_is_released_to_its_owner(signed_in, submitter):
+    """A worker that dies mid-task never releases its claim.
+
+    Observed for real: restarting the worker left two rows stuck in RUNNING and
+    the submission in "reading the page" with nothing to move it on. Without
+    recovery the submitter watches a spinner until they give up.
+    """
+    from submissions.models import STALE_ENRICHMENT_AFTER
+
+    submission = Submission.objects.create(
+        submitted_by=submitter,
+        source_url="https://example.org/e",
+        status=Submission.Status.ENRICHING,
+    )
+    # Backdate past the threshold. auto_now blocks assignment, so update().
+    Submission.objects.filter(pk=submission.pk).update(
+        updated_at=timezone.now() - STALE_ENRICHMENT_AFTER - timedelta(minutes=1)
+    )
+    submission.refresh_from_db()
+    assert submission.is_stranded
+
+    response = signed_in.get(reverse("submission_detail", args=[submission.pk]))
+
+    submission.refresh_from_db()
+    assert submission.status == Submission.Status.AWAITING_SUBMITTER
+    assert submission.enrichment_failed
+    assert "yourself" in submission.enrichment_message
+    # ...and they land on a usable form, not another spinner.
+    assert response.context["form"] is not None
+
+
+@pytest.mark.django_db
+def test_a_slow_but_live_enrichment_is_left_alone(signed_in, submitter):
+    """A model call legitimately takes a couple of minutes. Don't cut it off."""
+    submission = Submission.objects.create(
+        submitted_by=submitter,
+        source_url="https://example.org/e",
+        status=Submission.Status.ENRICHING,
+    )
+    assert not submission.is_stranded
+
+    signed_in.get(reverse("submission_detail", args=[submission.pk]))
+    submission.refresh_from_db()
+    assert submission.status == Submission.Status.ENRICHING
+
+
+@pytest.mark.django_db
+def test_housekeeping_sweeps_stranded_submissions(submitter):
+    """The view only helps people who come back; this catches the rest.
+
+    Matters most right after a deploy, which is exactly when workers get
+    restarted mid-task.
+    """
+    from django.core.management import call_command
+
+    from submissions.models import STALE_ENRICHMENT_AFTER
+
+    submission = Submission.objects.create(
+        submitted_by=submitter, status=Submission.Status.ENRICHING
+    )
+    Submission.objects.filter(pk=submission.pk).update(
+        updated_at=timezone.now() - STALE_ENRICHMENT_AFTER - timedelta(minutes=1)
+    )
+
+    call_command("run_housekeeping")
+
+    submission.refresh_from_db()
+    assert submission.status == Submission.Status.AWAITING_SUBMITTER

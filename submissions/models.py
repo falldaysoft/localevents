@@ -8,15 +8,36 @@ someone who will trust them.
 """
 
 import secrets
+from datetime import timedelta
 
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
 
+# How long a submission may sit in "reading the page" before we assume the
+# worker that claimed it is gone. Generous, because a slow model legitimately
+# takes a couple of minutes — but finite, because the alternative is a
+# submitter watching a spinner forever.
+STALE_ENRICHMENT_AFTER = timedelta(minutes=10)
+
+
 class SubmissionQuerySet(models.QuerySet):
     def awaiting_review(self):
         return self.filter(status=Submission.Status.PENDING_REVIEW)
+
+    def stranded(self, now=None):
+        """Submissions whose enrichment will never finish.
+
+        A worker that dies mid-task — a deploy, an OOM, a crash — leaves its
+        row claimed and never releases it. Nothing else notices, so without
+        this the submission sits in "reading the page" indefinitely.
+        """
+        now = now or timezone.now()
+        return self.filter(
+            status__in=[Submission.Status.NEW, Submission.Status.ENRICHING],
+            updated_at__lt=now - STALE_ENRICHMENT_AFTER,
+        )
 
     def open_for(self, user):
         return self.filter(submitted_by=user).exclude(
@@ -115,6 +136,32 @@ class Submission(models.Model):
             self.Status.REJECTED,
             self.Status.WITHDRAWN,
         }
+
+    @property
+    def is_stranded(self, now=None):
+        """Has enrichment been claimed by a worker that is never coming back?"""
+        if self.status not in {self.Status.NEW, self.Status.ENRICHING}:
+            return False
+        return (timezone.now() - self.updated_at) > STALE_ENRICHMENT_AFTER
+
+    def recover_from_stranding(self):
+        """Release a stuck submission to its owner with an honest explanation.
+
+        Deliberately does not re-queue. A second attempt would most likely hit
+        whatever killed the first, and the submitter is right here and able to
+        fill the form in — which beats another silent wait.
+        """
+        self.status = self.Status.AWAITING_SUBMITTER
+        self.enrichment_failed = True
+        self.enrichment_message = (
+            "We couldn't finish reading that page. Please fill in the details "
+            "below yourself — everything you enter is kept."
+        )
+        self.save(
+            update_fields=[
+                "status", "enrichment_failed", "enrichment_message", "updated_at",
+            ]
+        )
 
     def mark_decided(self, user, status, note=""):
         self.status = status

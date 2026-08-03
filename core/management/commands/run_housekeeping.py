@@ -17,6 +17,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         steps = [
+            ("recover stranded submissions", self.recover_stranded_submissions),
             ("poll import sources", self.poll_import_sources),
             ("expire stale series", self.expire_series),
             ("send renewal reminders", self.send_renewal_reminders),
@@ -38,6 +39,23 @@ class Command(BaseCommand):
 
     # Each of these is filled in by a later phase. They are no-ops rather than
     # NotImplementedError so the schedule can be wired up and verified early.
+
+    def recover_stranded_submissions(self):
+        """Release submissions whose enrichment worker died.
+
+        The view recovers one when its owner next looks at it, but that only
+        helps people who come back. This catches the rest — and matters most
+        right after a deploy, which is exactly when workers get restarted
+        mid-task.
+        """
+        from submissions.models import Submission
+
+        stranded = list(Submission.objects.stranded())
+        for submission in stranded:
+            submission.recover_from_stranding()
+        if stranded:
+            logger.info("recovered %s stranded submission(s)", len(stranded))
+            self.stdout.write(f"  recovered {len(stranded)} stranded submission(s)")
 
     def poll_import_sources(self):
         return
