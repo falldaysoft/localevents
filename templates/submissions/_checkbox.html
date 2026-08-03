@@ -1,0 +1,14 @@
+<div>
+    <label class="flex cursor-pointer items-start gap-2">
+        <span class="mt-0.5">{{ field }}</span>
+        <span>
+            <span class="text-sm font-medium">{{ field.label }}</span>
+            {% if field.help_text %}
+                <span class="block text-sm text-slate-500">{{ field.help_text }}</span>
+            {% endif %}
+        </span>
+    </label>
+    {% if field.errors %}
+        <p class="mt-1 text-sm text-red-700">{{ field.errors.0 }}</p>
+    {% endif %}
+</div>

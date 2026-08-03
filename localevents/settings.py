@@ -2,10 +2,15 @@ import os
 from pathlib import Path
 
 import dj_database_url
+from dotenv import load_dotenv
 
 from django.utils.csp import CSP
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load .env for local development. In production every value comes from the
+# environment (see the Helm chart), so this is a no-op there.
+load_dotenv(BASE_DIR / ".env")
 
 SECRET_KEY = os.environ.get("SECRET_KEY", "insecure-dev-key-change-me")
 
@@ -81,7 +86,9 @@ INSTALLED_APPS = [
     # Project
     "accounts",
     "core",
+    "enrichment",
     "events",
+    "submissions",
     "web",
 ]
 
@@ -233,6 +240,14 @@ TASKS = {
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+
+# Seeds the admin singleton the first time it is created. Changing it later is
+# an admin edit, not a redeploy — the point of keeping model choice in the
+# database is being able to compare models against recorded costs.
+DEFAULT_ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-opus-5")
+DEFAULT_OPENROUTER_MODEL = os.environ.get(
+    "OPENROUTER_MODEL", "anthropic/claude-sonnet-5"
+)
 
 
 # ---------------------------------------------------------------------------

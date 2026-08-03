@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Add an event — {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+    <div class="mx-auto max-w-xl">
+        <h1 class="text-3xl font-semibold tracking-tight">Add an event</h1>
+        <p class="mt-2 text-slate-600">
+            Paste a link and we'll read the page for you. You'll get a chance to
+            check everything before it goes to a moderator.
+        </p>
+
+        {% if site_config.submission_guidelines %}
+            <div class="card mt-6 bg-slate-50 text-sm text-slate-700">
+                <p class="whitespace-pre-line">{{ site_config.submission_guidelines }}</p>
+            </div>
+        {% endif %}
+
+        <form method="post" class="card mt-6 space-y-4">
+            {% csrf_token %}
+
+            {% if form.non_field_errors %}
+                <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                    {{ form.non_field_errors }}
+                </div>
+            {% endif %}
+
+            <div>
+                <label for="{{ form.source_url.id_for_label }}" class="block text-sm font-medium">
+                    {{ form.source_url.label }}
+                </label>
+                <div class="mt-1">{{ form.source_url }}</div>
+                <p class="mt-1 text-sm text-slate-500">{{ form.source_url.help_text }}</p>
+                {% if form.source_url.errors %}
+                    <p class="mt-1 text-sm text-red-700">{{ form.source_url.errors.0 }}</p>
+                {% endif %}
+            </div>
+
+            <button type="submit" class="btn-primary w-full">Read the page</button>
+        </form>
+
+        {% comment %}
+            A URL is not required. Many community events exist only as a poster
+            in a window — refusing those would exclude exactly the small local
+            things this site is for.
+        {% endcomment %}
+        <form method="post" class="mt-4 text-center">
+            {% csrf_token %}
+            <input type="hidden" name="manual" value="1">
+            <button type="submit" class="text-sm text-slate-600 underline hover:text-slate-900">
+                No link? Enter the details yourself
+            </button>
+        </form>
+
+        <p class="mt-8 text-center text-sm text-slate-500">
+            <a href="{% url 'my_submissions' %}" class="underline hover:text-slate-700">
+                See your previous submissions
+            </a>
+        </p>
+    </div>
+{% endblock %}

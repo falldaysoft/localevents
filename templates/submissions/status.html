@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}Submission — {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+    <div class="mx-auto max-w-xl">
+        <h1 class="text-2xl font-semibold tracking-tight">{{ submission.display_title }}</h1>
+        <p class="mt-2">
+            <span class="chip">{{ submission.get_status_display }}</span>
+        </p>
+
+        {% if submission.decision_note %}
+            <div class="card mt-4 text-sm text-slate-700">{{ submission.decision_note }}</div>
+        {% endif %}
+
+        {% if submission.messages.all %}
+            <section class="mt-6 space-y-3">
+                <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Messages</h2>
+                {% for message in submission.messages.all %}
+                    <div class="card {% if message.is_from_moderator %}bg-slate-50{% endif %}">
+                        <p class="text-xs uppercase tracking-wide text-slate-400">
+                            {% if message.is_from_moderator %}Moderator{% else %}You{% endif %}
+                            &middot; {{ message.created_at|date:"j M Y" }}
+                        </p>
+                        <p class="mt-1 whitespace-pre-line text-sm text-slate-700">{{ message.body }}</p>
+                    </div>
+                {% endfor %}
+            </section>
+        {% endif %}
+
+        {% if submission.event and submission.status == 'approved' %}
+            <a href="{% url 'event_detail' submission.event.slug %}" class="btn-primary mt-6">
+                View the listing
+            </a>
+        {% endif %}
+
+        <p class="mt-8 text-sm">
+            <a href="{% url 'my_submissions' %}" class="underline hover:text-slate-700">
+                All your submissions
+            </a>
+        </p>
+    </div>
+{% endblock %}

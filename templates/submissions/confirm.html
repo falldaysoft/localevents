@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}Check the details — {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+    <div class="mx-auto max-w-2xl">
+        <h1 class="text-3xl font-semibold tracking-tight">Check the details</h1>
+
+        {% if submission.enrichment_message %}
+            <div class="mt-4 rounded-lg border px-4 py-3 text-sm
+                {% if submission.enrichment_failed %}border-amber-200 bg-amber-50 text-amber-900
+                {% else %}border-sky-200 bg-sky-50 text-sky-900{% endif %}">
+                {{ submission.enrichment_message }}
+            </div>
+        {% endif %}
+
+        {% if submission.draft.notes_for_submitter %}
+            <div class="mt-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+                <strong class="font-medium">Worth a look:</strong>
+                {{ submission.draft.notes_for_submitter }}
+            </div>
+        {% endif %}
+
+        <form method="post" class="mt-6 space-y-6">
+            {% csrf_token %}
+
+            {% if form.non_field_errors %}
+                <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                    {{ form.non_field_errors }}
+                </div>
+            {% endif %}
+
+            <section class="card space-y-4">
+                <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">The event</h2>
+                {% include "submissions/_field.html" with field=form.title %}
+                {% include "submissions/_field.html" with field=form.summary %}
+                {% include "submissions/_field.html" with field=form.description %}
+            </section>
+
+            <section class="card space-y-4">
+                <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">When</h2>
+                {% include "submissions/_field.html" with field=form.starts_at %}
+                {% include "submissions/_field.html" with field=form.ends_at %}
+                {% include "submissions/_checkbox.html" with field=form.is_series %}
+                {% include "submissions/_field.html" with field=form.additional_dates %}
+            </section>
+
+            <section class="card space-y-4">
+                <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Where</h2>
+                {% include "submissions/_field.html" with field=form.venue_name %}
+                {% include "submissions/_field.html" with field=form.venue_address %}
+                {% include "submissions/_field.html" with field=form.venue_city %}
+            </section>
+
+            <section class="card space-y-4">
+                <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Details</h2>
+                {% include "submissions/_field.html" with field=form.organizer_name %}
+                {% include "submissions/_checkbox.html" with field=form.is_free %}
+                {% include "submissions/_field.html" with field=form.price_note %}
+                {% include "submissions/_checkbox.html" with field=form.is_family_friendly %}
+                {% include "submissions/_field.html" with field=form.accessibility_notes %}
+
+                <div>
+                    <span class="block text-sm font-medium">Categories</span>
+                    <div class="mt-2 flex flex-wrap gap-3 text-sm">
+                        {% for choice in form.categories %}
+                            <label class="flex cursor-pointer items-center gap-2">
+                                {{ choice.tag }} <span>{{ choice.choice_label }}</span>
+                            </label>
+                        {% endfor %}
+                    </div>
+                </div>
+            </section>
+
+            <section class="card space-y-4">
+                <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Links</h2>
+                {% include "submissions/_field.html" with field=form.source_url %}
+                {% include "submissions/_field.html" with field=form.ticket_url %}
+            </section>
+
+            <div class="flex items-center gap-3">
+                <button type="submit" class="btn-primary">Send to moderators</button>
+                <a href="{% url 'my_submissions' %}" class="btn-secondary">Save for later</a>
+            </div>
+            <p class="text-sm text-slate-500">
+                A moderator reads every submission before it appears on the site.
+            </p>
+        </form>
+    </div>
+{% endblock %}

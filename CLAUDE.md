@@ -59,8 +59,35 @@ is acceptable — the signal's power is bounded by design.
 is exact, instant, and free; only pages without it cost a model call. Provider
 (Anthropic or OpenRouter) and model are set in the admin, not in code, so they
 can be swapped and compared without a redeploy. `EnrichmentRun` records
-provider, model, tokens, and cost per call — that record is what makes "is the
-cheap model good enough" answerable.
+provider, model, tokens, and cost for every attempt — including the free ones
+and the failures, because that is what makes "is the cheap model good enough"
+answerable.
+
+**The OpenRouter path assumes nothing about response formats.** Support varies
+across the models OpenRouter fronts, which is the reason to use it. Live
+testing found `claude-sonnet-5` returning *no choices at all* for a strict
+`json_schema` request — a 200 with an `error` object, not an HTTP error, so
+naive code crashes indexing `choices[0]`. The client now degrades
+json_schema → json_object → no format, keeps the schema in the prompt
+throughout, and validates the reply either way.
+
+**Extraction is slow — budget for it.** A live run against a busy council-style
+page took 116 seconds end to end (~3k input tokens, ~$0.013). That is why this
+runs as a background task with a polling spinner rather than in the request.
+Note the SDK `timeout` is a *read* timeout, not a wall-clock budget: a slowly
+streaming response can exceed it, as that run did against a 90s setting. If a
+hard ceiling is ever needed, it has to be imposed outside the client.
+
+**Nothing an AI produced reaches a moderator unreviewed.** The submitter
+confirms every extracted field first. That is what makes a cheap, imperfect
+model an acceptable trade — a rough extraction costs a submitter a minute of
+editing rather than putting invented-but-plausible details in front of someone
+who will trust them.
+
+**The fetcher is an SSRF boundary.** The URL is user-supplied, so hostnames are
+resolved and checked against private, loopback, link-local (including cloud
+metadata) and reserved ranges before any request. Do not add a code path that
+fetches a user-supplied URL without going through `enrichment.fetcher`.
 
 **CI builds, it does not deploy.** The LKE API server is behind an IP allowlist
 that GitHub-hosted runners cannot satisfy. CI pushes the image; `make deploy`

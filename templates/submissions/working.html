@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Reading the page — {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+    <div class="mx-auto max-w-xl text-center">
+        {% partialdef status inline %}
+        <div id="status"
+             hx-get="{% url 'submission_status' submission.pk %}"
+             hx-trigger="load delay:1500ms"
+             hx-swap="outerHTML"
+             class="card py-12">
+
+            <div class="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-slate-800"></div>
+
+            <h1 class="mt-6 text-xl font-semibold">Reading the page…</h1>
+            <p class="mt-2 text-sm text-slate-600">
+                We're pulling out the date, venue and description. This usually
+                takes a few seconds.
+            </p>
+            <p class="mt-4 break-all text-xs text-slate-400">{{ submission.source_url }}</p>
+        </div>
+        {% endpartialdef %}
+
+        <noscript>
+            <p class="mt-4 text-sm text-slate-600">
+                <a href="" class="underline">Refresh this page</a> to see the result.
+            </p>
+        </noscript>
+    </div>
+{% endblock %}

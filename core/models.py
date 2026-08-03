@@ -93,9 +93,36 @@ class AIConfig(SingletonModel):
         max_length=100,
         default="claude-opus-5",
         help_text="Anthropic model id, or an OpenRouter model slug such as "
-        "'anthropic/claude-haiku-4.5' or 'google/gemini-2.0-flash-001'.",
+        "'anthropic/claude-sonnet-5' or 'google/gemini-2.0-flash-001'.",
     )
-    max_tokens = models.PositiveIntegerField(default=4096)
+    effort = models.CharField(
+        max_length=10,
+        choices=[
+            ("low", "Low — cheapest, fine for tidy pages"),
+            ("medium", "Medium — a sensible default for extraction"),
+            ("high", "High"),
+        ],
+        default="medium",
+        help_text="Anthropic only. Extraction is not a deep-reasoning task, so "
+        "the lower settings usually hold up well — worth testing before paying "
+        "for more.",
+    )
+    max_tokens = models.PositiveIntegerField(
+        default=8192,
+        help_text="Caps thinking and reply together on models that think, so "
+        "leave headroom above the size of the JSON you expect back.",
+    )
+
+    # Kept here rather than hardcoded because rates change and differ per model
+    # — an estimate that silently goes stale is worse than no estimate.
+    input_cost_per_mtok = models.DecimalField(
+        max_digits=8, decimal_places=2, default=3,
+        help_text="USD per million input tokens, for cost estimates.",
+    )
+    output_cost_per_mtok = models.DecimalField(
+        max_digits=8, decimal_places=2, default=15,
+        help_text="USD per million output tokens, for cost estimates.",
+    )
     daily_spend_cap_usd = models.DecimalField(
         max_digits=8,
         decimal_places=2,
@@ -119,3 +146,29 @@ class AIConfig(SingletonModel):
         if self.provider == self.Provider.ANTHROPIC:
             return settings.ANTHROPIC_API_KEY
         return settings.OPENROUTER_API_KEY
+
+    def estimate_cost(self, input_tokens, output_tokens):
+        """USD for one call, from the configured rates."""
+        from decimal import Decimal
+
+        return (
+            Decimal(input_tokens or 0) / Decimal(1_000_000) * self.input_cost_per_mtok
+            + Decimal(output_tokens or 0)
+            / Decimal(1_000_000)
+            * self.output_cost_per_mtok
+        )
+
+    def spent_today(self):
+        from django.utils import timezone
+
+        from enrichment.models import EnrichmentRun
+
+        return EnrichmentRun.objects.spend_since(
+            timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        )
+
+    def is_within_budget(self):
+        """False once today's estimated spend exceeds the cap. 0 disables it."""
+        if not self.daily_spend_cap_usd:
+            return True
+        return self.spent_today() < self.daily_spend_cap_usd

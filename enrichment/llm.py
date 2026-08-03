@@ -1,0 +1,291 @@
+"""Reading an event out of a page with a language model.
+
+Two backends behind one function. The difference that matters is not the SDK,
+it is what each guarantees about the shape of the reply:
+
+Anthropic's structured outputs enforce the schema server-side, so a response
+that parses is a response that conforms.
+
+OpenRouter forwards `response_format` to whichever upstream model you picked,
+and not all of them honour it — which is precisely the models you would choose
+OpenRouter to reach. So that path validates the reply itself and retries once
+with the validation error fed back. That retry is load-bearing, not padding.
+"""
+
+import json
+import logging
+import re
+
+from django.conf import settings
+from pydantic import ValidationError
+
+from .schemas import EventDraft
+
+logger = logging.getLogger("enrichment.llm")
+
+MAX_PAGE_CHARS = 24_000
+
+# Both SDKs default to a ten-minute timeout, which is far too long here: a
+# submitter is watching a spinner and a worker is blocked for the duration.
+# Better to fail over to the manual form than to hold either hostage.
+REQUEST_TIMEOUT = 90.0
+
+
+class LLMError(Exception):
+    """Extraction failed. The message is for logs, not for the submitter."""
+
+
+SYSTEM_PROMPT = """\
+You read a web page and extract the single event it is advertising, for a \
+community events listing.
+
+Rules:
+- Report only what the page states. Never infer a date, price, or venue that \
+is not there. An empty field is fine and expected; a plausible guess is not, \
+because a moderator will trust it.
+- If the page lists several dates for the same event, return them all as \
+occurrences and set is_series when they follow a repeating pattern.
+- If the page is about several different events, extract the one it is \
+primarily about.
+- Times are local to the venue. Use ISO 8601 without a timezone offset unless \
+the page states one.
+- Use category slugs only from the list provided. If none fit, return none.
+- Put anything ambiguous in notes_for_submitter, addressed to the person who \
+submitted the link.
+"""
+
+
+def _user_prompt(text, source_url, category_slugs):
+    return (
+        f"Source URL: {source_url}\n"
+        f"Available category slugs: {', '.join(category_slugs)}\n\n"
+        f"Page content:\n{text[:MAX_PAGE_CHARS]}"
+    )
+
+
+def _extract_json(raw):
+    """Pull a JSON object out of a reply that may be wrapped in prose or fences.
+
+    Cheaper models routinely wrap JSON in ```json fences or add a sentence of
+    preamble despite being told not to. Salvaging that is much better than
+    discarding an otherwise-correct extraction.
+    """
+    raw = raw.strip()
+
+    fenced = re.search(r"```(?:json)?\s*(.*?)```", raw, re.DOTALL)
+    if fenced:
+        raw = fenced.group(1).strip()
+
+    try:
+        return json.loads(raw)
+    except ValueError:
+        pass
+
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start != -1 and end > start:
+        try:
+            return json.loads(raw[start : end + 1])
+        except ValueError:
+            pass
+
+    raise LLMError("Reply contained no usable JSON.")
+
+
+def _call_anthropic(config, text, source_url, category_slugs):
+    try:
+        import anthropic
+    except ImportError as exc:
+        raise LLMError(
+            "The anthropic package is not installed; run pip install -r requirements.txt."
+        ) from exc
+
+    client = anthropic.Anthropic(
+        api_key=config.resolved_api_key(), timeout=REQUEST_TIMEOUT
+    )
+
+    try:
+        response = client.messages.parse(
+            model=config.model,
+            max_tokens=config.max_tokens,
+            output_config={"effort": config.effort},
+            system=SYSTEM_PROMPT,
+            messages=[
+                {
+                    "role": "user",
+                    "content": _user_prompt(text, source_url, category_slugs),
+                }
+            ],
+            output_format=EventDraft,
+        )
+    except anthropic.APIStatusError as exc:
+        raise LLMError(f"Anthropic returned {exc.status_code}: {exc.message}") from exc
+    except anthropic.APIConnectionError as exc:
+        raise LLMError(f"Could not reach Anthropic: {exc}") from exc
+
+    # A refusal arrives as a successful response with no parsed output, so
+    # check before reading it.
+    if getattr(response, "stop_reason", None) == "refusal":
+        raise LLMError("The model declined to process that page.")
+
+    draft = response.parsed_output
+    if draft is None:
+        raise LLMError("The model returned no structured output.")
+
+    return draft, _usage(response)
+
+
+def _call_openrouter(config, text, source_url, category_slugs):
+    try:
+        from openai import OpenAI
+    except ImportError as exc:
+        raise LLMError(
+            "The openai package is not installed; run pip install -r requirements.txt."
+        ) from exc
+
+    client = OpenAI(
+        api_key=config.resolved_api_key(),
+        base_url=config.base_url or "https://openrouter.ai/api/v1",
+        timeout=REQUEST_TIMEOUT,
+        max_retries=1,
+    )
+
+    schema = EventDraft.model_json_schema()
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": _user_prompt(text, source_url, category_slugs)
+            + "\n\nReply with a single JSON object matching this schema. "
+            "No prose, no code fences.\n\n"
+            + json.dumps(schema),
+        },
+    ]
+
+    last_error = None
+    usage = {}
+
+    # Response-format support varies wildly across the models OpenRouter
+    # fronts, which is the whole reason to use it. Rather than assume, degrade:
+    # ask for schema-shaped JSON, fall back to "just JSON", then to nothing at
+    # all. The schema is in the prompt either way, and the reply is validated
+    # regardless, so the weakest rung still produces a correct draft or a clean
+    # failure.
+    formats = [
+        {"type": "json_schema",
+         "json_schema": {"name": "event_draft", "strict": False, "schema": schema}},
+        {"type": "json_object"},
+        None,
+    ]
+    format_index = 0
+
+    # Two validation attempts. The second shows the model exactly what was
+    # wrong with the first, which recovers most cheap-model failures.
+    for attempt in range(2):
+        while True:
+            kwargs = {
+                "model": config.model,
+                "max_tokens": config.max_tokens,
+                "messages": messages,
+                "extra_headers": {
+                    "HTTP-Referer": f"https://{settings.ALLOWED_HOSTS[0]}",
+                    "X-Title": settings.SITE_NAME,
+                },
+            }
+            if formats[format_index] is not None:
+                kwargs["response_format"] = formats[format_index]
+
+            try:
+                response = client.chat.completions.create(**kwargs)
+            except Exception as exc:  # openai raises a family of transport errors
+                raise LLMError(f"OpenRouter request failed: {exc}") from exc
+
+            # OpenRouter reports an unsupported parameter in the response body
+            # rather than as an HTTP error, so `choices` is absent instead of
+            # empty. Read the reason out before assuming a reply is there.
+            if getattr(response, "choices", None):
+                break
+
+            detail = _error_detail(response)
+            if format_index + 1 < len(formats):
+                logger.info(
+                    "%s rejected response_format %s (%s); retrying with a looser one",
+                    config.model, format_index, detail,
+                )
+                format_index += 1
+                continue
+            raise LLMError(f"{config.model} returned no choices: {detail}")
+
+        usage = _usage(response)
+        content = response.choices[0].message.content or ""
+
+        try:
+            return EventDraft.model_validate(_extract_json(content)), usage
+        except (LLMError, ValidationError) as exc:
+            last_error = exc
+            logger.info(
+                "openrouter attempt %s did not match the schema: %s", attempt + 1, exc
+            )
+            messages.append({"role": "assistant", "content": content})
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        f"That did not match the schema: {exc}\n"
+                        "Reply again with only the corrected JSON object."
+                    ),
+                }
+            )
+
+    raise LLMError(f"Model did not return valid JSON after two attempts: {last_error}")
+
+
+def _error_detail(response):
+    """Dig the provider's own explanation out of a choice-less response.
+
+    Worth the effort: "this model does not support response_format" is
+    actionable, while the TypeError you get from indexing a missing `choices`
+    is not.
+    """
+    error = getattr(response, "error", None)
+    if isinstance(error, dict):
+        return str(error.get("message") or error)
+    if error:
+        return str(error)
+
+    for attr in ("model_dump_json", "to_json"):
+        dump = getattr(response, attr, None)
+        if callable(dump):
+            try:
+                return dump()[:400]
+            except Exception:
+                pass
+    return repr(response)[:400]
+
+
+def _usage(response):
+    """Normalise token counts across the two SDKs."""
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return {}
+    return {
+        "input_tokens": getattr(usage, "input_tokens", None)
+        or getattr(usage, "prompt_tokens", 0)
+        or 0,
+        "output_tokens": getattr(usage, "output_tokens", None)
+        or getattr(usage, "completion_tokens", 0)
+        or 0,
+    }
+
+
+def extract(config, text, source_url, category_slugs):
+    """Extract an EventDraft. Returns (draft, usage_dict)."""
+    if not config.resolved_api_key():
+        raise LLMError(
+            f"No API key configured for {config.provider}. Set one in the admin "
+            "under AI configuration, or in the environment."
+        )
+
+    if config.provider == config.Provider.ANTHROPIC:
+        return _call_anthropic(config, text, source_url, category_slugs)
+    return _call_openrouter(config, text, source_url, category_slugs)
