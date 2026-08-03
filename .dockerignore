@@ -1,0 +1,44 @@
+# The Dockerfile does `COPY . .`, so anything not excluded here ships in the
+# image. Two of these are correctness issues rather than size ones:
+#
+# `db.sqlite3` is the *developer's* database. It holds real account emails and
+# password hashes, and without this line a local `make build` bakes them into a
+# public image. CI never has one, which is exactly what makes the omission easy
+# to miss.
+#
+# `.venv` is built for the host platform. Copying it into a linux/amd64 image
+# shadows nothing at runtime but wastes hundreds of megabytes, and a stray
+# `.pth` file in it can change import behaviour in ways that are baffling to
+# debug.
+
+.git
+.github
+.gitignore
+.dockerignore
+
+.venv
+venv
+env
+__pycache__
+*.py[cod]
+*.egg-info
+.pytest_cache
+
+db.sqlite3
+db.sqlite3-journal
+.env
+media
+staticfiles
+
+# Instance overlays name a specific community; the image is the product.
+instances
+
+# Docs and development-only assets. Nothing at runtime reads them.
+docs
+tests
+helm
+scripts
+*.md
+*.png
+Makefile
+pytest.ini

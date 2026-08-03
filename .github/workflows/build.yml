@@ -15,10 +15,25 @@ on:
   push:
     branches:
       - main
+  # Lets you re-run a build without an empty commit, which is worth having the
+  # first few times a deploy is being shaken out.
+  workflow_dispatch:
+
+# Superseded runs are useless — only the newest image gets deployed.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    # GITHUB_TOKEN defaults to read-only, and the resulting ghcr push fails with
+    # a 403 that reads like an authentication problem rather than a permissions
+    # one. `packages: write` is what actually makes the push work.
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       - name: Checkout code
@@ -28,9 +43,21 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.14"
+          cache: pip
 
       - name: Install dependencies
         run: pip install -r requirements.txt
+
+      # Mirrors `make check`. The missing-migration check earns its place here:
+      # a model change without its migration passes every test and then fails at
+      # deploy time inside the migrate hook, which is a far more expensive place
+      # to work it out.
+      - name: System checks and missing migrations
+        run: |
+          python manage.py check
+          python manage.py makemigrations --check --dry-run
+        env:
+          DEBUG: "true"
 
       - name: Run tests
         run: python -m pytest -q
@@ -44,17 +71,27 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
+          # Derived from the repository rather than hardcoded so that a
+          # community forking this pushes to *their* namespace and it simply
+          # works — GITHUB_TOKEN only ever has rights to packages under the
+          # repo's own owner. Here it resolves to
+          # ghcr.io/falldaysoft/localevents, which is what the chart expects.
           tags: |
-            ghcr.io/falldaysoft/localevents:latest
-            ghcr.io/falldaysoft/localevents:${{ github.sha }}
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Deployment reminder
         run: |
-          echo "Image pushed: ghcr.io/falldaysoft/localevents:${{ github.sha }}"
+          echo "Image pushed: ghcr.io/${{ github.repository }}:${{ github.sha }}"
           echo "Deploy from an allowlisted machine:"
           echo "  make deploy INSTANCE=<name> TAG=${{ github.sha }}"
