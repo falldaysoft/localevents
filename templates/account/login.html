@@ -1,0 +1,78 @@
+{% extends "account/base_entrance.html" %}
+{% load i18n %}
+{% load allauth account %}
+
+{# A copy of allauth's own account/login.html with one change: signing up is a
+   button under the form instead of a link inside a sentence above it.
+
+   allauth's version opens with "If you have not created an account yet, then
+   please sign up first" — a text link in a grey paragraph that people
+   genuinely do not see, because nobody reads the prose above a form they
+   already know how to fill in. The nav's other route in is labelled "Add an
+   event", which is the right CTA for the site and no help at all to someone
+   looking for the word "sign up".
+
+   Copied rather than extended because allauth puts the whole page in one
+   `content` block, so there is nothing narrower to override. When upgrading
+   allauth, diff their login.html against this one; everything except the
+   signup treatment is meant to stay identical. #}
+
+{% block head_title %}
+    {% trans "Sign In" %}
+{% endblock head_title %}
+
+{% block content %}
+    {% element h1 %}
+        {% trans "Sign In" %}
+    {% endelement %}
+    {% if not SOCIALACCOUNT_ONLY %}
+        {% url 'account_login' as login_url %}
+        {% element form form=form method="post" action=login_url tags="entrance,login" %}
+            {% slot body %}
+                {% csrf_token %}
+                {% element fields form=form unlabeled=True %}
+                {% endelement %}
+                {{ redirect_field }}
+            {% endslot %}
+            {% slot actions %}
+                {% element button type="submit" tags="prominent,login" %}
+                    {% trans "Sign In" %}
+                {% endelement %}
+            {% endslot %}
+        {% endelement %}
+    {% endif %}
+    {% if LOGIN_BY_CODE_ENABLED or PASSKEY_LOGIN_ENABLED %}
+        {% element hr %}
+        {% endelement %}
+        {% element button_group vertical=True %}
+            {% if PASSKEY_LOGIN_ENABLED %}
+                {% element button type="submit" form="mfa_login" id="passkey_login" tags="prominent,login,outline,primary" %}
+                    {% trans "Sign in with a passkey" %}
+                {% endelement %}
+            {% endif %}
+            {% if LOGIN_BY_CODE_ENABLED %}
+                {% element button href=request_login_code_url tags="prominent,login,outline,primary" %}
+                    {% trans "Send me a sign-in code" %}
+                {% endelement %}
+            {% endif %}
+        {% endelement %}
+    {% endif %}
+    {% if SOCIALACCOUNT_ENABLED %}
+        {% include "socialaccount/snippets/login.html" with page_layout="entrance" %}
+    {% endif %}
+
+    {% if not SOCIALACCOUNT_ONLY %}
+        <div class="signup-prompt">
+            <hr>
+            <p>{% trans "New here?" %}</p>
+            <a id="signup_link" href="{{ signup_url }}">{% trans "Create an account" %}</a>
+        </div>
+    {% endif %}
+{% endblock content %}
+
+{% block extra_body %}
+    {{ block.super }}
+    {% if PASSKEY_LOGIN_ENABLED %}
+        {% include "mfa/webauthn/snippets/login_script.html" with button_id="passkey_login" %}
+    {% endif %}
+{% endblock %}

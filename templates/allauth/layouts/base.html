@@ -57,6 +57,15 @@
            rule above shows through and the button reads as grey-on-black. */
         .auth-page #passkey_login { @apply btn-secondary w-full justify-center bg-white; }
         .auth-page hr { @apply my-6 border-slate-200; }
+        /* The sign-in page's way out to registration. A button, not the link
+           in a sentence allauth ships, because that one goes unread. Secondary
+           on purpose — most people arriving at a sign-in page already have an
+           account, and two black buttons would make the page ask a question
+           instead of answering one. */
+        .auth-page .signup-prompt p { @apply mt-0 text-center; }
+        .auth-page #signup_link {
+            @apply btn-secondary mt-3 w-full justify-center bg-white no-underline;
+        }
         .auth-page a { @apply underline decoration-slate-300 underline-offset-2 hover:decoration-slate-900; }
         .auth-page ul { @apply mt-2 space-y-1 text-sm; }
         .auth-page .helptext { @apply mt-1 block text-xs text-slate-500; }

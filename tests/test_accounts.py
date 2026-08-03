@@ -172,3 +172,26 @@ def test_no_template_syntax_leaks_into_an_auth_page(client, url):
     body = client.get(url).content.decode()
     for marker in ("{#", "#}", "{% ", " %}"):
         assert marker not in body, f"raw template syntax {marker!r} in {url}"
+
+
+@pytest.mark.django_db
+def test_sign_in_page_offers_a_way_to_sign_up(client):
+    """A button, not a sentence.
+
+    allauth's stock login page opens with "If you have not created an account
+    yet, then please sign up first" — a text link above the form that people
+    do not see, which is exactly how it was reported. The site's only other
+    route in is the nav's "Add an event", which is the right CTA and useless
+    to someone hunting for the words "sign up".
+
+    templates/account/login.html is a copy of allauth's, so an upgrade could
+    quietly leave it behind. This is what notices.
+    """
+    body = client.get(reverse("account_login")).content.decode()
+
+    assert reverse("account_signup") in body
+    assert 'id="signup_link"' in body, "the signup call to action is not the button"
+    assert "have not created an account yet" not in body, (
+        "allauth's stock sentence is back — has the override been superseded?"
+    )
+
