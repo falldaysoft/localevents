@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Claim {{ SITE_NAME }}{% endblock %}
+
+{% block main_class %}mx-auto w-full max-w-md px-4 py-12{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1 class="text-xl font-semibold tracking-tight">Claim {{ SITE_NAME }}</h1>
+    <p class="mt-2 text-sm text-slate-600">
+        This site has no administrator yet. Create the first account and it
+        becomes one — able to moderate submissions, edit the site text, and
+        add other moderators.
+    </p>
+    <p class="mt-2 text-sm text-slate-600">
+        This page disappears once that happens, so if you are setting this
+        site up, do it now.
+    </p>
+
+    <form method="post" class="mt-6 space-y-4">
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+            <div class="rounded-lg bg-red-50 p-3 text-sm text-red-700">
+                {{ form.non_field_errors }}
+            </div>
+        {% endif %}
+
+        {% for field in form %}
+            <div>
+                <label for="{{ field.id_for_label }}" class="block text-sm font-medium text-slate-700">
+                    {{ field.label }}
+                </label>
+                {{ field }}
+                {% if field.help_text %}
+                    <p class="mt-1 text-xs text-slate-500">{{ field.help_text }}</p>
+                {% endif %}
+                {% for error in field.errors %}
+                    <p class="mt-1 text-xs text-red-600">{{ error }}</p>
+                {% endfor %}
+            </div>
+        {% endfor %}
+
+        <button type="submit" class="btn-primary w-full">Claim this site</button>
+    </form>
+</div>
+{% endblock %}
+
+{% block head %}
+<style type="text/tailwindcss">
+    @layer components {
+        /* Scoped to this page: it is the only form built straight from a
+           Django form object, so there is no shared field partial to reuse. */
+        form input { @apply mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm; }
+    }
+</style>
+{% endblock %}

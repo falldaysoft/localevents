@@ -23,6 +23,7 @@
     {% block head %}{% endblock %}
 </head>
 <body class="bg-slate-50 text-slate-900" style="font-family: 'Inter', sans-serif; font-optical-sizing: auto;">
+    {% include "partials/_unclaimed_banner.html" %}
     {% include "partials/_nav.html" %}
     {# Overridable so a page can change the shell it sits in. The auth pages   #}
     {# are the reason: a sign-in form in a 5xl column looks lost. Wrapping the #}

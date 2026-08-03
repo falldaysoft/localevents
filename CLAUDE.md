@@ -62,6 +62,15 @@ stresses this is a bulk import introducing many new venues at once. The
 `USER_AGENT` setting is load-bearing: Nominatim blocks requests without a
 contactable UA.
 
+**A site with no superuser is unclaimed.** `/claim/` creates the first
+administrator from the browser and marks the address verified as it goes,
+because the person who configures SMTP cannot be gated on SMTP working. It is
+first-come-first-served by choice: every gate worth having needs a secret
+delivered by `kubectl exec`, which is the thing the page exists to remove. The
+page 404s once any superuser exists, and `accounts.claim` latches that answer
+per process — so it fails closed, and a site that loses its last superuser
+stays closed until a restart.
+
 **Two orthogonal axes on `Event`.** `listing_type` (one-off vs series) controls
 *collapsing* — a weekly class must never emit 52 cards. `prominence`
 (featured/listed/background) controls *placement* and is set by a moderator.

@@ -125,6 +125,7 @@ TEMPLATES = [
                 "django.contrib.messages.context_processors.messages",
                 "django.template.context_processors.csp",
                 "core.context_processors.site",
+                "accounts.context_processors.claim",
             ],
         },
     },

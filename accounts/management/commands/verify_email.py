@@ -2,13 +2,15 @@
 
 Email verification is mandatory, which applies to accounts created from the
 shell too — a user made with `createsuperuser` has no confirmation email to
-click and therefore cannot log in. This is the way out, and the reason the
-first deploy needs it:
+click and therefore cannot log in. This is the way out:
 
     python manage.py createsuperuser
     python manage.py verify_email you@example.com
 
-It is also useful when a moderator's confirmation mail bounces.
+The first administrator no longer needs either command — see `accounts.claim`,
+which does both from a page in the browser. This remains the answer when a
+moderator's confirmation mail bounces, or when someone genuinely wants to
+build the first account before the site is reachable.
 """
 
 from django.contrib.auth import get_user_model

@@ -37,17 +37,28 @@ Requires Python 3.12+ (3.14 is what the container uses).
 ```bash
 make install
 make migrate
-make superuser
 make dev        # http://localhost:8000
 ```
 
-Email confirmation is mandatory, and that applies to accounts created from the
-shell too — a `createsuperuser` account has no confirmation email to click and
-so cannot sign in. Mark it verified once:
+A site with no superuser is *unclaimed*: every page says so, and `/claim/`
+offers a form that creates the first administrator. Open it and fill it in.
+The page 404s the moment anyone does, so it cannot be used twice.
+
+`make superuser` still works if you prefer the shell, but it needs a second
+step. Email confirmation is mandatory and applies to accounts created there
+too — a `createsuperuser` account has no confirmation email to click and so
+cannot sign in:
 
 ```bash
+make superuser
 .venv/bin/python manage.py verify_email you@example.com
 ```
+
+Claiming does not need that step; it marks the address verified as it goes,
+which is the point — the first administrator is the person who configures the
+mail relay, so requiring working email to create them would be circular.
+`verify_email` remains useful when a later moderator's confirmation mail
+bounces.
 
 Background work — AI enrichment, geocoding, feed polling, outbound email — runs
 on a queue, not in the request. **You need a second process** or those things
@@ -144,13 +155,32 @@ kubectl create secret generic localevents-secrets --namespace "$NS" \
 
 Migrations run automatically as a Helm pre-upgrade hook.
 
-Then create your first admin account. Remember the verification step — without
-it the account exists but cannot sign in:
+Then **open `https://<host>/claim/` and claim the site**. Every page of a
+freshly deployed instance carries a banner saying it has no administrator, and
+that page hands the first person to fill it in a superuser account that can
+sign in immediately. It stops existing as soon as someone does.
+
+Do it now rather than later. Claiming is first-come-first-served — there is no
+token, because delivering one would mean the `kubectl exec` round-trip this
+replaces — so between `make deploy` and your claim, the site belongs to
+whoever loads it. That window is yours to keep short. If you lose the race,
+delete the intruder's account and reclaim:
 
 ```bash
-kubectl exec -n "$NS" deploy/site -- python manage.py createsuperuser
+kubectl exec -n "$NS" deploy/site -- python manage.py shell -c \
+  "from django.contrib.auth import get_user_model; get_user_model().objects.all().delete()"
+kubectl rollout restart deployment -n "$NS"   # the unclaimed check is latched per process
+```
+
+The shell route still works if you would rather not race at all — create the
+account before the DNS record points anywhere:
+
+```bash
+kubectl exec -it -n "$NS" deploy/site -- python manage.py createsuperuser
 kubectl exec -n "$NS" deploy/site -- python manage.py verify_email you@example.com
 ```
+
+(`-it` matters: `createsuperuser` prompts, and without a TTY it skips itself.)
 
 ## Reading event pages
 

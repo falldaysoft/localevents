@@ -42,6 +42,22 @@ def plain_static_storage(settings):
     }
 
 
+@pytest.fixture(autouse=True)
+def unclaimed_site():
+    """Forget whether a superuser was seen in an earlier test.
+
+    `accounts.claim` latches its answer for the life of the process, which is
+    right for a running site and wrong for a test run that creates and rolls
+    back superusers all day. Without this, the first test to claim a site makes
+    every later test believe the site is claimed.
+    """
+    from accounts.claim import reset_claim_cache
+
+    reset_claim_cache()
+    yield
+    reset_claim_cache()
+
+
 @pytest.fixture
 def moderator(db, django_user_model):
     from django.contrib.auth.models import Group

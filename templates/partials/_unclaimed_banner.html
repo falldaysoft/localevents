@@ -1,0 +1,10 @@
+{# An unclaimed site is an open door: anyone who loads it can take it. Say so #}
+{# on every page, in a colour that reads as "unfinished", until someone does. #}
+{% if SITE_IS_UNCLAIMED %}
+<div class="bg-amber-100 text-amber-900">
+    <div class="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-between gap-2 px-4 py-2 text-sm">
+        <span>This site has no administrator yet.</span>
+        <a href="{% url 'claim' %}" class="font-medium underline underline-offset-2">Claim it</a>
+    </div>
+</div>
+{% endif %}
