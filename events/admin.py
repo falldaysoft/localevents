@@ -93,7 +93,7 @@ class EventAdmin(admin.ModelAdmin):
 
     fieldsets = (
         (None, {"fields": ("title", "slug", "summary", "description")}),
-        ("Where", {"fields": ("venue", "is_online", "online_url")}),
+        ("Where", {"fields": ("venue",)}),
         ("Who", {"fields": ("organizer", "submitted_by", "is_commercial")}),
         ("Links", {"fields": ("source_url", "ticket_url", "image_url")}),
         ("Cost", {"fields": ("is_free", "price_min", "price_max", "price_note")}),

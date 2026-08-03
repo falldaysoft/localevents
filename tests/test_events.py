@@ -174,10 +174,11 @@ def test_region_gate_flags_rather_than_rejects(settings, venue):
 
 
 @pytest.mark.django_db
-def test_online_events_are_never_region_flagged(settings):
+def test_an_event_without_a_venue_yet_is_not_region_flagged(settings):
+    """Location-to-be-confirmed is normal; it is not evidence of being far away."""
     settings.MAP_BBOX = [43.0, -80.5, 43.3, -80.0]
-    online = Event.objects.create(title="Webinar", is_online=True)
-    assert online.needs_region_review() is False
+    tba = Event.objects.create(title="Venue To Be Confirmed")
+    assert tba.needs_region_review() is False
 
 
 # --- geocode throttle ------------------------------------------------------

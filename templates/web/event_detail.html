@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}{{ event.title }} — {{ SITE_NAME }}{% endblock %}
+{% block description %}{{ event.summary|default:event.title }}{% endblock %}
+
+{% block head %}
+    {% if event.venue.has_coordinates %}
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    {% endif %}
+    {% comment %}
+        schema.org markup is how search engines surface this in event results —
+        for a listing site that is a large share of the audience.
+    {% endcomment %}
+    <script type="application/ld+json" nonce="{{ csp_nonce }}">{{ schema_json|safe }}</script>
+{% endblock %}
+
+{% block content %}
+    <nav class="mb-4 text-sm text-slate-500">
+        <a href="{% url 'index' %}" class="hover:underline">What's on</a>
+        <span class="mx-1">/</span>
+        <span>{{ event.title }}</span>
+    </nav>
+
+    <article class="grid gap-6 md:grid-cols-3">
+        <div class="md:col-span-2">
+            <header>
+                <h1 class="text-3xl font-semibold tracking-tight">{{ event.title }}</h1>
+                {% if event.summary %}
+                    <p class="mt-2 text-lg text-slate-600">{{ event.summary }}</p>
+                {% endif %}
+            </header>
+
+            <div class="mt-4 flex flex-wrap gap-1.5">
+                {% for category in event.categories.all %}
+                    <a href="{% url 'index' %}?category={{ category.slug }}" class="chip hover:bg-slate-200">
+                        {{ category.emoji }} {{ category.name }}
+                    </a>
+                {% endfor %}
+                {% if event.is_free %}
+                    <span class="chip bg-emerald-100 text-emerald-800">Free</span>
+                {% endif %}
+                {% if event.is_family_friendly %}
+                    <span class="chip">Family friendly</span>
+                {% endif %}
+                {% if event.is_commercial %}
+                    <span class="chip bg-amber-50 text-amber-800">Commercial</span>
+                {% endif %}
+            </div>
+
+            {% if event.description %}
+                <div class="prose mt-6 max-w-none whitespace-pre-line text-slate-700">{{ event.description }}</div>
+            {% endif %}
+
+            {% if event.accessibility_notes %}
+                <section class="mt-6">
+                    <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Accessibility</h2>
+                    <p class="mt-1 whitespace-pre-line text-slate-700">{{ event.accessibility_notes }}</p>
+                </section>
+            {% endif %}
+        </div>
+
+        <aside class="space-y-4">
+            <div class="card">
+                <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                    {% if event.is_series %}Upcoming dates{% else %}When{% endif %}
+                </h2>
+                {% if occurrences %}
+                    <ul class="mt-2 space-y-1 text-sm">
+                        {% for occurrence in occurrences %}
+                            <li class="{% if occurrence.is_cancelled %}text-slate-400 line-through{% endif %}">
+                                <time datetime="{{ occurrence.start|date:'c' }}">{{ occurrence.start|date:"D j M Y, g:i a" }}</time>
+                                {% if occurrence.note %}<span class="text-slate-500">— {{ occurrence.note }}</span>{% endif %}
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p class="mt-2 text-sm text-slate-500">No upcoming dates listed.</p>
+                {% endif %}
+            </div>
+
+            <div class="card">
+                <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Where</h2>
+                {% if event.venue %}
+                    <p class="mt-2 text-sm font-medium">{{ event.venue.name }}</p>
+                    {% if event.venue.full_address %}
+                        <p class="text-sm text-slate-600">{{ event.venue.full_address }}</p>
+                    {% endif %}
+                    <a href="{% url 'index' %}?venue={{ event.venue.slug }}" class="mt-2 inline-block text-sm underline hover:text-slate-900">
+                        Everything at this venue
+                    </a>
+                {% else %}
+                    <p class="mt-2 text-sm text-slate-500">Location to be confirmed.</p>
+                {% endif %}
+            </div>
+
+            {% if event.price_display %}
+                <div class="card">
+                    <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Cost</h2>
+                    <p class="mt-2 text-sm">{{ event.price_display }}</p>
+                </div>
+            {% endif %}
+
+            {% if event.organizer %}
+                <div class="card">
+                    <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Organizer</h2>
+                    <p class="mt-2 text-sm">
+                        {% if event.organizer.website %}
+                            <a href="{{ event.organizer.website }}" class="underline" rel="nofollow noopener">{{ event.organizer.name }}</a>
+                        {% else %}
+                            {{ event.organizer.name }}
+                        {% endif %}
+                    </p>
+                </div>
+            {% endif %}
+
+            <div class="space-y-2">
+                {% if event.ticket_url %}
+                    <a href="{{ event.ticket_url }}" class="btn-primary w-full" rel="nofollow noopener">Tickets</a>
+                {% endif %}
+                {% if event.source_url %}
+                    <a href="{{ event.source_url }}" class="btn-secondary w-full" rel="nofollow noopener">More information</a>
+                {% endif %}
+            </div>
+        </aside>
+    </article>
+
+    {% if event.venue.has_coordinates %}
+        <div id="event-map" class="mt-8 h-64 w-full rounded-xl border border-slate-200"></div>
+    {% endif %}
+{% endblock %}
+
+{% block scripts %}
+    {% if event.venue.has_coordinates %}
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+        {{ event.venue.latitude|json_script:"venue-lat" }}
+        {{ event.venue.longitude|json_script:"venue-lng" }}
+        <script nonce="{{ csp_nonce }}">
+            (function () {
+                var el = document.getElementById('event-map');
+                if (!el) return;
+                var lat = JSON.parse(document.getElementById('venue-lat').textContent);
+                var lng = JSON.parse(document.getElementById('venue-lng').textContent);
+                var map = L.map(el).setView([lat, lng], 15);
+                L.tileLayer('{{ TILE_URL|escapejs }}', {
+                    attribution: '{{ TILE_ATTRIBUTION|escapejs }}', maxZoom: 19
+                }).addTo(map);
+                L.marker([lat, lng]).addTo(map);
+            })();
+        </script>
+    {% endif %}
+{% endblock %}

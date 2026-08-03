@@ -1,18 +1,182 @@
 {% extends "base.html" %}
+{% load humanize %}
+
+{% block title %}{{ SITE_NAME }} — {{ SITE_TAGLINE }}{% endblock %}
+
+{% block head %}
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <link rel="alternate" type="application/rss+xml" title="{{ SITE_NAME }}" href="/events.rss">
+{% endblock %}
 
 {% block content %}
-    <section class="py-12 text-center">
-        <h1 class="text-4xl font-semibold tracking-tight sm:text-5xl">{{ SITE_NAME }}</h1>
-        <p class="mx-auto mt-4 max-w-xl text-lg text-slate-600">{{ SITE_TAGLINE }}</p>
+    <div class="mb-6">
+        <h1 class="text-3xl font-semibold tracking-tight">What's on</h1>
+        <p class="mt-1 text-slate-600">{{ SITE_TAGLINE }}</p>
+    </div>
 
-        <div class="mt-8 flex justify-center gap-3">
-            <a href="{% url 'account_signup' %}" class="btn-primary">Add an event</a>
+    {% comment %}
+        Filters drive an HTMX GET that swaps only #results. The form pushes the
+        URL so a filtered view stays shareable and the back button works.
+    {% endcomment %}
+    <form id="filters"
+          hx-get="{% url 'index' %}"
+          hx-target="#results"
+          hx-select="#results"
+          hx-swap="outerHTML"
+          hx-push-url="true"
+          hx-trigger="change, search"
+          class="card mb-6 space-y-4">
+
+        <div class="flex flex-wrap items-center gap-3">
+            <input type="search" name="q" value="{{ filters.query }}"
+                   placeholder="Search events, venues, organizers"
+                   class="min-w-56 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm">
+
+            <select name="when" class="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                {% for value, label in when_choices %}
+                    <option value="{{ value }}" {% if filters.when == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+
+            <select name="venue" class="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                <option value="">Anywhere</option>
+                {% for venue in venues %}
+                    <option value="{{ venue.slug }}" {% if filters.venue == venue.slug %}selected{% endif %}>{{ venue.name }}</option>
+                {% endfor %}
+            </select>
         </div>
-    </section>
 
-    {% if site_config.about_text %}
-        <section class="card mx-auto max-w-2xl">
-            <p class="whitespace-pre-line text-slate-700">{{ site_config.about_text }}</p>
-        </section>
-    {% endif %}
+        <div class="flex flex-wrap gap-2">
+            {% for category in categories %}
+                <label class="cursor-pointer">
+                    <input type="checkbox" name="category" value="{{ category.slug }}"
+                           class="peer sr-only"
+                           {% if category.slug in filters.categories %}checked{% endif %}>
+                    {% comment %}
+                        The input is sr-only so the chip can be styled freely,
+                        but that hides the browser's focus ring too — without
+                        peer-focus-visible a keyboard user cannot tell which
+                        chip they are on.
+                    {% endcomment %}
+                    <span class="chip peer-checked:bg-slate-900 peer-checked:text-white
+                                 peer-focus-visible:ring-2 peer-focus-visible:ring-slate-900
+                                 peer-focus-visible:ring-offset-2">
+                        {{ category.emoji }} {{ category.name }}
+                    </span>
+                </label>
+            {% endfor %}
+        </div>
+
+        <div class="flex flex-wrap gap-4 text-sm text-slate-600">
+            <label class="flex cursor-pointer items-center gap-2">
+                <input type="checkbox" name="free" value="1" {% if filters.free_only %}checked{% endif %}
+                       class="rounded border-slate-300"> Free only
+            </label>
+            <label class="flex cursor-pointer items-center gap-2">
+                <input type="checkbox" name="family" value="1" {% if filters.family_only %}checked{% endif %}
+                       class="rounded border-slate-300"> Family friendly
+            </label>
+            <label class="flex cursor-pointer items-center gap-2">
+                <input type="checkbox" name="noncommercial" value="1" {% if filters.hide_commercial %}checked{% endif %}
+                       class="rounded border-slate-300"> Hide commercial
+            </label>
+            {% if filters.is_active %}
+                <a href="{% url 'index' %}" class="ml-auto underline hover:text-slate-900">Clear filters</a>
+            {% endif %}
+        </div>
+    </form>
+
+    <div id="map" class="mb-6 h-80 w-full rounded-xl border border-slate-200 bg-white"></div>
+
+    {% partialdef results inline %}
+    <div id="results">
+        <p class="mb-4 text-sm text-slate-500">
+            {{ result_count }} event{{ result_count|pluralize }}
+            {% if program_count %}
+                &middot; <a href="#programs" class="underline hover:text-slate-700">{{ program_count }} regular program{{ program_count|pluralize }}</a>
+            {% endif %}
+        </p>
+
+        {% if events %}
+            <ul class="space-y-3">
+                {% for event in events %}
+                    {% include "web/_event_card.html" with event=event %}
+                {% endfor %}
+            </ul>
+        {% else %}
+            <div class="card text-center text-slate-600">
+                <p class="font-medium">Nothing matches that yet.</p>
+                <p class="mt-1 text-sm">Try a wider date range, or clear a filter or two.</p>
+            </div>
+        {% endif %}
+
+        {% if programs %}
+            <section id="programs" class="mt-12">
+                <h2 class="text-xl font-semibold tracking-tight">Regular programs</h2>
+                <p class="mb-4 mt-1 text-sm text-slate-600">
+                    Classes, clubs, and other things that run every week. Kept
+                    separate so they don't crowd out one-off events.
+                </p>
+                <ul class="space-y-3">
+                    {% for event in programs %}
+                        {% include "web/_event_card.html" with event=event compact=True %}
+                    {% endfor %}
+                </ul>
+            </section>
+        {% endif %}
+    </div>
+    {% endpartialdef %}
+{% endblock %}
+
+{% block scripts %}
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    {{ map_config|json_script:"map-config" }}
+    <script nonce="{{ csp_nonce }}">
+        (function () {
+            var el = document.getElementById('map');
+            var cfgEl = document.getElementById('map-config');
+            if (!el || !cfgEl) return;
+            var cfg = JSON.parse(cfgEl.textContent);
+
+            var map = L.map(el).setView(cfg.center, cfg.zoom);
+            L.tileLayer(cfg.tileUrl, { attribution: cfg.attribution, maxZoom: 19 }).addTo(map);
+
+            var layer = L.layerGroup().addTo(map);
+
+            function load() {
+                // The map reads the same query string as the list, so pins and
+                // results can never disagree.
+                var qs = new URLSearchParams(new FormData(document.getElementById('filters'))).toString();
+                fetch(cfg.geojsonUrl + (qs ? '?' + qs : ''))
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        layer.clearLayers();
+                        var bounds = [];
+                        data.features.forEach(function (f) {
+                            var c = f.geometry.coordinates;
+                            var p = f.properties;
+                            var html = '<strong>' + escapeHtml(p.venue) + '</strong><ul style="margin:.35rem 0 0;padding-left:1rem">';
+                            p.events.forEach(function (e) {
+                                html += '<li><a href="' + e.url + '">' + escapeHtml(e.title) + '</a></li>';
+                            });
+                            html += '</ul>';
+                            L.marker([c[1], c[0]]).bindPopup(html).addTo(layer);
+                            bounds.push([c[1], c[0]]);
+                        });
+                        if (bounds.length) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
+                    });
+            }
+
+            function escapeHtml(s) {
+                return String(s).replace(/[&<>"']/g, function (c) {
+                    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+                });
+            }
+
+            load();
+            document.getElementById('filters').addEventListener('change', function () {
+                setTimeout(load, 50);
+            });
+        })();
+    </script>
 {% endblock %}

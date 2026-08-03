@@ -1,0 +1,52 @@
+{% load humanize %}
+<li class="card transition hover:border-slate-300">
+    <div class="flex items-start justify-between gap-4">
+        <div class="min-w-0">
+            <h3 class="truncate text-lg font-semibold">
+                <a href="{% url 'event_detail' event.slug %}" class="hover:underline">{{ event.title }}</a>
+            </h3>
+
+            {% if event.summary %}
+                <p class="mt-1 text-sm text-slate-600">{{ event.summary }}</p>
+            {% endif %}
+
+            <p class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
+                {% if event.next_start %}
+                    <span>
+                        <time datetime="{{ event.next_start|date:'c' }}">{{ event.next_start|date:"D j M, g:i a" }}</time>
+                        {% comment %}
+                            A series shows its next date and says so, rather
+                            than emitting one card per week.
+                        {% endcomment %}
+                        {% if event.is_series %}
+                            <span class="text-slate-400">&middot; weekly</span>
+                        {% endif %}
+                    </span>
+                {% endif %}
+
+                {% if event.venue %}
+                    <span class="truncate">{{ event.venue.name }}</span>
+                {% endif %}
+            </p>
+        </div>
+
+        <div class="flex shrink-0 flex-col items-end gap-1">
+            {% if event.is_free %}
+                <span class="chip bg-emerald-100 text-emerald-800">Free</span>
+            {% elif event.price_display %}
+                <span class="chip">{{ event.price_display }}</span>
+            {% endif %}
+            {% if event.is_commercial %}
+                <span class="chip bg-amber-50 text-amber-800">Commercial</span>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if event.categories.all and not compact %}
+        <div class="mt-3 flex flex-wrap gap-1.5">
+            {% for category in event.categories.all %}
+                <span class="chip">{{ category.emoji }} {{ category.name }}</span>
+            {% endfor %}
+        </div>
+    {% endif %}
+</li>

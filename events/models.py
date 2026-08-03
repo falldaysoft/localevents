@@ -1,5 +1,10 @@
 """The event domain.
 
+There is deliberately no concept of an online event. A listing for something
+happening anywhere has no local connection to verify, which makes it the
+easiest possible thing to spam a community site with — so the model does not
+represent it at all, rather than offering it and filtering it later.
+
 Two ideas carry most of the weight here, and they are deliberately independent:
 
 `Event.listing_type` decides how an event is *collapsed*. A weekly class is one
@@ -377,10 +382,8 @@ class Event(models.Model):
     venue = models.ForeignKey(
         Venue, null=True, blank=True, on_delete=models.SET_NULL,
         related_name="events",
-        help_text="Leave empty for online-only events.",
+        help_text="Leave empty only if the location is still to be confirmed.",
     )
-    is_online = models.BooleanField(default=False)
-    online_url = models.URLField(blank=True)
 
     source_url = models.URLField(
         blank=True, help_text="Where this listing came from."
@@ -496,7 +499,7 @@ class Event(models.Model):
         Not an automatic rejection — plenty of communities care about something
         just over the county line — but a moderator should look.
         """
-        if self.is_online or self.venue is None:
+        if self.venue is None:
             return False
         return self.venue.is_in_region is False
 
