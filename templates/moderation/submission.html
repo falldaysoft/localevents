@@ -1,0 +1,292 @@
+{% extends "base.html" %}
+
+{% block title %}{{ submission.display_title }} — moderation{% endblock %}
+
+{% block content %}
+    {% include "moderation/_tabs.html" with section="queue" %}
+
+    <div class="mt-6 flex flex-wrap items-start justify-between gap-4">
+        <div class="min-w-0">
+            <h1 class="text-2xl font-semibold tracking-tight">{{ submission.display_title }}</h1>
+            <p class="mt-1 text-sm text-slate-500">
+                Submitted by {{ submission.submitted_by.display_name }}
+                &lt;{{ submission.submitted_by.email }}&gt;
+                &middot; {{ submission.created_at|date:"j M Y, H:i" }}
+            </p>
+        </div>
+        <div class="flex shrink-0 items-center gap-2">
+            <span class="chip">{{ submission.get_status_display }}</span>
+            <form method="post" action="{% url 'mod_assign' submission.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="btn-secondary">
+                    {% if submission.assigned_to == user %}Hand back{% else %}Assign to me{% endif %}
+                </button>
+            </form>
+        </div>
+    </div>
+
+    {% if submission.assigned_to and submission.assigned_to != user %}
+        <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            {{ submission.assigned_to.display_name }} has this one. You can still act on
+            it — assignment only stops two people writing to the same submitter.
+        </div>
+    {% endif %}
+
+    {% if out_of_region %}
+        <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <strong class="font-medium">Outside the region.</strong>
+            This venue geocoded outside the configured bounds. Not a reason to decline
+            on its own — plenty of things just over the line matter here — but worth a look.
+        </div>
+    {% endif %}
+
+    <div class="mt-6 grid gap-6 lg:grid-cols-[1fr_20rem]">
+        <div class="space-y-6">
+            {% if event %}
+                <section class="card space-y-3">
+                    <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">The listing</h2>
+                    <p class="text-lg font-medium">{{ event.title }}</p>
+                    {% if event.summary %}<p class="text-slate-700">{{ event.summary }}</p>{% endif %}
+                    {% if event.description %}
+                        <p class="whitespace-pre-line text-sm text-slate-600">{{ event.description }}</p>
+                    {% endif %}
+
+                    <dl class="grid grid-cols-1 gap-x-6 gap-y-2 pt-2 text-sm sm:grid-cols-2">
+                        <div>
+                            <dt class="text-slate-500">Where</dt>
+                            <dd>
+                                {% if event.venue %}
+                                    {{ event.venue.name }}
+                                    {% if event.venue.full_address %}
+                                        <span class="text-slate-500">— {{ event.venue.full_address }}</span>
+                                    {% endif %}
+                                    <span class="block text-xs text-slate-400">
+                                        {{ event.venue.get_geocode_status_display }}
+                                    </span>
+                                {% else %}
+                                    <span class="text-amber-700">No venue given</span>
+                                {% endif %}
+                            </dd>
+                        </div>
+                        <div>
+                            <dt class="text-slate-500">Who</dt>
+                            <dd>{{ event.organizer.name|default:"—" }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-slate-500">Cost</dt>
+                            <dd>{{ event.price_display|default:"Not stated" }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-slate-500">Currently</dt>
+                            <dd>{{ event.get_status_display }} &middot; {{ event.get_prominence_display }}</dd>
+                        </div>
+                    </dl>
+
+                    {% if event.accessibility_notes %}
+                        <p class="text-sm text-slate-600">
+                            <span class="text-slate-500">Access:</span> {{ event.accessibility_notes }}
+                        </p>
+                    {% endif %}
+
+                    {% if event.categories.all %}
+                        <div class="flex flex-wrap gap-2 pt-1">
+                            {% for category in event.categories.all %}
+                                <span class="chip">{{ category.emoji }} {{ category.name }}</span>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </section>
+
+                <section class="card">
+                    <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Dates</h2>
+                    <ul class="mt-3 space-y-1 text-sm">
+                        {% for occurrence in occurrences %}
+                            <li class="{% if occurrence.has_ended %}text-slate-400{% endif %}">
+                                {{ occurrence.start|date:"D j M Y, H:i" }}
+                                {% if occurrence.end %}– {{ occurrence.end|date:"H:i" }}{% endif %}
+                                {% if occurrence.has_ended %}<span class="text-xs">(past)</span>{% endif %}
+                            </li>
+                        {% empty %}
+                            <li class="text-amber-700">No dates recorded.</li>
+                        {% endfor %}
+                    </ul>
+                </section>
+            {% else %}
+                <section class="card text-sm text-slate-600">
+                    <p>
+                        The submitter hasn't finished the details yet, so there is nothing
+                        to publish. You can still ask them a question or decline.
+                    </p>
+                </section>
+            {% endif %}
+
+            {% if submission.messages.all %}
+                <section class="space-y-3">
+                    <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Conversation</h2>
+                    {% for message in submission.messages.all %}
+                        <div class="card {% if message.is_from_moderator %}bg-slate-50{% endif %}">
+                            <p class="text-xs uppercase tracking-wide text-slate-400">
+                                {% if message.is_from_moderator %}
+                                    {{ message.author.display_name|default:"Moderator" }}
+                                {% else %}
+                                    Submitter
+                                {% endif %}
+                                &middot; {{ message.created_at|date:"j M Y, H:i" }}
+                                {% if message.is_from_moderator and not message.emailed_at %}
+                                    &middot; <span class="text-amber-600">not emailed yet</span>
+                                {% endif %}
+                            </p>
+                            <p class="mt-1 whitespace-pre-line text-sm text-slate-700">{{ message.body }}</p>
+                        </div>
+                    {% endfor %}
+                </section>
+            {% endif %}
+        </div>
+
+        <aside class="space-y-6">
+            <section class="card space-y-2 text-sm">
+                <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Where it came from</h2>
+                {% if submission.source_url %}
+                    <p class="break-all">
+                        <a href="{{ submission.source_url }}" rel="noopener nofollow" target="_blank"
+                           class="underline hover:text-slate-900">{{ submission.source_url }}</a>
+                    </p>
+                {% else %}
+                    <p class="text-slate-500">Entered by hand — no link.</p>
+                {% endif %}
+
+                {% if submission.source_advice %}
+                    <p class="text-slate-600">{{ submission.source_advice }}</p>
+                {% endif %}
+
+                {% for run in submission.enrichment_runs.all %}
+                    <p class="text-xs text-slate-500">
+                        {{ run.get_method_display }} &middot; {{ run.get_status_display }}
+                        {% if run.model %}&middot; {{ run.model }}{% endif %}
+                        {% if not run.was_free %}
+                            &middot; ${{ run.estimated_cost_usd|floatformat:4 }}
+                            &middot; {{ run.duration_ms }}ms
+                        {% endif %}
+                    </p>
+                {% endfor %}
+
+                {% if submission.draft.notes_for_submitter %}
+                    <p class="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                        <span class="font-medium">The extraction noted:</span>
+                        {{ submission.draft.notes_for_submitter }}
+                    </p>
+                {% endif %}
+            </section>
+
+            {% if submission.actions.all %}
+                <section class="card text-sm">
+                    <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">History</h2>
+                    <ul class="mt-2 space-y-1 text-xs text-slate-500">
+                        {% for action in submission.actions.all %}
+                            <li>
+                                {{ action.created_at|date:"j M, H:i" }} &middot;
+                                {{ action.action }} &middot;
+                                {{ action.actor.display_name|default:"system" }}
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </section>
+            {% endif %}
+        </aside>
+    </div>
+
+    {% comment %}
+    Native <details> rather than Alpine. This project's CSP withholds
+    'unsafe-eval', and Alpine's standard build compiles every x- expression with
+    the Function constructor — so it silently does nothing here. Three
+    disclosure panels are not worth opening eval to script on a site that
+    renders text strangers submitted. See docs/STATE.md.
+    {% endcomment %}
+    {% if submission.is_open %}
+        <div class="mt-8 space-y-4">
+            <details open class="card">
+                <summary class="cursor-pointer text-sm font-semibold uppercase tracking-wide text-slate-500">
+                    Approve
+                </summary>
+                <form method="post" action="{% url 'mod_approve' submission.pk %}"
+                      class="mt-5 space-y-5">
+                {% csrf_token %}
+                <div>
+                    <span class="block text-sm font-medium">{{ approve_form.prominence.label }}</span>
+                    <div class="mt-2 space-y-1 text-sm">
+                        {% for choice in approve_form.prominence %}
+                            <label class="flex cursor-pointer items-center gap-2">
+                                {{ choice.tag }} <span>{{ choice.choice_label }}</span>
+                            </label>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div>
+                    <span class="block text-sm font-medium">{{ approve_form.listing_type.label }}</span>
+                    <div class="mt-2 space-y-1 text-sm">
+                        {% for choice in approve_form.listing_type %}
+                            <label class="flex cursor-pointer items-center gap-2">
+                                {{ choice.tag }} <span>{{ choice.choice_label }}</span>
+                            </label>
+                        {% endfor %}
+                    </div>
+                    <p class="mt-1 text-sm text-slate-500">{{ approve_form.listing_type.help_text }}</p>
+                </div>
+
+                <div>
+                    <span class="block text-sm font-medium">Categories</span>
+                    <div class="mt-2 flex flex-wrap gap-3 text-sm">
+                        {% for choice in approve_form.categories %}
+                            <label class="flex cursor-pointer items-center gap-2">
+                                {{ choice.tag }} <span>{{ choice.choice_label }}</span>
+                            </label>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                {% include "submissions/_field.html" with field=approve_form.note %}
+
+                <button type="submit" class="btn-primary" {% if not event %}disabled{% endif %}>
+                    Publish
+                </button>
+                </form>
+            </details>
+
+            <details class="card">
+                <summary class="cursor-pointer text-sm font-semibold uppercase tracking-wide text-slate-500">
+                    Ask a question
+                </summary>
+                <form method="post" action="{% url 'mod_request_info' submission.pk %}"
+                      class="mt-5 space-y-4">
+                    {% csrf_token %}
+                    {% include "submissions/_field.html" with field=info_form.body %}
+                    <button type="submit" class="btn-primary">Send the question</button>
+                </form>
+            </details>
+
+            <details class="card">
+                <summary class="cursor-pointer text-sm font-semibold uppercase tracking-wide text-slate-500">
+                    Decline
+                </summary>
+                <form method="post" action="{% url 'mod_reject' submission.pk %}"
+                      class="mt-5 space-y-4">
+                    {% csrf_token %}
+                    {% include "submissions/_field.html" with field=reject_form.reason %}
+                    <button type="submit" class="btn-primary">Decline this listing</button>
+                </form>
+            </details>
+        </div>
+    {% else %}
+        <div class="card mt-8 text-sm text-slate-600">
+            <p>
+                {{ submission.get_status_display }} by
+                {{ submission.decided_by.display_name|default:"a moderator" }}
+                on {{ submission.decided_at|date:"j M Y" }}.
+            </p>
+            {% if submission.decision_note %}
+                <p class="mt-2 whitespace-pre-line">{{ submission.decision_note }}</p>
+            {% endif %}
+        </div>
+    {% endif %}
+{% endblock %}

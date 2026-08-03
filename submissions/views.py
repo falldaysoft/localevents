@@ -2,13 +2,14 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 
 from core.models import SiteConfig
 from events.models import Category
 
 from .forms import EventDraftForm, StartSubmissionForm
-from .models import Submission, SubmissionQuota
-from .services import create_event_from_draft
+from .models import Submission, SubmissionMessage, SubmissionQuota
+from .services import save_event_from_draft
 from .sources import advice_for
 from .tasks import enrich_submission
 
@@ -101,7 +102,12 @@ def submission_detail(request, pk):
     if request.method == "POST":
         form = EventDraftForm(request.POST)
         if form.is_valid():
-            event = create_event_from_draft(submission, form.cleaned_data)
+            reply = form.cleaned_data.get("reply", "").strip()
+            if reply:
+                SubmissionMessage.objects.create(
+                    submission=submission, author=request.user, body=reply
+                )
+            event = save_event_from_draft(submission, form.cleaned_data)
             messages.success(
                 request,
                 f"Thanks — “{event.title}” is with the moderators now. "
@@ -109,7 +115,16 @@ def submission_detail(request, pk):
             )
             return redirect("my_submissions")
     else:
-        form = EventDraftForm(initial=_initial_from_draft(submission.draft))
+        # After a moderator asks a question the event already exists, and it —
+        # not the original extraction — is what the submitter has been asked
+        # about. Prefilling from the stale draft would silently undo their own
+        # earlier corrections.
+        initial = (
+            _initial_from_event(submission.event)
+            if submission.event_id
+            else _initial_from_draft(submission.draft)
+        )
+        form = EventDraftForm(initial=initial)
 
     return render(
         request,
@@ -121,6 +136,36 @@ def submission_detail(request, pk):
             "site_config": SiteConfig.load(),
         },
     )
+
+
+def _initial_from_event(event):
+    """Map an existing event back onto the confirmation form."""
+    occurrences = list(event.occurrences.order_by("start"))
+    first = occurrences[0] if occurrences else None
+
+    return {
+        "title": event.title,
+        "summary": event.summary,
+        "description": event.description,
+        "venue_name": event.venue.name if event.venue else "",
+        "venue_address": event.venue.address if event.venue else "",
+        "venue_city": event.venue.city if event.venue else "",
+        "organizer_name": event.organizer.name if event.organizer else "",
+        "starts_at": first.start if first else None,
+        "ends_at": first.end if first else None,
+        "is_series": event.is_series,
+        "additional_dates": "\n".join(
+            timezone.localtime(o.start).strftime("%Y-%m-%d %H:%M")
+            for o in occurrences[1:]
+        ),
+        "is_free": event.is_free,
+        "price_note": event.price_note,
+        "is_family_friendly": event.is_family_friendly,
+        "accessibility_notes": event.accessibility_notes,
+        "categories": list(event.categories.values_list("pk", flat=True)),
+        "source_url": event.source_url,
+        "ticket_url": event.ticket_url,
+    }
 
 
 def _initial_from_draft(draft):

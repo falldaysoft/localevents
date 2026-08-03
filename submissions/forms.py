@@ -130,6 +130,16 @@ class EventDraftForm(forms.Form):
         required=False, widget=forms.URLInput(attrs={"class": INPUT_CLASS})
     )
 
+    # Only rendered once a moderator has asked something. Carried on this form
+    # rather than a separate one so answering the question and correcting the
+    # details are a single action — two forms would let someone reply and
+    # think they had resubmitted.
+    reply = forms.CharField(
+        required=False,
+        label="Your reply to the moderator",
+        widget=forms.Textarea(attrs={"class": INPUT_CLASS, "rows": 3}),
+    )
+
     def clean_starts_at(self):
         starts_at = self.cleaned_data["starts_at"]
         if timezone.is_naive(starts_at):
@@ -176,10 +186,3 @@ class EventDraftForm(forms.Form):
                     "Use YYYY-MM-DD HH:MM."
                 )
         return parsed
-
-
-class ModeratorReplyForm(forms.Form):
-    body = forms.CharField(
-        label="Message to the submitter",
-        widget=forms.Textarea(attrs={"class": INPUT_CLASS, "rows": 4}),
-    )

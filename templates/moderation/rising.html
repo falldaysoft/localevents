@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Rising — {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+    {% include "moderation/_tabs.html" with section="rising" %}
+
+    <h1 class="mt-6 text-2xl font-semibold tracking-tight">Rising</h1>
+    <p class="mt-2 max-w-2xl text-sm text-slate-600">
+        Published events drawing unusual interest <em>for the tier they are already
+        in</em> — comparing across tiers would only rediscover that featured events
+        get more attention. Nothing here is promoted until you say so.
+    </p>
+
+    {% if events %}
+        <ul class="mt-6 space-y-3">
+            {% for event in events %}
+                <li class="card">
+                    <div class="flex flex-wrap items-start justify-between gap-4">
+                        <div class="min-w-0">
+                            <a href="{% url 'event_detail' event.slug %}"
+                               class="font-medium underline decoration-slate-300 underline-offset-2 hover:decoration-slate-900">
+                                {{ event.title }}
+                            </a>
+                            <p class="mt-1 text-sm text-slate-500">
+                                {{ event.get_prominence_display }}
+                                {% if event.venue %}&middot; {{ event.venue.name }}{% endif %}
+                            </p>
+                            <p class="mt-1 text-xs text-slate-500">
+                                {{ event.interest_count }} interested &middot;
+                                tier average {{ event.tier_average|floatformat:1 }} &middot;
+                                {{ event.rising_score|floatformat:1 }}&times;
+                            </p>
+                        </div>
+                        <form method="post" action="{% url 'mod_promote' event.pk %}" class="shrink-0">
+                            {% csrf_token %}
+                            <button type="submit" class="btn-secondary">Promote a tier</button>
+                        </form>
+                    </div>
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <div class="card mt-6 text-center text-slate-600">
+            <p>Nothing is outrunning its tier at the moment.</p>
+        </div>
+    {% endif %}
+{% endblock %}

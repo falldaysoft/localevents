@@ -1,0 +1,18 @@
+<div class="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-slate-200 pb-3 text-sm">
+    <a href="{% url 'mod_queue' %}"
+       class="font-medium {% if section == 'queue' %}text-slate-900{% else %}text-slate-500 hover:text-slate-900{% endif %}">
+        Queue
+        {% if queue_counts.review %}
+            <span class="ml-1 rounded-full bg-slate-900 px-2 py-0.5 text-xs text-white">{{ queue_counts.review }}</span>
+        {% endif %}
+    </a>
+    <a href="{% url 'mod_rising' %}"
+       class="font-medium {% if section == 'rising' %}text-slate-900{% else %}text-slate-500 hover:text-slate-900{% endif %}">
+        Rising
+    </a>
+    <a href="{% url 'mod_audit' %}"
+       class="font-medium {% if section == 'audit' %}text-slate-900{% else %}text-slate-500 hover:text-slate-900{% endif %}">
+        Log
+    </a>
+    <a href="{% url 'admin:index' %}" class="ml-auto text-slate-400 hover:text-slate-700">Admin</a>
+</div>

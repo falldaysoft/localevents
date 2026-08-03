@@ -6,7 +6,7 @@ live in `CLAUDE.md`; the full plan lives in
 what those two don't: what is actually done, what is proven versus merely
 written, and the traps that cost time.
 
-Last updated after Phase 3.
+Last updated after Phase 4.
 
 ## Done
 
@@ -16,13 +16,18 @@ Last updated after Phase 3.
 | 1 — domain model, geocoding | done | `f1046f7` |
 | 2 — public browse, filters, map | done | `43c6115` |
 | 3 — submission + AI enrichment | done | `0e4cece`, `6ed920e`, `4e5c4c8` |
-| 4 — moderation queue | **next** | |
-| 5 — feed importers | not started | |
+| 4 — moderation queue, Rising | done | this commit |
+| 5 — feed importers | **next** | |
 | 6 — outbound feeds (ICS/RSS/JSON) | not started | |
-| 7 — interest + Rising queue | not started | |
+| 7 — interest button (Rising itself is done) | not started | |
 | 8 — series lifecycle, reusability docs | not started | |
 
-145 tests passing. `make check` clean.
+169 tests passing. `make check` clean.
+
+Phase 7 shrank: the `Interest` model, the Rising ranking and the promotion
+action all landed with Phase 4, because the mod queue is where they are read.
+What is left of it is the public "Interested" button and its cookie/IP
+fingerprint dedup.
 
 ## Verified against reality, not just tests
 
@@ -42,14 +47,24 @@ Last updated after Phase 3.
   record written.
 - **Fetch reliability across eight real sites.** Plain HTTP returned usable
   text from every one that permitted it. See "No headless browser" below.
+- **The whole moderation loop, in a browser, through the real worker.** Ask a
+  question → the submitter gets the email with a working link → they answer and
+  resubmit → approve as Featured with categories → the listing appears on the
+  public feed and the approval email links to it. Both emails went out through
+  `db_worker`, not inline. The audit log shows all five steps with actors.
+- **Rising ranks within a tier, not across.** With live data: 34 marks in a
+  tier averaging 12 outranked 42 marks in a tier averaging 27. Promoting moved
+  exactly one tier and re-ranked the queue.
 
 ## Not verified
 
 - **No deploy has ever run.** The chart lints and renders and `scripts/deploy.sh`
   fails fast if the IP allowlist blocks it, but first contact with the cluster
   is still ahead. Namespace secrets do not exist yet.
-- **No real email has been sent.** Console backend throughout. SES credentials
-  and DKIM are unproven.
+- **No real email has been sent.** Console backend throughout — the moderation
+  mail is proven to *render and dispatch*, not to arrive. SES credentials and
+  DKIM are unproven, and `SITE_BASE_URL` (new, in settings) must be set per
+  instance or every link in those emails points at localhost.
 - **Postgres is unproven.** Everything so far is SQLite. Watch for anything
   relying on SQLite's laxness — the `select_for_update()` in `GeocodeThrottle`
   is a no-op on SQLite and only does its job on Postgres.
@@ -71,6 +86,26 @@ Last updated after Phase 3.
   imposed outside the client.
 - **Cost estimates use rates typed into the admin.** They are not fetched, so
   they go stale silently when a model's pricing changes.
+
+## Alpine is dead weight — the CSP forbids it
+
+`base.html` loads Alpine on every page and it **cannot run**. `SECURE_CSP`
+withholds `'unsafe-eval'` (correctly), and Alpine's standard CDN build compiles
+every `x-` expression with the `Function` constructor. It loads, reports
+`typeof window.Alpine === "object"`, and then silently does nothing.
+
+Nothing had used `x-data` before Phase 4, so this sat latent since the
+scaffold. The moderation queue's three action panels were built on `x-show`,
+looked fine in tests, and rendered all three panels open in a real browser.
+
+They are now native `<details>` — no JS, no CSP concession, and a test asserts
+the page contains no `x-` attributes so this cannot creep back.
+
+If Alpine is genuinely wanted later, the fix is `@alpinejs/csp` (which requires
+expressions to live in `Alpine.data()` components), **not** adding
+`'unsafe-eval'` to a site that renders text strangers submitted. Removing the
+CDN tag from `base.html` is also reasonable — it currently costs a request and
+buys nothing.
 
 ## The year problem
 
@@ -130,26 +165,61 @@ reading one page on a person's behalf is not harvesting a commercial catalogue.
 - **`.env` loading reaches the test suite.** It once made tests do real billable
   API calls, presenting as a hang. An autouse fixture blanks the key and a test
   asserts it stays blank — don't remove either.
+- **`transaction.on_commit` never fires under pytest-django.** Each test runs in
+  a transaction that is rolled back, so anything queued on commit — every
+  moderation email — silently never happens and mail assertions pass against an
+  empty outbox. `tests/test_moderation.py` wraps decisions in a `decide` fixture
+  built on `django_capture_on_commit_callbacks(execute=True)`.
+- **A ratio over a tiny population is nonsense.** Promote the one busy event out
+  of a prominence tier and whatever remains *becomes* that tier's average, so
+  the next event with two marks reads as "twice the average". Seen live.
+  `MIN_INTEREST_TO_RISE` is the floor in front of it.
 
-## Starting Phase 4
+## How Phase 4 is put together
 
-The moderation queue. Everything it needs already exists:
+A separate `moderation` app with **no models** — `Submission`,
+`SubmissionMessage` and `ModerationAction` stay in `submissions`, because the
+submission flow creates them and a moderator only reads them later. The split
+is about access: every view in `moderation` sits behind one
+`moderator_required` decorator, and a whole app under one rule is far easier to
+audit than a mixed one.
 
-- `Submission` with its status machine, `SubmissionMessage` for the reply
-  thread, `ModerationAction` as an append-only audit log, all in
-  `submissions/models.py`.
-- `accounts.User.is_moderator` (superuser or the `Moderators` group).
-- Events arrive as `status=PENDING` with `prominence` at its default, waiting
-  for a human.
+Every decision goes through `moderation/services.py`, never a view. Three
+things have to move together — the event, the submission, and the audit row —
+and the submitter has to be told. A view that did three of those four would
+look fine in review and leave someone waiting forever.
 
-What to build: a queue view with assign-to-self; approve (setting prominence
-and categories inline, since that *is* the editorial decision); reject with a
-reason; request-info, which writes a `SubmissionMessage` and emails the
-submitter; and the Rising view — published events whose interest is high
-relative to their tier, as promotion nominations.
+The submitter's email is queued with `transaction.on_commit`, so a decision
+that rolls back never mails anyone.
 
-Keep the shape: the crowd nominates, a human decides. Interest must never move
-an event between prominence tiers on its own.
+**One real bug this phase surfaced and fixed.** Answering a moderator's
+question used to *fork the event*: `create_event_from_draft` always created,
+so a second confirmation left the queue entry pointing at an abandoned row with
+the answer sitting in an event nobody was looking at. It is now
+`save_event_from_draft`, which creates or updates, replaces occurrences rather
+than merging them, and never touches prominence. `tests/test_moderation.py`
+guards it.
+
+Rising is ranked by `interest_count / tier average`, floored by
+`MIN_INTEREST_TO_RISE`. Raw counts across tiers would only rediscover that
+featured events get more attention.
+
+## Starting Phase 5
+
+Feed importers. The plan's `imports` app: `ImportSource` (url, kind, default
+organizer/venue/categories, `auto_publish`, `default_prominence`, poll
+interval), `ImportedItem` (dedup by external UID + content hash), and polling
+wired into `core/management/commands/run_housekeeping.py` — the `poll_import_sources`
+step is already stubbed there and called by the CronJob.
+
+Two things Phase 4 leaves ready for it. Sources that are *not* `auto_publish`
+should drop their items into the same queue: `queue_for()` in
+`moderation/services.py` is where a tab for them goes. And `ModerationAction`
+already takes an `event` without a `submission`, which is the shape an imported
+item needs.
+
+Watch the fetcher boundary — `enrichment.fetcher` is the SSRF check, and an
+importer pulling a user-configured feed URL must go through it too.
 
 ## Local setup
 

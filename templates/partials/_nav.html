@@ -5,8 +5,9 @@
         <div class="flex items-center gap-3 text-sm">
             {% if user.is_authenticated %}
                 {% if user.is_moderator %}
-                    <a href="{% url 'admin:index' %}" class="text-slate-600 hover:text-slate-900">Moderate</a>
+                    <a href="{% url 'mod_queue' %}" class="text-slate-600 hover:text-slate-900">Moderate</a>
                 {% endif %}
+                <a href="{% url 'my_submissions' %}" class="hidden text-slate-600 hover:text-slate-900 sm:inline">Your events</a>
                 <span class="hidden text-slate-500 sm:inline">{{ user.display_name }}</span>
                 <form method="post" action="{% url 'account_logout' %}">
                     {% csrf_token %}

@@ -1,0 +1,12 @@
+{% autoescape off %}Thanks for submitting “{{ submission.display_title }}” to {{ site_name }}.
+
+A moderator has decided not to list it this time. Their reason:
+
+{{ submission.decision_note }}
+
+This isn't a judgement on the event itself, and it doesn't stop you submitting
+other things. If you think we've got it wrong, write to {{ contact_email }} —
+a person reads that address.
+
+— {{ site_name }}
+{% endautoescape %}

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Moderation log — {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+    {% include "moderation/_tabs.html" with section="audit" %}
+
+    <h1 class="mt-6 text-2xl font-semibold tracking-tight">Moderation log</h1>
+    <p class="mt-2 max-w-2xl text-sm text-slate-600">
+        Append-only. Volunteers come and go; when a decision is questioned months
+        later, the answer should not depend on anyone's memory.
+    </p>
+
+    <div class="card mt-6 overflow-x-auto p-0">
+        <table class="w-full text-left text-sm">
+            <thead class="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                    <th class="px-4 py-3 font-medium">When</th>
+                    <th class="px-4 py-3 font-medium">Who</th>
+                    <th class="px-4 py-3 font-medium">What</th>
+                    <th class="px-4 py-3 font-medium">Detail</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+                {% for action in actions %}
+                    <tr>
+                        <td class="whitespace-nowrap px-4 py-2 text-slate-500">
+                            {{ action.created_at|date:"j M Y, H:i" }}
+                        </td>
+                        <td class="whitespace-nowrap px-4 py-2">
+                            {{ action.actor.display_name|default:"system" }}
+                        </td>
+                        <td class="whitespace-nowrap px-4 py-2">{{ action.action }}</td>
+                        <td class="px-4 py-2 text-slate-600">
+                            {% if action.submission_id %}
+                                <a href="{% url 'mod_submission' action.submission_id %}"
+                                   class="underline hover:text-slate-900">{{ action.detail|default:"—" }}</a>
+                            {% else %}
+                                {{ action.detail|default:"—" }}
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="4" class="px-4 py-6 text-center text-slate-500">Nothing yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endblock %}

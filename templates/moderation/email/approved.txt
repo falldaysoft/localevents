@@ -1,0 +1,14 @@
+{% autoescape off %}Good news — “{{ submission.display_title }}” is now listed on {{ site_name }}.
+
+{% if event_url %}You can see it here:
+{{ event_url }}
+{% endif %}
+{% if submission.decision_note %}A note from the moderator:
+
+{{ submission.decision_note }}
+{% endif %}
+Thanks for taking the time to add it. If anything about the listing needs
+changing, reply to this message or write to {{ contact_email }}.
+
+— {{ site_name }}
+{% endautoescape %}

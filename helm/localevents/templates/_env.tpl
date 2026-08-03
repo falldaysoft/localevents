@@ -9,6 +9,11 @@ and need the same configuration; only the command differs.
   value: "{{ .Values.host }},www.{{ .Values.host }}"
 - name: CSRF_TRUSTED_ORIGINS
   value: "https://{{ .Values.host }},https://www.{{ .Values.host }}"
+# Links in outbound mail. Derived from the ingress host rather than given its
+# own value, because a background task has no request to fall back on and the
+# failure mode of a stale one is silent: every link points somewhere wrong.
+- name: SITE_BASE_URL
+  value: "https://{{ .Values.host }}"
 - name: SITE_NAME
   value: {{ .Values.site.name | quote }}
 - name: SITE_TAGLINE

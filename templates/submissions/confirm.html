@@ -6,7 +6,10 @@
     <div class="mx-auto max-w-2xl">
         <h1 class="text-3xl font-semibold tracking-tight">Check the details</h1>
 
-        {% if submission.enrichment_message %}
+        {# The enrichment message is about the first read of the page. Once a #}
+        {# moderator has asked something it is stale, and sitting above their #}
+        {# question it reads as a second, contradictory instruction.          #}
+        {% if submission.enrichment_message and submission.status != 'info_requested' %}
             <div class="mt-4 rounded-lg border px-4 py-3 text-sm
                 {% if submission.enrichment_failed %}border-amber-200 bg-amber-50 text-amber-900
                 {% else %}border-sky-200 bg-sky-50 text-sky-900{% endif %}">
@@ -19,6 +22,23 @@
                 <strong class="font-medium">A suggestion:</strong>
                 {{ submission.source_advice }}
             </div>
+        {% endif %}
+
+        {% if submission.messages.all %}
+            <section class="mt-4 space-y-3">
+                <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                    From the moderators
+                </h2>
+                {% for message in submission.messages.all %}
+                    <div class="card {% if message.is_from_moderator %}border-sky-200 bg-sky-50{% endif %}">
+                        <p class="text-xs uppercase tracking-wide text-slate-400">
+                            {% if message.is_from_moderator %}Moderator{% else %}You{% endif %}
+                            &middot; {{ message.created_at|date:"j M Y" }}
+                        </p>
+                        <p class="mt-1 whitespace-pre-line text-sm text-slate-700">{{ message.body }}</p>
+                    </div>
+                {% endfor %}
+            </section>
         {% endif %}
 
         {% if submission.draft.notes_for_submitter %}
@@ -84,6 +104,13 @@
                 {% include "submissions/_field.html" with field=form.source_url %}
                 {% include "submissions/_field.html" with field=form.ticket_url %}
             </section>
+
+            {% if submission.messages.all %}
+                <section class="card space-y-4">
+                    <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Your reply</h2>
+                    {% include "submissions/_field.html" with field=form.reply %}
+                </section>
+            {% endif %}
 
             <div class="flex items-center gap-3">
                 <button type="submit" class="btn-primary">Send to moderators</button>

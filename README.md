@@ -13,14 +13,22 @@ mechanics.
   reads the page — structured data first, an AI model only if needed — fills in
   the details, and asks the submitter to confirm before anything reaches a
   moderator.
-- Moderators approve, reject, or reply asking for more information.
+- Moderators work a purpose-built queue at `/moderate/` — approve (choosing
+  placement and categories, which is the actual editorial decision), decline
+  with a reason, or ask the submitter a question and hand it back to them.
+  Every decision is emailed and recorded in an append-only log.
+- Visitor interest feeds a *Rising* queue of promotion candidates and nothing
+  else: it can never move an event up on its own. The crowd nominates, a human
+  decides. (The moderators' side of this is built; the public "Interested"
+  button is not yet.)
 - Public calendars (libraries, venues, municipalities) can be imported directly
   on a per-source trust setting.
 
 ## Status
 
 Early but working end to end. Accounts, the public site with map and filters,
-and the AI-assisted submission flow are in place. Moderation tooling is next.
+the AI-assisted submission flow, and the moderation queue are in place. Feed
+importers are next.
 
 ## Running it locally
 

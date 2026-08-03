@@ -33,6 +33,12 @@ SITE_NAME = os.environ.get("SITE_NAME", "Local Events")
 SITE_TAGLINE = os.environ.get("SITE_TAGLINE", "What's on near you")
 CONTACT_EMAIL = os.environ.get("CONTACT_EMAIL", "hello@localhost")
 
+# Emails contain links, and a background task has no request to derive a
+# hostname from. Explicit here rather than via django.contrib.sites because a
+# wrong value produces links that silently go nowhere — better to set it beside
+# the rest of the instance identity than to discover it in the Sites table.
+SITE_BASE_URL = os.environ.get("SITE_BASE_URL", "http://localhost:8000")
+
 # Map defaults. MAP_BBOX is "min_lat,min_lng,max_lat,max_lng" and doubles as the
 # region gate: geocoded events landing outside it get flagged for review rather
 # than silently published, which is what keeps a local site local.
@@ -88,6 +94,7 @@ INSTALLED_APPS = [
     "core",
     "enrichment",
     "events",
+    "moderation",
     "submissions",
     "web",
 ]

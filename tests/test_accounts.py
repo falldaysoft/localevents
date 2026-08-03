@@ -115,7 +115,8 @@ def test_is_moderator_requires_group_membership(django_user_model):
     )
     assert not user.is_moderator
 
-    user.groups.add(Group.objects.create(name="Moderators"))
+    # The group is created by a data migration, so it is already there.
+    user.groups.add(Group.objects.get(name="Moderators"))
     assert user.is_moderator
 
 

@@ -47,12 +47,18 @@ def _organizer_for(name):
 
 
 @transaction.atomic
-def create_event_from_draft(submission, data):
-    """Build the Event a moderator will review.
+def save_event_from_draft(submission, data):
+    """Build — or rebuild — the Event a moderator will review.
+
+    Rebuild matters as much as build. When a moderator asks a question the
+    submission goes back to its owner with the event already created, and a
+    second confirmation has to *update* that event. Creating a fresh one would
+    leave the moderator's queue entry pointing at an abandoned row and the
+    answer to their question sitting in an event nobody is looking at.
 
     Status is PENDING, never PUBLISHED: the submitter's confirmation says the
-    details are right, not that the event belongs on the site. Prominence stays
-    at the default because placement is a moderator's call.
+    details are right, not that the event belongs on the site. Prominence is
+    never touched here at all, because placement is a moderator's call.
     """
     venue = _venue_for(
         data.get("venue_name", ""),
@@ -61,34 +67,39 @@ def create_event_from_draft(submission, data):
     )
     organizer = _organizer_for(data.get("organizer_name", ""))
 
-    event = Event.objects.create(
-        title=data["title"],
-        summary=data.get("summary", ""),
-        description=data.get("description", ""),
-        venue=venue,
-        organizer=organizer,
-        source_url=data.get("source_url", "") or submission.source_url,
-        ticket_url=data.get("ticket_url", ""),
-        is_free=data.get("is_free", False),
-        price_note=data.get("price_note", ""),
-        is_family_friendly=data.get("is_family_friendly", False),
-        accessibility_notes=data.get("accessibility_notes", ""),
-        listing_type=(
-            Event.ListingType.SERIES
-            if data.get("is_series")
-            else Event.ListingType.ONE_OFF
-        ),
-        status=Event.Status.PENDING,
+    event = submission.event or Event(
         source=Event.Source.SUBMISSION,
         submitted_by=submission.submitted_by,
     )
+    is_new = event.pk is None
 
-    if data.get("categories"):
-        event.categories.set(data["categories"])
+    event.title = data["title"]
+    event.summary = data.get("summary", "")
+    event.description = data.get("description", "")
+    event.venue = venue
+    event.organizer = organizer
+    event.source_url = data.get("source_url", "") or submission.source_url
+    event.ticket_url = data.get("ticket_url", "")
+    event.is_free = data.get("is_free", False)
+    event.price_note = data.get("price_note", "")
+    event.is_family_friendly = data.get("is_family_friendly", False)
+    event.accessibility_notes = data.get("accessibility_notes", "")
+    event.listing_type = (
+        Event.ListingType.SERIES
+        if data.get("is_series")
+        else Event.ListingType.ONE_OFF
+    )
+    event.status = Event.Status.PENDING
+    event.save()
+
+    event.categories.set(data.get("categories") or [])
 
     starts = [data["starts_at"], *data.get("additional_dates", [])]
+    # Replace rather than merge: a submitter correcting a wrong date expects the
+    # wrong one to be gone, and get_or_create alone would leave it behind.
+    event.occurrences.exclude(start__in=starts).delete()
     for index, start in enumerate(starts):
-        Occurrence.objects.get_or_create(
+        Occurrence.objects.update_or_create(
             event=event,
             start=start,
             defaults={"end": data.get("ends_at") if index == 0 else None},
@@ -100,7 +111,7 @@ def create_event_from_draft(submission, data):
 
     ModerationAction.record(
         submission.submitted_by,
-        "submitted_for_review",
+        "submitted_for_review" if is_new else "resubmitted_for_review",
         submission=submission,
         event=event,
         detail=event.title,

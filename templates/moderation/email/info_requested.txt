@@ -1,0 +1,12 @@
+{% autoescape off %}A moderator has a question about “{{ submission.display_title }}” before it can
+go on {{ site_name }}:
+
+{{ message.body }}
+
+You can answer and update the details here:
+{{ submission_url }}
+
+Nothing is lost in the meantime — everything you entered is still there.
+
+— {{ site_name }}
+{% endautoescape %}
