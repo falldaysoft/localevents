@@ -27,6 +27,23 @@ CLAIM_PASSWORD_VALIDATORS = get_password_validators(
 )
 
 
+class ProfileForm(forms.ModelForm):
+    """The one field on an account that belongs to the person holding it.
+
+    Email is not editable here: allauth owns it, because changing it means
+    re-verifying it and that is a flow with its own pages. This form links
+    there instead of half-reimplementing it.
+    """
+
+    class Meta:
+        model = get_user_model()
+        fields = ["username"]
+        labels = {"username": "Display name"}
+        help_texts = {
+            "username": "Shown against the events you post. Not used to sign in."
+        }
+
+
 class ClaimForm(forms.Form):
     """Create the first administrator of an unclaimed site.
 

@@ -1,16 +1,57 @@
 from allauth.account.utils import perform_login
+from allauth.mfa.models import Authenticator
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import get_user_model
+from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.http import Http404
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 from django.urls import reverse
 
 from core.models import SiteConfig
 
 from .claim import site_is_claimed
-from .forms import ClaimForm
+from .forms import ClaimForm, ProfileForm
+
+
+@login_required
+def profile(request):
+    """Everything about your own account, in one place.
+
+    Reached by clicking your name in the nav. It owns almost nothing itself —
+    passwords, email addresses, passkeys and TOTP all live in allauth's own
+    pages, which handle re-authentication properly. What it adds is a way in:
+    those pages had no link anywhere in the site, so passkeys were a feature
+    you had to already know the URL for.
+    """
+    form = ProfileForm(request.POST or None, instance=request.user)
+
+    if request.method == "POST":
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Your display name has been updated.")
+            return redirect("profile")
+        status = 400
+    else:
+        status = 200
+
+    authenticators = list(Authenticator.objects.filter(user=request.user))
+
+    return render(
+        request,
+        "accounts/profile.html",
+        {
+            "form": form,
+            "passkey_count": sum(
+                1 for a in authenticators if a.type == Authenticator.Type.WEBAUTHN
+            ),
+            "has_totp": any(
+                a.type == Authenticator.Type.TOTP for a in authenticators
+            ),
+        },
+        status=status,
+    )
 
 
 def claim(request):

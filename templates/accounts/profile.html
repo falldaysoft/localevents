@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}Your account — {{ SITE_NAME }}{% endblock %}
+
+{% block main_class %}mx-auto w-full max-w-2xl px-4 py-8{% endblock %}
+
+{% block content %}
+    <h1 class="text-3xl font-semibold tracking-tight">Your account</h1>
+    <p class="mt-2 text-sm text-slate-600">
+        Signed in as {{ user.email }}{% if user.is_superuser %} — administrator of this site{% elif user.is_moderator %} — moderator{% endif %}.
+    </p>
+
+    <div class="mt-8 card">
+        <h2 class="font-semibold">Display name</h2>
+        <form method="post" class="mt-4 space-y-3">
+            {% csrf_token %}
+            <div>
+                {{ form.username }}
+                {% if form.username.help_text %}
+                    <p class="mt-1 text-xs text-slate-500">{{ form.username.help_text }}</p>
+                {% endif %}
+                {% for error in form.username.errors %}
+                    <p class="mt-1 text-xs text-red-600">{{ error }}</p>
+                {% endfor %}
+            </div>
+            <button type="submit" class="btn-secondary">Save</button>
+        </form>
+    </div>
+
+    <div class="mt-4 card">
+        <h2 class="font-semibold">Security</h2>
+        <ul class="mt-4 divide-y divide-slate-100 text-sm">
+            <li class="flex items-center justify-between gap-4 py-3">
+                <div>
+                    <p class="font-medium">Passkey</p>
+                    <p class="mt-0.5 text-slate-500">
+                        {% if passkey_count %}
+                            {{ passkey_count }} registered — you can sign in without your password.
+                        {% else %}
+                            Sign in with Touch ID, Windows Hello, or a security key.
+                        {% endif %}
+                    </p>
+                </div>
+                <a href="{% if passkey_count %}{% url 'mfa_list_webauthn' %}{% else %}{% url 'mfa_add_webauthn' %}{% endif %}"
+                   class="btn-secondary shrink-0">
+                    {% if passkey_count %}Manage{% else %}Add a passkey{% endif %}
+                </a>
+            </li>
+            <li class="flex items-center justify-between gap-4 py-3">
+                <div>
+                    <p class="font-medium">Authenticator app</p>
+                    <p class="mt-0.5 text-slate-500">
+                        {% if has_totp %}Active.{% else %}A six-digit code at sign-in, as a second step.{% endif %}
+                    </p>
+                </div>
+                <a href="{% url 'mfa_index' %}" class="btn-secondary shrink-0">
+                    {% if has_totp %}Manage{% else %}Set up{% endif %}
+                </a>
+            </li>
+            <li class="flex items-center justify-between gap-4 py-3">
+                <div>
+                    <p class="font-medium">Password</p>
+                    <p class="mt-0.5 text-slate-500">Change the password you sign in with.</p>
+                </div>
+                <a href="{% url 'account_change_password' %}" class="btn-secondary shrink-0">Change</a>
+            </li>
+            <li class="flex items-center justify-between gap-4 py-3">
+                <div>
+                    <p class="font-medium">Email address</p>
+                    <p class="mt-0.5 text-slate-500">{{ user.email }}</p>
+                </div>
+                <a href="{% url 'account_email' %}" class="btn-secondary shrink-0">Manage</a>
+            </li>
+        </ul>
+    </div>
+
+    <div class="mt-4 card">
+        <h2 class="font-semibold">Your activity</h2>
+        <ul class="mt-4 divide-y divide-slate-100 text-sm">
+            <li class="flex items-center justify-between gap-4 py-3">
+                <div>
+                    <p class="font-medium">Your events</p>
+                    <p class="mt-0.5 text-slate-500">Everything you have submitted, and where it got to.</p>
+                </div>
+                <a href="{% url 'my_submissions' %}" class="btn-secondary shrink-0">View</a>
+            </li>
+            {% if user.is_moderator %}
+                <li class="flex items-center justify-between gap-4 py-3">
+                    <div>
+                        <p class="font-medium">Moderation queue</p>
+                        <p class="mt-0.5 text-slate-500">Submissions waiting on a decision.</p>
+                    </div>
+                    <a href="{% url 'mod_queue' %}" class="btn-secondary shrink-0">Open</a>
+                </li>
+            {% endif %}
+            {% if user.is_staff %}
+                <li class="flex items-center justify-between gap-4 py-3">
+                    <div>
+                        <p class="font-medium">Site administration</p>
+                        <p class="mt-0.5 text-slate-500">Site text, categories, and AI settings.</p>
+                    </div>
+                    <a href="{% url 'admin:index' %}" class="btn-secondary shrink-0">Open</a>
+                </li>
+            {% endif %}
+        </ul>
+    </div>
+{% endblock %}
+
+{% block head %}
+<style type="text/tailwindcss">
+    @layer components {
+        /* One text input on the page, rendered straight from the form object. */
+        #id_username { @apply block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm
+                              focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500; }
+    }
+</style>
+{% endblock %}

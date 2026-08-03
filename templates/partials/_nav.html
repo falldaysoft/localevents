@@ -8,7 +8,10 @@
                     <a href="{% url 'mod_queue' %}" class="text-slate-600 hover:text-slate-900">Moderate</a>
                 {% endif %}
                 <a href="{% url 'my_submissions' %}" class="hidden text-slate-600 hover:text-slate-900 sm:inline">Your events</a>
-                <span class="hidden text-slate-500 sm:inline">{{ user.display_name }}</span>
+                {# Not hidden on small screens like the links either side of it: #}
+                {# this is the only route to passwords, passkeys and email, and  #}
+                {# a phone is where someone is most likely to go looking.        #}
+                <a href="{% url 'profile' %}" class="text-slate-600 hover:text-slate-900">{{ user.display_name }}</a>
                 <form method="post" action="{% url 'account_logout' %}">
                     {% csrf_token %}
                     <button type="submit" class="text-slate-600 hover:text-slate-900">Sign out</button>
