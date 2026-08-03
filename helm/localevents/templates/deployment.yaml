@@ -24,15 +24,28 @@ spec:
             name: postgres-secret
         env:
         {{- include "localevents.env" . | nindent 8 }}
+        # The kubelet probes the pod's own IP, so the Host header it would
+        # otherwise send is something like "10.2.0.192:8080" — which Django
+        # rejects with DisallowedHost *before* any view runs. The symptom is a
+        # 400 on /healthz and a pod that restarts forever, which reads like the
+        # app is broken when in fact it is fine. Sending the real host is the
+        # fix; widening ALLOWED_HOSTS to cover pod CIDRs would defeat the point
+        # of having it.
         readinessProbe:
           httpGet:
             path: /healthz
             port: {{ .Values.containerPort }}
+            httpHeaders:
+            - name: Host
+              value: {{ .Values.host | quote }}
           initialDelaySeconds: 5
           periodSeconds: 10
         livenessProbe:
           httpGet:
             path: /healthz
             port: {{ .Values.containerPort }}
+            httpHeaders:
+            - name: Host
+              value: {{ .Values.host | quote }}
           initialDelaySeconds: 15
           periodSeconds: 30

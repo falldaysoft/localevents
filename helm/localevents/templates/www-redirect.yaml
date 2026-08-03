@@ -5,7 +5,13 @@ metadata:
   annotations:
     kubernetes.io/ingress.class: nginx
     cert-manager.io/cluster-issuer: "letsencrypt-cluster-issuer"
-    nginx.ingress.kubernetes.io/permanent-redirect: "https://{{ .Values.host }}"
+    # $request_uri, not a bare host. nginx's `return 301 https://example.org;`
+    # discards the path, so www/events/spring-fair/ would land a visitor on the
+    # homepage — and event links are the ones people actually share. The
+    # variable is expanded by nginx, so the path and query survive the hop.
+    # (configuration-snippet would be the other way to do this, but this
+    # cluster sets allow-snippet-annotations=false.)
+    nginx.ingress.kubernetes.io/permanent-redirect: "https://{{ .Values.host }}$request_uri"
 spec:
   tls:
   - hosts:
