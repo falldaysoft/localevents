@@ -81,6 +81,7 @@ INSTALLED_APPS = [
     # Project
     "accounts",
     "core",
+    "events",
     "web",
 ]
 
