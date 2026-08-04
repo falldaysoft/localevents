@@ -1,0 +1,72 @@
+{% extends "mfa/webauthn/base.html" %}
+{% load i18n %}
+{% load allauth %}
+
+{% comment %}A copy of allauth's mfa/webauthn/add_form.html with two changes.
+
+    "Add Security Key" describes a USB dongle almost nobody in a town owns. The
+    thing being added here is Touch ID, Face ID, or a phone — a passkey — and
+    that is the word the profile page uses to link here.
+
+    The "Passwordless" checkbox is gone from view but not from the DOM.
+    allauth's copy explains residentKey trade-offs ("imposes additional
+    requirements such as biometrics or PIN protection"), which is not a
+    question to put to someone tapping a fingerprint reader. The site has
+    already answered it: MFA_PASSKEY_LOGIN_ENABLED is on, so a key registered
+    here should be able to sign someone in on its own. The input stays, checked,
+    because allauth's webauthn.js reads `.checked` off exactly this id when it
+    builds the registration options — drop it and every key silently registers
+    as a second factor only, which looks identical until someone tries to sign
+    in with it.
+
+    Copied rather than extended because allauth puts the whole page in one
+    `content` block. When upgrading allauth, diff their add_form.html against
+    this one; the script block below is theirs verbatim and is what drives the
+    WebAuthn ceremony.
+{% endcomment %}
+
+{% block content %}
+    {% element h1 %}
+        {% trans "Add a passkey" %}
+    {% endelement %}
+    {% element p %}
+        {% trans "Use Touch ID, Face ID, Windows Hello, or your phone to sign in without a password." %}
+    {% endelement %}
+    {% url 'mfa_add_webauthn' as action_url %}
+    {% element form form=form method="post" action=action_url %}
+        {% slot body %}
+            {% csrf_token %}
+            {% for field in form.hidden_fields %}{{ field.errors }}{{ field }}{% endfor %}
+            {{ form.non_field_errors }}
+            <p>
+                <label for="{{ form.name.id_for_label }}">{% trans "Name" %}</label>
+                {{ form.name }}
+                <span class="helptext">{% trans "So you can tell this one from your other devices later." %}</span>
+                {{ form.name.errors }}
+            </p>
+            {% if form.passwordless %}
+                <input type="checkbox"
+                       name="{{ form.passwordless.html_name }}"
+                       id="{{ form.passwordless.auto_id }}"
+                       checked
+                       hidden>
+            {% endif %}
+        {% endslot %}
+        {% slot actions %}
+            {% element button id="mfa_webauthn_add" type="button" %}
+                {% trans "Add" %}
+            {% endelement %}
+        {% endslot %}
+    {% endelement %}
+    {% include "mfa/webauthn/snippets/scripts.html" %}
+    {{ js_data|json_script:"js_data" }}
+    <script data-allauth-onload="allauth.webauthn.forms.addForm" type="application/json">{
+    "ids": {
+        "add": "mfa_webauthn_add",
+        "passwordless": "{{ form.passwordless.auto_id }}",
+        "credential": "{{ form.credential.auto_id }}",
+        "data": "js_data"
+    }
+}
+    </script>
+{% endblock %}
