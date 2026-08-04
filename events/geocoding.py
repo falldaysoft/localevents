@@ -80,8 +80,8 @@ def geocode_venue(venue_id):
     if venue.geocode_status == Venue.GeocodeStatus.MANUAL:
         return
 
-    query = venue.geocode_query()
-    if not query.strip():
+    queries = venue.geocode_queries()
+    if not queries:
         venue.geocode_status = Venue.GeocodeStatus.FAILED
         venue.geocode_error = "No address to search for."
         venue.geocode_attempted_at = timezone.now()
@@ -92,20 +92,39 @@ def geocode_venue(venue_id):
 
     venue.geocode_attempted_at = timezone.now()
 
-    try:
-        result = lookup(query)
-    except GeocodeError as exc:
-        logger.warning("geocode failed for venue %s: %s", venue_id, exc)
-        venue.geocode_status = Venue.GeocodeStatus.FAILED
-        venue.geocode_error = str(exc)[:300]
-        venue.save(
-            update_fields=["geocode_status", "geocode_error", "geocode_attempted_at"]
-        )
-        return
+    # Walk down to less specific queries until one matches. Each rung costs a
+    # throttled second, but only on a miss, and a venue geocodes once and
+    # caches forever — so the cost lands on the rare failure, not the norm.
+    result = None
+    for attempt, query in enumerate(queries):
+        try:
+            result = lookup(query)
+        except GeocodeError as exc:
+            logger.warning("geocode failed for venue %s: %s", venue_id, exc)
+            venue.geocode_status = Venue.GeocodeStatus.FAILED
+            venue.geocode_error = str(exc)[:300]
+            venue.save(
+                update_fields=[
+                    "geocode_status", "geocode_error", "geocode_attempted_at"
+                ]
+            )
+            return
+
+        if result is not None:
+            if attempt:
+                logger.info(
+                    "geocoded venue %s with a fallback query: %r", venue_id, query
+                )
+            break
 
     if result is None:
         venue.geocode_status = Venue.GeocodeStatus.FAILED
-        venue.geocode_error = "No match found."
+        # Name the queries that missed. "No match found" sent one investigation
+        # looking at the network and the User-Agent when the answer was that
+        # the address and the venue name did not agree.
+        venue.geocode_error = "No match found for: " + "; ".join(
+            repr(q) for q in queries
+        )
         venue.save(
             update_fields=["geocode_status", "geocode_error", "geocode_attempted_at"]
         )

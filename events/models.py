@@ -184,6 +184,44 @@ class Venue(models.Model):
         parts = [self.name, self.address, self.city, self.postal_code]
         return ", ".join(p for p in parts if p)
 
+    def geocode_queries(self):
+        """Progressively less specific queries, best first.
+
+        Nominatim's free-text search is an all-or-nothing match, so a name and
+        a street address together can return *nothing* when either alone would
+        resolve — "Paris Fairgrounds, 139 Silver Street, Paris, ON" found zero
+        results while both halves found one each. A community venue is exactly
+        the case where that happens: OSM knows it as a named feature, the
+        submitter typed the mailing address, and the two do not line up.
+
+        The address-only rung comes before the name-only one because a street
+        address is a precise claim, while a name match is whatever OSM decided
+        to call something nearby.
+        """
+        name = (self.name or "").strip()
+        address = (self.address or "").strip()
+        location = [p.strip() for p in (self.city, self.postal_code) if p and p.strip()]
+
+        # Each rung is (what identifies the place, the rest). A rung with no
+        # identifying part is just a town name, which would geocode to the
+        # middle of the town and put a marker somewhere no event is.
+        candidates = [
+            (name, [name, address, *location]),
+            (address, [address, *location]),
+            (name, [name, *location]),
+        ]
+
+        queries = []
+        for identifier, parts in candidates:
+            if not identifier:
+                continue
+            query = ", ".join(p for p in parts if p)
+            # With no street address, rungs one and three are the same string;
+            # asking twice would just spend another second of the rate limit.
+            if query not in queries:
+                queries.append(query)
+        return queries
+
     @staticmethod
     def coordinates_in_region(latitude, longitude):
         """Is this point inside the instance's configured bounds?

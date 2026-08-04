@@ -189,3 +189,141 @@ def test_pending_sweep_is_bounded(monkeypatch):
 
     geocoding.geocode_pending_venues.call(limit=3)
     assert len(enqueued) == 3
+
+
+# --- the query ladder ------------------------------------------------------
+#
+# Nominatim's free-text search is all-or-nothing: a venue name and a street
+# address together can return nothing when either alone resolves. A live check
+# against "Paris Fairgrounds, 139 Silver Street, Paris, ON" returned zero
+# results while both halves returned one each, which is how a published event
+# ended up with no marker on the map.
+
+
+@pytest.mark.django_db
+def test_the_first_query_keeps_the_name_and_the_address_together():
+    venue = Venue.objects.create(
+        name="Paris Fairgrounds", address="139 Silver Street", city="Paris, ON"
+    )
+    assert venue.geocode_queries()[0] == (
+        "Paris Fairgrounds, 139 Silver Street, Paris, ON"
+    )
+
+
+@pytest.mark.django_db
+def test_the_ladder_drops_the_name_before_it_drops_the_address():
+    """A street address is a precise claim; a name match is whatever OSM
+    decided to call something nearby."""
+    venue = Venue.objects.create(
+        name="Paris Fairgrounds", address="139 Silver Street", city="Paris, ON"
+    )
+    assert venue.geocode_queries() == [
+        "Paris Fairgrounds, 139 Silver Street, Paris, ON",
+        "139 Silver Street, Paris, ON",
+        "Paris Fairgrounds, Paris, ON",
+    ]
+
+
+@pytest.mark.django_db
+def test_a_venue_with_no_street_address_is_not_asked_twice():
+    """Rungs one and three collapse to the same string; asking again would
+    just spend another second of the rate limit."""
+    venue = Venue.objects.create(name="Community Hall", city="Anytown")
+    assert venue.geocode_queries() == ["Community Hall, Anytown"]
+
+
+@pytest.mark.django_db
+def test_a_venue_with_nothing_to_search_for_yields_no_queries():
+    assert Venue.objects.create(name="   ").geocode_queries() == []
+
+
+@pytest.mark.django_db
+def test_geocoding_falls_back_when_the_full_query_finds_nothing(
+    monkeypatch, settings
+):
+    """The Paris Fairgrounds case, end to end."""
+    settings.MAP_BBOX = [43.0, -80.5, 43.3, -80.0]
+    asked = []
+
+    def fake_get(url, **kwargs):
+        query = kwargs["params"]["q"]
+        asked.append(query)
+        if query == "Paris Fairgrounds, 139 Silver Street, Paris, ON":
+            return FakeResponse([])
+        return FakeResponse([{"lat": "43.2037783", "lon": "-80.4030700"}])
+
+    monkeypatch.setattr(geocoding.httpx, "get", fake_get)
+    monkeypatch.setattr(GeocodeThrottle, "acquire", classmethod(lambda cls, **kw: None))
+
+    venue = Venue.objects.create(
+        name="Paris Fairgrounds", address="139 Silver Street", city="Paris, ON"
+    )
+    geocoding.geocode_venue.call(venue.pk)
+
+    venue.refresh_from_db()
+    assert venue.geocode_status == Venue.GeocodeStatus.OK
+    assert (venue.latitude, venue.longitude) == (43.2037783, -80.4030700)
+    assert asked == [
+        "Paris Fairgrounds, 139 Silver Street, Paris, ON",
+        "139 Silver Street, Paris, ON",
+    ]
+
+
+@pytest.mark.django_db
+def test_a_match_on_the_first_query_asks_only_once(monkeypatch, settings):
+    """The fallback must not cost a second request in the normal case."""
+    settings.MAP_BBOX = [43.0, -80.5, 43.3, -80.0]
+    asked = []
+
+    def fake_get(url, **kwargs):
+        asked.append(kwargs["params"]["q"])
+        return FakeResponse([{"lat": "43.1394", "lon": "-80.2644"}])
+
+    monkeypatch.setattr(geocoding.httpx, "get", fake_get)
+    monkeypatch.setattr(GeocodeThrottle, "acquire", classmethod(lambda cls, **kw: None))
+
+    venue = Venue.objects.create(
+        name="Community Hall", address="1 Main Street", city="Anytown"
+    )
+    geocoding.geocode_venue.call(venue.pk)
+
+    assert len(asked) == 1
+
+
+@pytest.mark.django_db
+def test_a_transport_failure_stops_the_ladder_immediately(monkeypatch):
+    """'Could not ask' is not 'no such place' — walking down the rungs would
+    hammer a service that is already unhappy."""
+    asked = []
+
+    def explode(url, **kwargs):
+        asked.append(kwargs["params"]["q"])
+        raise httpx.ConnectError("down")
+
+    monkeypatch.setattr(geocoding.httpx, "get", explode)
+    monkeypatch.setattr(GeocodeThrottle, "acquire", classmethod(lambda cls, **kw: None))
+
+    venue = Venue.objects.create(
+        name="Paris Fairgrounds", address="139 Silver Street", city="Paris, ON"
+    )
+    geocoding.geocode_venue.call(venue.pk)
+
+    venue.refresh_from_db()
+    assert venue.geocode_status == Venue.GeocodeStatus.FAILED
+    assert len(asked) == 1
+
+
+@pytest.mark.django_db
+def test_every_rung_missing_records_what_was_tried(monkeypatch):
+    """"No match found" alone sent one investigation looking at the network."""
+    monkeypatch.setattr(geocoding.httpx, "get", lambda url, **kw: FakeResponse([]))
+    monkeypatch.setattr(GeocodeThrottle, "acquire", classmethod(lambda cls, **kw: None))
+
+    venue = Venue.objects.create(
+        name="Paris Fairgrounds", address="139 Silver Street", city="Paris, ON"
+    )
+    geocoding.geocode_venue.call(venue.pk)
+
+    venue.refresh_from_db()
+    assert venue.geocode_status == Venue.GeocodeStatus.FAILED
+    assert "139 Silver Street, Paris, ON" in venue.geocode_error
