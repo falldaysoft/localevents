@@ -1,3 +1,4 @@
+from allauth.account.forms import SignupForm as AllauthSignupForm
 from django import forms
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import (
@@ -5,6 +6,19 @@ from django.contrib.auth.password_validation import (
     validate_password,
 )
 from django.db import transaction
+
+# The site calls `User.username` a display name everywhere it is shown, because
+# it is not a credential here — email is. Django's and allauth's stock messages
+# for the unique constraint both say "username", which reads as being about a
+# field the form does not have. Every form that can hit that constraint uses
+# this instead.
+DISPLAY_NAME_TAKEN = "That display name is already taken."
+# The email address is what you sign in with, so a collision on it is not a
+# validation nit — it means the person already has the account they are trying
+# to make. Say so, and say what to do about it.
+EMAIL_TAKEN = "An account with that email address already exists — sign in instead."
+DISPLAY_NAME_LABEL = "Display name"
+DISPLAY_NAME_HELP = "Shown against the events you post. Not used to sign in."
 
 # This form is the one place a superuser is minted from a public page, so it
 # carries its own password policy instead of inheriting the project's.
@@ -38,10 +52,52 @@ class ProfileForm(forms.ModelForm):
     class Meta:
         model = get_user_model()
         fields = ["username"]
-        labels = {"username": "Display name"}
-        help_texts = {
-            "username": "Shown against the events you post. Not used to sign in."
-        }
+        labels = {"username": DISPLAY_NAME_LABEL}
+        help_texts = {"username": DISPLAY_NAME_HELP}
+        error_messages = {"username": {"unique": DISPLAY_NAME_TAKEN}}
+
+
+class SignupForm(AllauthSignupForm):
+    """allauth's signup form, speaking this site's vocabulary.
+
+    Wired up through ACCOUNT_FORMS. allauth labels the field "Username" and
+    reports a collision with Django's stock "A user with that username already
+    exists." — which is doubly wrong on this page: nothing else in the site
+    calls it a username, and the message lands under the *email* box, so the
+    obvious reading is that the email is taken. (That the message sits with the
+    wrong field is fixed separately, in the fields element template.)
+
+    A taken email is a plain error on the form — see ACCOUNT_PREVENT_ENUMERATION
+    in settings for why this site discloses that — but allauth's wording for it
+    ("A user is already registered with this email address") states a fact
+    without giving the way out, which is to sign in.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Set after super(): allauth assigns the label itself, in its own
+        # __init__, from the required-ness of the configured signup fields.
+        username = self.fields.get("username")
+        if username is not None:
+            username.label = DISPLAY_NAME_LABEL
+            username.help_text = DISPLAY_NAME_HELP
+            username.widget.attrs["placeholder"] = DISPLAY_NAME_LABEL
+
+    def clean_username(self):
+        try:
+            return super().clean_username()
+        except forms.ValidationError as exc:
+            if getattr(exc, "code", None) == "username_taken":
+                raise forms.ValidationError(DISPLAY_NAME_TAKEN) from exc
+            raise
+
+    def clean_email(self):
+        try:
+            return super().clean_email()
+        except forms.ValidationError as exc:
+            if getattr(exc, "code", None) == "email_taken":
+                raise forms.ValidationError(EMAIL_TAKEN) from exc
+            raise
 
 
 class ClaimForm(forms.Form):
@@ -75,7 +131,7 @@ class ClaimForm(forms.Form):
     def clean_username(self):
         username = self.cleaned_data["username"]
         if get_user_model().objects.filter(username__iexact=username).exists():
-            raise forms.ValidationError("That display name is already taken.")
+            raise forms.ValidationError(DISPLAY_NAME_TAKEN)
         return username
 
     def clean_email(self):

@@ -184,8 +184,22 @@ AUTHENTICATION_BACKENDS = [
 
 ACCOUNT_LOGIN_METHODS = {"email"}
 ACCOUNT_SIGNUP_FIELDS = ["email*", "username*", "password1*", "password2*"]
+# Only to call `username` a display name, in the label and in the message for a
+# collision — allauth's own wording names a field this site does not have.
+ACCOUNT_FORMS = {"signup": "accounts.forms.SignupForm"}
 ACCOUNT_EMAIL_VERIFICATION = "mandatory"
 ACCOUNT_UNIQUE_EMAIL = True
+# Tell someone their address is already registered, instead of allauth's
+# default of accepting the signup, quietly creating nothing, and mailing the
+# existing account about it. That default protects against using the signup
+# page to test whether a given person is a member — a real concern, and the
+# wrong trade here: the email address *is* the credential on this site, so
+# "that address already has an account, sign in" is the whole answer someone
+# needs, and a signup that appears to succeed and then does not is how people
+# end up locked out of a listing they cannot find. The cost is accepted
+# knowingly: this page will confirm whether an address is registered, and so
+# will password reset, which the same setting governs.
+ACCOUNT_PREVENT_ENUMERATION = False
 ACCOUNT_EMAIL_SUBJECT_PREFIX = f"[{SITE_NAME}] "
 ACCOUNT_RATE_LIMITS = {
     "login_failed": "5/5m",

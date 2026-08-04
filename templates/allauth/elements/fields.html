@@ -1,0 +1,32 @@
+{% comment %}Put a field's errors under the field they are about.
+
+   allauth's own version of this element is one line — `{{ attrs.form.as_p }}`
+   — and Django's `as_p` emits each field's errorlist *before* its label. On a
+   one-field form that looks fine, which is why it went unnoticed; on the
+   signup form it means the message for a taken display name renders directly
+   beneath the Email box, above the Username label. Reported as "the email
+   error talks about a username": the message was correct and attached to the
+   right field, it just sat under the wrong one.
+
+   Overriding the element rather than the signup page covers every allauth
+   form — login, password reset and change, email management, MFA — in one
+   place, the same reasoning as the layout override in
+   allauth/layouts/base.html.
+
+   Hidden fields keep their errors at the top with the non-field errors, since
+   there is no visible input to hang them under. Field markup otherwise mirrors
+   what `as_p` produced, so the styling in the layout still applies.
+
+   {% comment %} and not {# #}: Django's comment tag is the multi-line one, and
+   an unclosed {# on its own line is emitted verbatim into the page.
+{% endcomment %}
+{{ attrs.form.non_field_errors }}
+{% for field in attrs.form.hidden_fields %}{{ field.errors }}{{ field }}{% endfor %}
+{% for field in attrs.form.visible_fields %}
+    <p>
+        {{ field.label_tag }}
+        {{ field }}
+        {% if field.help_text %}<span class="helptext">{{ field.help_text|safe }}</span>{% endif %}
+        {{ field.errors }}
+    </p>
+{% endfor %}

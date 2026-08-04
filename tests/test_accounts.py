@@ -196,6 +196,107 @@ def test_sign_in_page_offers_a_way_to_sign_up(client):
     )
 
 
+@pytest.mark.django_db
+def test_a_taken_display_name_says_display_name(client, confirmed_user):
+    """The word "username" belongs to no field on this form.
+
+    Reported from a real signup: the message was Django's stock "A user with
+    that username already exists.", under a field labelled Username, on a site
+    where the label everywhere else is Display name and the credential is the
+    email address.
+    """
+    response = client.post(
+        reverse("account_signup"),
+        {
+            "email": "someone-else@example.org",
+            "username": "resident",
+            "password1": "corn-flake-8842",
+            "password2": "corn-flake-8842",
+        },
+    )
+
+    assert response.status_code == 200
+    errors = response.context["form"].errors["username"]
+    assert errors == ["That display name is already taken."]
+    assert "Display name" in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_a_field_error_renders_under_its_own_field(client, confirmed_user):
+    """Where the message sits is half of what it says.
+
+    allauth renders forms with Django's `as_p`, which puts a field's errorlist
+    *above* its label — so on signup the display-name error landed directly
+    beneath the Email box and read as "that email is taken". Correct message,
+    wrong field: reported as a bug in the email check, which was not involved.
+    """
+    body = client.post(
+        reverse("account_signup"),
+        {
+            "email": "someone-else@example.org",
+            "username": "resident",
+            "password1": "corn-flake-8842",
+            "password2": "corn-flake-8842",
+        },
+    ).content.decode()
+
+    error = body.index("That display name is already taken.")
+    assert body.index('id="id_username"') < error, (
+        "the error renders above its own field, so it reads as the field before it"
+    )
+    assert error < body.index('id="id_password1"'), "the error is not with its field"
+
+
+@pytest.mark.django_db
+def test_signing_up_with_a_registered_email_says_so(
+    client, confirmed_user, django_user_model, mailoutbox
+):
+    """The email address is the credential, so a collision on it is the answer.
+
+    allauth's default is to prevent enumeration: accept the form, create
+    nothing, and mail the existing account. No account is duplicated either
+    way — ACCOUNT_UNIQUE_EMAIL sees to that — but the person is left on a
+    "check your email" page having been told nothing, when what they need to
+    know is that they already have an account and should sign in.
+    """
+    response = client.post(
+        reverse("account_signup"),
+        {
+            "email": confirmed_user.email,
+            "username": "a-different-name",
+            "password1": "corn-flake-8842",
+            "password2": "corn-flake-8842",
+        },
+    )
+
+    assert response.status_code == 200, "a duplicate email must redisplay the form"
+    assert response.context["form"].errors["email"] == [
+        "An account with that email address already exists — sign in instead."
+    ]
+    assert not django_user_model.objects.filter(username="a-different-name").exists()
+    assert mailoutbox == [], "nothing was created, so there is nothing to confirm"
+
+
+@pytest.mark.django_db
+def test_a_duplicate_email_survives_a_differing_case(client, confirmed_user):
+    """Addresses are matched case-insensitively, or the rule is not a rule.
+
+    Nothing stops a second account on RESIDENT@Example.com otherwise, and then
+    two accounts answer to one login.
+    """
+    response = client.post(
+        reverse("account_signup"),
+        {
+            "email": confirmed_user.email.upper(),
+            "username": "a-different-name",
+            "password1": "corn-flake-8842",
+            "password2": "corn-flake-8842",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "email" in response.context["form"].errors
+
 
 @pytest.mark.django_db
 def test_confirmation_email_names_this_site(client, settings, mailoutbox):

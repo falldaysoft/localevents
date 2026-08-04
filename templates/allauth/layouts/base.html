@@ -43,9 +43,12 @@
         /* allauth emits <label>…</label><input type=checkbox> inside a <p>,
            which with block labels leaves the box stranded on its own line.
            Reorder rather than restyle every checkbox page by hand. */
-        .auth-page p:has(> input[type="checkbox"]) { @apply flex items-center gap-2; }
+        .auth-page p:has(> input[type="checkbox"]) { @apply flex flex-wrap items-center gap-2; }
         .auth-page p:has(> input[type="checkbox"]) input { @apply order-first mt-0; }
         .auth-page p:has(> input[type="checkbox"]) label { @apply font-normal text-slate-700; }
+        /* wrap + full width so an error on a checkbox drops to its own line
+           rather than squeezing in beside the box. */
+        .auth-page p:has(> input[type="checkbox"]) .errorlist { @apply w-full; }
 
         /* type="button" is in here for the passkey pages: their buttons run a
            WebAuthn ceremony in JS and submit the form themselves, so they are
