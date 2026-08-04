@@ -21,6 +21,10 @@
         }
     </style>
     {% block head %}{% endblock %}
+    {# Last in <head> so an instance can override anything above it. Raw HTML #}
+    {# from SiteConfig, editable by superusers only — see                     #}
+    {# core.context_processors.site_head.                                     #}
+    {{ SITE_HEAD_HTML }}
 </head>
 <body class="bg-slate-50 text-slate-900" style="font-family: 'Inter', sans-serif; font-optical-sizing: auto;">
     {% include "partials/_unclaimed_banner.html" %}

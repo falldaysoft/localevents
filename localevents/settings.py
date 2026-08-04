@@ -109,6 +109,10 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "allauth.account.middleware.AccountMiddleware",
+    # Must stay below the CSP middleware: responses travel back up this list,
+    # so this runs first on the way out and can widen the policy before it is
+    # written. See core.middleware.SiteHeadCSPMiddleware.
+    "core.middleware.SiteHeadCSPMiddleware",
 ]
 
 ROOT_URLCONF = "localevents.urls"
@@ -125,6 +129,7 @@ TEMPLATES = [
                 "django.contrib.messages.context_processors.messages",
                 "django.template.context_processors.csp",
                 "core.context_processors.site",
+                "core.context_processors.site_head",
                 "accounts.context_processors.claim",
             ],
         },

@@ -47,6 +47,26 @@ class SiteConfig(SingletonModel):
         blank=True,
         help_text='List of {"label": ..., "url": ...} objects.',
     )
+    head_html = models.TextField(
+        blank=True,
+        verbose_name="extra <head> HTML",
+        help_text=(
+            "Injected verbatim into &lt;head&gt; on every page: a search-console "
+            "verification tag, an analytics snippet. Not escaped and not "
+            "checked — whatever is pasted here runs on every page, for every "
+            "visitor. Superusers only."
+        ),
+    )
+    script_hosts = models.TextField(
+        blank=True,
+        verbose_name="script hosts to allow",
+        help_text=(
+            "One origin per line, e.g. https://plausible.io. Anything the HTML "
+            "above loads a script from, or sends data to, has to be listed "
+            "here or the Content-Security-Policy blocks it — and a blocked "
+            "snippet looks exactly like one that was never pasted."
+        ),
+    )
 
     class Meta:
         verbose_name = "site configuration"
@@ -54,6 +74,29 @@ class SiteConfig(SingletonModel):
 
     def __str__(self):
         return "Site configuration"
+
+    @property
+    def script_host_list(self):
+        """`script_hosts` as origins, ignoring blank lines and stray commas."""
+        return [
+            host.strip().rstrip(";,")
+            for host in self.script_hosts.splitlines()
+            if host.strip()
+        ]
+
+
+def site_config_for(request):
+    """`SiteConfig.load()`, once per request.
+
+    The head HTML is wanted in two places on every page — the template that
+    renders it and the middleware that widens the CSP to let it work — and
+    without this that is two queries per request for one singleton row.
+    """
+    config = getattr(request, "_site_config", None)
+    if config is None:
+        config = SiteConfig.load()
+        request._site_config = config
+    return config
 
 
 class AIConfig(SingletonModel):

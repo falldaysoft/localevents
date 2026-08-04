@@ -15,7 +15,17 @@ class SingletonAdmin(admin.ModelAdmin):
 
 @admin.register(SiteConfig)
 class SiteConfigAdmin(SingletonAdmin):
-    pass
+    # Everything else on this model is prose. These two put arbitrary script on
+    # every page and decide which origins the CSP trusts, which is a different
+    # kind of decision — so they are visible to any admin and editable only by
+    # someone who could already deploy the same code.
+    SUPERUSER_ONLY = ("head_html", "script_hosts")
+
+    def get_readonly_fields(self, request, obj=None):
+        readonly = tuple(super().get_readonly_fields(request, obj))
+        if request.user.is_superuser:
+            return readonly
+        return readonly + self.SUPERUSER_ONLY
 
 
 @admin.register(AIConfig)
