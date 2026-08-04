@@ -14,7 +14,7 @@ from core.models import SiteConfig
 from submissions.models import ModerationAction, Submission
 
 from . import services
-from .forms import ApproveForm, RejectForm, RequestInfoForm
+from .forms import ApproveForm, EventEditForm, RejectForm, RequestInfoForm
 from .permissions import moderator_required
 
 
@@ -209,3 +209,57 @@ def audit(request):
         "actor", "submission", "event"
     )[:300]
     return render(request, "moderation/audit.html", _chrome(request, actions=actions))
+
+
+@moderator_required
+def event_edit(request, pk):
+    """Fix a listing that is already live.
+
+    Reached from the event page itself rather than from the queue, because
+    that is where the problem gets noticed — someone reads the page, spots the
+    wrong time, and the way to fix it should be on the screen showing the
+    mistake.
+
+    Any status is editable, not just published ones: an event pulled down for
+    a correction has to be reachable to put back up.
+    """
+    from events.models import Event
+
+    event = get_object_or_404(
+        Event.objects.select_related("venue", "organizer").prefetch_related(
+            "categories"
+        ),
+        pk=pk,
+    )
+
+    if request.method == "POST":
+        form = EventEditForm(request.POST, instance=event)
+        if form.is_valid():
+            changed = form.changed_data
+            event = form.save()
+
+            # A save that changed nothing is not worth a line in the log; the
+            # audit trail is read by someone looking for what happened.
+            if changed:
+                ModerationAction.record(
+                    request.user,
+                    "event_edited",
+                    event=event,
+                    detail=", ".join(changed),
+                )
+                messages.success(request, f"“{event.title}” updated.")
+            else:
+                messages.info(request, "Nothing changed.")
+
+            # An unpublished event has no public page to go back to.
+            if event.status == Event.Status.PUBLISHED:
+                return redirect("event_detail", slug=event.slug)
+            return redirect("mod_event_edit", pk=event.pk)
+    else:
+        form = EventEditForm(instance=event)
+
+    return render(
+        request,
+        "moderation/event_edit.html",
+        _chrome(request, event=event, form=form),
+    )

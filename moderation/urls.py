@@ -12,4 +12,7 @@ urlpatterns = [
     path("<int:pk>/reject/", views.reject, name="mod_reject"),
     path("<int:pk>/ask/", views.request_info, name="mod_request_info"),
     path("promote/<int:pk>/", views.promote, name="mod_promote"),
+    # Namespaced under event/ so it never collides with the bare <int:pk>
+    # submission route above, which it would otherwise shadow.
+    path("event/<int:pk>/edit/", views.event_edit, name="mod_event_edit"),
 ]

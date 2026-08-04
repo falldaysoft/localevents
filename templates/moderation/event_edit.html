@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block title %}Edit {{ event.title }} — {{ SITE_NAME }}{% endblock %}
+
+{% block main_class %}mx-auto w-full max-w-3xl px-4 py-8{% endblock %}
+
+{% block content %}
+    {% include "moderation/_tabs.html" %}
+
+    <div class="mt-6 flex flex-wrap items-baseline justify-between gap-3">
+        <h1 class="text-2xl font-semibold tracking-tight">Edit listing</h1>
+        {% if event.status == 'published' %}
+            <a href="{% url 'event_detail' event.slug %}" class="text-sm text-slate-500 hover:text-slate-900">
+                View the public page
+            </a>
+        {% endif %}
+    </div>
+    <p class="mt-1 text-sm text-slate-500">
+        {{ event.title }} &middot; added {{ event.created_at|date:"j M Y" }}
+        {% if event.submitted_by %} by {{ event.submitted_by.display_name }}{% endif %}
+    </p>
+
+    {% if form.non_field_errors %}
+        <div class="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            {{ form.non_field_errors }}
+        </div>
+    {% endif %}
+
+    <form method="post" class="mt-6 space-y-4">
+        {% csrf_token %}
+
+        <div class="card space-y-4">
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">What it is</h2>
+            {% include "submissions/_field.html" with field=form.title %}
+            {% include "submissions/_field.html" with field=form.summary %}
+            {% include "submissions/_field.html" with field=form.description %}
+        </div>
+
+        <div class="card space-y-4">
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Where and who</h2>
+            {% include "submissions/_field.html" with field=form.venue %}
+            {% include "submissions/_field.html" with field=form.organizer %}
+            <p class="text-sm text-slate-500">
+                {# Venues and organizers are shared records; renaming one here would
+                   rename it on every other event that uses it. #}
+                Editing a venue or organizer's own details is a separate job — this
+                only chooses which one this event points at.
+            </p>
+        </div>
+
+        <div class="card space-y-4">
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Placement</h2>
+
+            <div>
+                <span class="block text-sm font-medium">{{ form.prominence.label }}</span>
+                <div class="mt-2 space-y-1 text-sm">
+                    {% for choice in form.prominence %}
+                        <label class="flex cursor-pointer items-center gap-2">
+                            {{ choice.tag }} <span>{{ choice.choice_label }}</span>
+                        </label>
+                    {% endfor %}
+                </div>
+                {% if form.prominence.errors %}
+                    <p class="mt-1 text-sm text-red-700">{{ form.prominence.errors.0 }}</p>
+                {% endif %}
+            </div>
+
+            <div>
+                <span class="block text-sm font-medium">{{ form.listing_type.label }}</span>
+                <div class="mt-2 space-y-1 text-sm">
+                    {% for choice in form.listing_type %}
+                        <label class="flex cursor-pointer items-center gap-2">
+                            {{ choice.tag }} <span>{{ choice.choice_label }}</span>
+                        </label>
+                    {% endfor %}
+                </div>
+                {% if form.listing_type.errors %}
+                    <p class="mt-1 text-sm text-red-700">{{ form.listing_type.errors.0 }}</p>
+                {% endif %}
+            </div>
+
+            <div>
+                <span class="block text-sm font-medium">{{ form.categories.label }}</span>
+                <div class="mt-2 space-y-1 text-sm">
+                    {% for choice in form.categories %}
+                        <label class="flex cursor-pointer items-center gap-2">
+                            {{ choice.tag }} <span>{{ choice.choice_label }}</span>
+                        </label>
+                    {% endfor %}
+                </div>
+                {% if form.categories.errors %}
+                    <p class="mt-1 text-sm text-red-700">{{ form.categories.errors.0 }}</p>
+                {% endif %}
+            </div>
+
+            {% include "submissions/_field.html" with field=form.status %}
+            {% include "submissions/_field.html" with field=form.series_ends_on %}
+        </div>
+
+        <div class="card space-y-4">
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Cost and audience</h2>
+            <label class="flex cursor-pointer items-center gap-2 text-sm">
+                {{ form.is_free }} <span>{{ form.is_free.label }}</span>
+            </label>
+            {% if form.is_free.errors %}
+                <p class="text-sm text-red-700">{{ form.is_free.errors.0 }}</p>
+            {% endif %}
+            <div class="grid gap-4 sm:grid-cols-2">
+                {% include "submissions/_field.html" with field=form.price_min %}
+                {% include "submissions/_field.html" with field=form.price_max %}
+            </div>
+            {% include "submissions/_field.html" with field=form.price_note %}
+            <div class="grid gap-4 sm:grid-cols-2">
+                {% include "submissions/_field.html" with field=form.age_min %}
+                {% include "submissions/_field.html" with field=form.age_max %}
+            </div>
+            <label class="flex cursor-pointer items-center gap-2 text-sm">
+                {{ form.is_family_friendly }} <span>{{ form.is_family_friendly.label }}</span>
+            </label>
+            <label class="flex cursor-pointer items-center gap-2 text-sm">
+                {{ form.is_commercial }} <span>{{ form.is_commercial.label }}</span>
+            </label>
+            {% include "submissions/_field.html" with field=form.accessibility_notes %}
+        </div>
+
+        <div class="card space-y-4">
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Links</h2>
+            {% include "submissions/_field.html" with field=form.source_url %}
+            {% include "submissions/_field.html" with field=form.ticket_url %}
+            {% include "submissions/_field.html" with field=form.image_url %}
+        </div>
+
+        {% comment %}
+            Dates are not on this form. They live on Occurrence, and changing
+            when something happens is a bigger decision than fixing a typo.
+        {% endcomment %}
+        <div class="card text-sm text-slate-500">
+            Dates are not edited here. This listing has
+            {{ event.occurrences.count }} date{{ event.occurrences.count|pluralize }} on record.
+        </div>
+
+        <div class="flex items-center gap-3">
+            <button type="submit" class="btn-primary">Save changes</button>
+            <a href="{% if event.status == 'published' %}{% url 'event_detail' event.slug %}{% else %}{% url 'mod_queue' %}{% endif %}"
+               class="text-sm text-slate-500 hover:text-slate-900">Cancel</a>
+        </div>
+    </form>
+{% endblock %}
