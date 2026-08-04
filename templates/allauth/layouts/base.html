@@ -47,7 +47,12 @@
         .auth-page p:has(> input[type="checkbox"]) input { @apply order-first mt-0; }
         .auth-page p:has(> input[type="checkbox"]) label { @apply font-normal text-slate-700; }
 
+        /* type="button" is in here for the passkey pages: their buttons run a
+           WebAuthn ceremony in JS and submit the form themselves, so they are
+           deliberately not submits — and without this they rendered as bare
+           unstyled text that did not look clickable at all. */
         .auth-page button[type="submit"],
+        .auth-page button[type="button"],
         .auth-page button:not([type]) { @apply btn-primary w-full justify-center; }
         /* The passkey button is an alternative, not a second primary action —
            two identical black buttons make the page ask a question it should

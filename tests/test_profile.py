@@ -86,3 +86,73 @@ def test_registered_passkey_switches_the_link_to_manage(client, signed_in):
     response = client.get(reverse("profile"))
     assert reverse("mfa_list_webauthn").encode() in response.content
     assert b"1 registered" in response.content
+
+
+@pytest.mark.django_db
+def test_signing_out_moved_off_the_nav_onto_the_profile(client, signed_in):
+    """The top bar lost its Sign out; the profile page has to carry it.
+
+    Removing one without adding the other leaves an account with no way out,
+    which is the sort of thing nobody notices until they try.
+    """
+    nav = client.get(reverse("index")).content.decode()
+    profile = client.get(reverse("profile")).content.decode()
+
+    assert reverse("account_logout") not in nav
+    assert reverse("account_logout") in profile
+
+
+@pytest.mark.django_db
+def test_signing_out_from_the_profile_works(client, signed_in):
+    response = client.post(reverse("account_logout"), follow=True)
+    assert not response.wsgi_request.user.is_authenticated
+
+
+@pytest.fixture
+def reauthenticated(client, django_user_model):
+    """Signed in with a password within allauth's reauthentication window.
+
+    The passkey pages are behind a freshness check, and `force_login` does not
+    record how you got in — so a forced session is redirected straight back out
+    to reauthenticate, and any assertion on the form's markup passes against an
+    empty body.
+    """
+    from allauth.account.models import EmailAddress
+
+    user = django_user_model.objects.create_user(
+        username="keyholder", email="keyholder@example.com", password="corn-flake-8842"
+    )
+    EmailAddress.objects.create(
+        user=user, email=user.email, primary=True, verified=True
+    )
+    client.post(
+        reverse("account_login"),
+        {"login": user.email, "password": "corn-flake-8842"},
+    )
+    return user
+
+
+@pytest.mark.django_db
+def test_passkey_form_asks_only_for_a_name(client, reauthenticated):
+    """The passwordless choice is made for the user, not by them.
+
+    allauth offers a "Passwordless" checkbox explaining residentKey trade-offs,
+    which is not a question to put to someone adding Touch ID. It has to stay
+    in the DOM though — mfa/js/webauthn.js reads `.checked` off it, and without
+    it every key registers as a second factor only.
+    """
+    body = client.get(reverse("mfa_add_webauthn")).content.decode()
+
+    assert "Passwordless" not in body
+    assert "biometrics or PIN protection" not in body
+    assert 'id="id_passwordless"' in body, "the JS has nothing to read"
+    assert "checked" in body, "passkeys would register as a second factor only"
+
+
+@pytest.mark.django_db
+def test_passkey_page_is_not_about_security_keys(client, reauthenticated):
+    """"Add Security Key" describes a USB dongle nobody in a town owns."""
+    body = client.get(reverse("mfa_add_webauthn")).content.decode()
+
+    assert "Add a passkey" in body
+    assert "Add Security Key" not in body

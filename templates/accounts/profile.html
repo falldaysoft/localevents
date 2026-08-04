@@ -104,6 +104,16 @@
             {% endif %}
         </ul>
     </div>
+
+    {# The only way out of the site now that the nav no longer carries one. #}
+    <form method="post" action="{% url 'account_logout' %}" class="mt-4 card flex items-center justify-between gap-4">
+        {% csrf_token %}
+        <div>
+            <p class="font-medium">Sign out</p>
+            <p class="mt-0.5 text-sm text-slate-500">Ends this session on this device.</p>
+        </div>
+        <button type="submit" class="btn-secondary shrink-0">Sign out</button>
+    </form>
 {% endblock %}
 
 {% block head %}
