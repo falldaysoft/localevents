@@ -144,6 +144,17 @@ DATABASES = {
     )
 }
 
+# An unreachable database must fail fast, not hang. libpq waits indefinitely by
+# default, so a stalled server — a wedged volume under it, say — blocks the
+# request past gunicorn's worker timeout and the worker is killed mid-connect.
+# Code that means to degrade gracefully never gets its exception, because a
+# hang is not an exception. Five seconds is far longer than a healthy connect
+# and far shorter than any probe budget. Postgres only: SQLite rejects it.
+if DATABASES["default"].get("ENGINE", "").endswith("postgresql"):
+    DATABASES["default"].setdefault("OPTIONS", {}).setdefault(
+        "connect_timeout", int(os.environ.get("DB_CONNECT_TIMEOUT", "5"))
+    )
+
 AUTH_USER_MODEL = "accounts.User"
 
 SITE_ID = 1

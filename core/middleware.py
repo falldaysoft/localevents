@@ -30,6 +30,15 @@ class SiteHeadCSPMiddleware:
         if hasattr(response, "_csp_config"):
             return response
 
+        # SiteConfig.head_html only ever lands in an HTML document, so nothing
+        # else needs the policy widened. This guard is load-bearing beyond the
+        # saved query: /healthz is text/plain and must not touch the database.
+        # It used to, through this middleware, which meant a stalled database
+        # failed the liveness probe and turned a degraded site into a restart
+        # loop. tests/test_smoke.py holds the line.
+        if "text/html" not in response.headers.get("Content-Type", ""):
+            return response
+
         try:
             hosts = site_config_for(request).script_host_list
         except Exception:

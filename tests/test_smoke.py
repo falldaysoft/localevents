@@ -2,9 +2,20 @@ import pytest
 from django.urls import reverse
 
 
-def test_healthz_does_not_touch_the_database(client):
-    """No `db` fixture here on purpose: the liveness probe must not query."""
-    response = client.get("/healthz")
+@pytest.mark.django_db
+def test_healthz_does_not_touch_the_database(client, django_assert_num_queries):
+    """The liveness probe must not query. A database that hangs rather than
+    refusing would otherwise block the probe, and Kubernetes would restart a
+    container whose only problem was upstream.
+
+    This counts queries instead of the older trick of omitting the `db`
+    fixture. That version passed while the property was already broken:
+    SiteHeadCSPMiddleware did query, and its blanket `except Exception`
+    swallowed the RuntimeError that pytest-django's blocker raises. A test
+    whose failure mode is silently caught by the code under test is no test.
+    """
+    with django_assert_num_queries(0):
+        response = client.get("/healthz")
     assert response.status_code == 200
     assert response.content == b"ok"
 
