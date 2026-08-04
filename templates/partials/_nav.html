@@ -7,16 +7,18 @@
                 {% if user.is_moderator %}
                     <a href="{% url 'mod_queue' %}" class="text-slate-600 hover:text-slate-900">Moderate</a>
                 {% endif %}
-                <a href="{% url 'my_submissions' %}" class="hidden text-slate-600 hover:text-slate-900 sm:inline">Your events</a>
                 {# Not hidden on small screens like the links either side of it: #}
                 {# this is the only route to passwords, passkeys and email, and  #}
                 {# a phone is where someone is most likely to go looking.        #}
-                {# Signing out lives on the profile page. It is a rare action #}
-                {# next to a permanent one, and giving it equal billing up    #}
-                {# here cost the bar a whole slot on every page.              #}
+                {# Signing out and "Your events" both live on the profile page.  #}
+                {# They are occasional actions, and the slot they were costing   #}
+                {# on every page belongs to the one thing the site wants asked.  #}
                 <a href="{% url 'profile' %}" class="text-slate-600 hover:text-slate-900">{{ user.display_name }}</a>
+                <a href="{% url 'submit' %}" class="btn-primary">Add an event</a>
             {% else %}
                 <a href="{% url 'account_login' %}" class="text-slate-600 hover:text-slate-900">Sign in</a>
+                {# Signed out, the CTA is the same promise; signing up is just #}
+                {# the first step of it, and 'submit' would bounce here anyway. #}
                 <a href="{% url 'account_signup' %}" class="btn-primary">Add an event</a>
             {% endif %}
         </div>
