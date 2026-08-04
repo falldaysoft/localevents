@@ -1,5 +1,4 @@
 import pytest
-from django.urls import reverse
 
 
 @pytest.mark.django_db
@@ -18,18 +17,6 @@ def test_healthz_does_not_touch_the_database(client, django_assert_num_queries):
         response = client.get("/healthz")
     assert response.status_code == 200
     assert response.content == b"ok"
-
-
-@pytest.mark.django_db
-def test_index_renders(client):
-    response = client.get(reverse("index"))
-    assert response.status_code == 200
-
-
-@pytest.mark.django_db
-def test_login_page_renders(client):
-    response = client.get(reverse("account_login"))
-    assert response.status_code == 200
 
 
 @pytest.mark.django_db

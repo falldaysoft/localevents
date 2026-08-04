@@ -1,12 +1,14 @@
 """Reading an event out of a page.
 
 The parts worth protecting: that structured data is tried before anything is
-spent, that the SSRF guard holds, that a cheap model returning slightly-wrong
-JSON still produces a draft, and that every failure lands the submitter on a
-usable form rather than an error page.
+spent, that the SSRF guard holds, and that every failure lands the submitter on
+a usable form rather than an error page.
+
+The model client itself is `test_llm.py`. Everything here patches `llm.extract`
+whole, so this file needs no stand-in for the OpenAI client — two fakes for one
+call is how one of them drifts.
 """
 
-import json
 from datetime import datetime
 
 import httpx
@@ -257,191 +259,6 @@ def test_a_fetch_failure_is_reported_in_words_a_person_can_act_on(monkeypatch):
 
     assert result.failed
     assert "login" in result.message
-
-
-# --- the OpenRouter retry --------------------------------------------------
-
-
-class FakeChoice:
-    def __init__(self, content):
-        self.message = type("M", (), {"content": content})()
-
-
-class FakeCompletion:
-    def __init__(self, content):
-        self.choices = [FakeChoice(content)]
-        self.usage = type("U", (), {"prompt_tokens": 10, "completion_tokens": 5})()
-
-
-def _openrouter_config():
-    config = AIConfig.load()
-    config.api_key = "test-key"
-    config.model = "some/cheap-model"
-    config.save()
-    return config
-
-
-@pytest.mark.django_db
-def test_openrouter_salvages_json_wrapped_in_prose_or_fences(monkeypatch):
-    """Cheap models wrap JSON in fences despite being told not to.
-
-    Discarding an otherwise-correct extraction over formatting would be the
-    wrong trade, so the reply is salvaged rather than rejected.
-    """
-    replies = ['Sure! Here you go:\n```json\n{"title": "Craft Fair"}\n```']
-    _install_fake_openrouter(monkeypatch, replies)
-
-    draft, _ = llm.extract(_openrouter_config(), "page", "https://example.org", [])
-    assert draft.title == "Craft Fair"
-
-
-@pytest.mark.django_db
-def test_openrouter_retries_once_with_the_validation_error(monkeypatch):
-    """The load-bearing bit.
-
-    OpenRouter forwards response_format to the upstream model and not all of
-    them honour it — which is exactly the models you would use OpenRouter to
-    reach. The second attempt shows the model what was wrong with the first.
-    """
-    replies = [
-        '{"summary": "no title field here"}',  # fails validation
-        '{"title": "Craft Fair"}',             # corrected
-    ]
-    sent = _install_fake_openrouter(monkeypatch, replies)
-
-    draft, _ = llm.extract(_openrouter_config(), "page", "https://example.org", [])
-
-    assert draft.title == "Craft Fair"
-    assert len(sent) == 2, "expected exactly one retry"
-    # The retry must actually tell the model what was wrong.
-    retry_messages = sent[1]["messages"]
-    assert any("did not match the schema" in m["content"] for m in retry_messages)
-
-
-@pytest.mark.django_db
-def test_openrouter_gives_up_after_two_attempts(monkeypatch):
-    _install_fake_openrouter(monkeypatch, ["nonsense", "still nonsense"])
-
-    with pytest.raises(llm.LLMError):
-        llm.extract(_openrouter_config(), "page", "https://example.org", [])
-
-
-class ChoicelessResponse:
-    """What OpenRouter returns when a model rejects a parameter.
-
-    Note it is a 200 with no `choices` and an `error` object — not an HTTP
-    error — which is what made the first live call fail with a TypeError.
-    """
-
-    choices = None
-
-    def __init__(self, message):
-        self.error = {"message": message}
-        self.usage = None
-
-
-def _install_fake_openrouter(monkeypatch, replies):
-    """Stand in for the OpenAI client, recording each request.
-
-    A reply may be a string (returned as content) or a ChoicelessResponse.
-    """
-    sent = []
-    queue = list(replies)
-
-    class FakeCompletions:
-        def create(self, **kwargs):
-            sent.append(
-                {
-                    "messages": [dict(m) for m in kwargs["messages"]],
-                    "response_format": kwargs.get("response_format"),
-                }
-            )
-            reply = queue.pop(0)
-            return reply if isinstance(reply, ChoicelessResponse) else FakeCompletion(reply)
-
-    class FakeClient:
-        def __init__(self, **kwargs):
-            self.chat = type("C", (), {"completions": FakeCompletions()})()
-
-    import openai
-
-    monkeypatch.setattr(openai, "OpenAI", FakeClient)
-    return sent
-
-
-@pytest.mark.django_db
-def test_openrouter_degrades_when_a_model_rejects_the_response_format(monkeypatch):
-    """Format support varies across the models OpenRouter fronts.
-
-    Found live: asking claude-sonnet-5 for a strict json_schema came back with
-    no choices at all. Rather than assume support, drop to a looser format and
-    try again — the schema is in the prompt regardless.
-    """
-    sent = _install_fake_openrouter(
-        monkeypatch,
-        [
-            ChoicelessResponse("response_format.json_schema is not supported"),
-            '{"title": "Craft Fair"}',
-        ],
-    )
-
-    draft, _ = llm.extract(_openrouter_config(), "page", "https://example.org", [])
-
-    assert draft.title == "Craft Fair"
-    assert sent[0]["response_format"]["type"] == "json_schema"
-    assert sent[1]["response_format"] == {"type": "json_object"}
-
-
-@pytest.mark.django_db
-def test_openrouter_reports_the_providers_own_error_when_it_runs_out_of_formats(
-    monkeypatch,
-):
-    """A provider error must survive as a readable message.
-
-    The first live call crashed with 'NoneType is not subscriptable', which
-    told us nothing about the actual cause.
-    """
-    _install_fake_openrouter(
-        monkeypatch, [ChoicelessResponse("model is overloaded")] * 3
-    )
-
-    with pytest.raises(llm.LLMError, match="overloaded"):
-        llm.extract(_openrouter_config(), "page", "https://example.org", [])
-
-
-@pytest.mark.django_db
-def test_the_schema_is_always_in_the_prompt(monkeypatch):
-    """The weakest rung sends no response_format at all, so the prompt carries
-    the contract."""
-    sent = _install_fake_openrouter(monkeypatch, ['{"title": "Craft Fair"}'])
-
-    llm.extract(_openrouter_config(), "page", "https://example.org", [])
-
-    user_message = sent[0]["messages"][-1]["content"]
-    assert "notes_for_submitter" in user_message
-    assert "occurrences" in user_message
-
-
-def test_the_suite_never_sees_a_real_api_key(settings):
-    """Guard on test isolation, not on product behaviour.
-
-    settings.py loads .env so local development works without exporting
-    anything. The side effect is that on a developer's machine the enrichment
-    tests would otherwise reach a real endpoint — billable, slow enough to look
-    like a hang, and dependent on someone else's uptime. This caught exactly
-    that once already.
-    """
-    assert settings.OPENROUTER_API_KEY == ""
-
-
-@pytest.mark.django_db
-def test_no_api_key_is_a_clear_error_not_a_crash():
-    config = AIConfig.load()
-    config.api_key = ""
-    config.save()
-
-    with pytest.raises(llm.LLMError, match="No API key"):
-        llm.extract(config, "page", "https://example.org", [])
 
 
 # --- cost accounting -------------------------------------------------------

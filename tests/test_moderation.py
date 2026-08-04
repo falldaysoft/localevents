@@ -388,17 +388,9 @@ def _published(title, prominence, interest, days=5):
     return event
 
 
-@pytest.mark.django_db
-def test_interest_alone_never_changes_prominence(submitter):
-    """The load-bearing bound on a deliberately weak signal."""
-    event = _published("Knitting Group", Event.Prominence.BACKGROUND, interest=0)
-
-    for n in range(500):
-        Interest.objects.create(event=event, fingerprint=f"faker-{n}")
-
-    event.refresh_from_db()
-    assert event.interest_count == 500
-    assert event.prominence == Event.Prominence.BACKGROUND
+# The bound this queue relies on — that interest cannot move an event between
+# tiers by itself — is `test_events.py::test_interest_cannot_change_an_events_
+# prominence`. What is tested here is the ranking built on top of it.
 
 
 @pytest.mark.django_db

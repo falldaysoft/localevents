@@ -201,19 +201,14 @@ def test_pending_sweep_is_bounded(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_the_first_query_keeps_the_name_and_the_address_together():
-    venue = Venue.objects.create(
-        name="Paris Fairgrounds", address="139 Silver Street", city="Paris, ON"
-    )
-    assert venue.geocode_queries()[0] == (
-        "Paris Fairgrounds, 139 Silver Street, Paris, ON"
-    )
-
-
-@pytest.mark.django_db
 def test_the_ladder_drops_the_name_before_it_drops_the_address():
-    """A street address is a precise claim; a name match is whatever OSM
-    decided to call something nearby."""
+    """The full ladder, in order.
+
+    Rung one keeps the name and the address together, because that is the most
+    specific thing we know. After that a street address is a precise claim,
+    while a name match is whatever OSM decided to call something nearby — so
+    the name goes first.
+    """
     venue = Venue.objects.create(
         name="Paris Fairgrounds", address="139 Silver Street", city="Paris, ON"
     )
