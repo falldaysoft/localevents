@@ -176,7 +176,12 @@ def extract(config, text, source_url, category_slugs):
         {"type": "json_object"},
         None,
     ]
-    format_index = 0
+
+    # Skip the top rung when this model has already refused it. That refusal
+    # is not cheap — one measured 203 seconds before the endpoint answered —
+    # and paying it on every extraction is the difference between a submitter
+    # waiting one minute and waiting four.
+    format_index = 0 if config.json_schema_support() is not False else 1
     last_error = None
     usage = {}
 
@@ -202,11 +207,18 @@ def extract(config, text, source_url, category_slugs):
                 raise LLMError(f"Request failed: {exc}") from exc
 
             if getattr(response, "choices", None):
+                if format_index == 0:
+                    config.remember_json_schema_support(True)
                 break
 
             detail = _error_detail(response)
+            if format_index == 0:
+                config.remember_json_schema_support(False)
             if format_index + 1 < len(formats):
-                logger.info(
+                # Warning, not info: the root logger sits at WARNING, and an
+                # info line here is how a 203-second detour stayed invisible
+                # while it looked like the worker was simply hung.
+                logger.warning(
                     "%s rejected response_format %s (%s); retrying with a looser one",
                     config.model, format_index, detail,
                 )

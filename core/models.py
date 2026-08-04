@@ -140,6 +140,18 @@ class AIConfig(SingletonModel):
         "leave headroom above the size of the JSON you expect back.",
     )
 
+    # Learned, not configured. OpenRouter fronts models whose `json_schema`
+    # support varies — that variety is the reason to use it — and the only way
+    # to find out is to ask. Asking is expensive: a rejection measured 203
+    # seconds before it came back, as a 200 with an error body rather than an
+    # HTTP error, and every enrichment paid it again. So the answer is
+    # remembered against the model it was learned for, and a model change
+    # retires it automatically rather than needing anyone to remember.
+    json_schema_probed_model = models.CharField(
+        max_length=100, blank=True, editable=False
+    )
+    json_schema_supported = models.BooleanField(null=True, editable=False)
+
     # Kept here rather than hardcoded because rates change and differ per model
     # — an estimate that silently goes stale is worse than no estimate.
     input_cost_per_mtok = models.DecimalField(
@@ -169,6 +181,33 @@ class AIConfig(SingletonModel):
         from django.conf import settings
 
         return self.api_key or settings.OPENROUTER_API_KEY
+
+    def json_schema_support(self):
+        """True, False, or None when it has not been established yet.
+
+        Deliberately answers None as soon as `model` changes: what one model
+        accepts says nothing about the next one.
+        """
+        if self.json_schema_probed_model != self.model:
+            return None
+        return self.json_schema_supported
+
+    def remember_json_schema_support(self, supported):
+        """Record what the endpoint just told us about the current model.
+
+        A targeted UPDATE rather than save(): this runs on a worker in the
+        middle of an extraction, and a full save would write back whatever
+        else this in-memory copy is holding, clobbering an admin edit made
+        while the model was thinking.
+        """
+        if self.json_schema_support() is supported:
+            return
+        self.json_schema_probed_model = self.model
+        self.json_schema_supported = supported
+        type(self).objects.filter(pk=1).update(
+            json_schema_probed_model=self.model,
+            json_schema_supported=supported,
+        )
 
     def estimate_cost(self, input_tokens, output_tokens):
         """USD for one call, from the configured rates."""
