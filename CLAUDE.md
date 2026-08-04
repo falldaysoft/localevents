@@ -30,7 +30,8 @@ make check        # system checks + missing-migration check
 make migrate
 make superuser
 
-make deploy INSTANCE=<name> TAG=<git-sha>   # from an IP-allowlisted machine
+make deploy INSTANCE=<name>                 # from an IP-allowlisted machine; deploys HEAD
+make deploy INSTANCE=<name> TAG=<full-sha>  # CI tags with the *full* 40-char SHA
 ```
 
 One file, one test, or by name. **`DEBUG=true` is not optional** — without it

@@ -62,5 +62,5 @@ build:
 	docker build -t ghcr.io/falldaysoft/localevents:$(TAG) .
 
 deploy:
-	@test -n "$(INSTANCE)" || (echo "usage: make deploy INSTANCE=<name> [TAG=<sha>]" && exit 1)
+	@test -n "$(INSTANCE)" || (echo "usage: make deploy INSTANCE=<name> [TAG=<full-sha>]  # TAG defaults to HEAD" && exit 1)
 	./scripts/deploy.sh $(INSTANCE) $(TAG)
