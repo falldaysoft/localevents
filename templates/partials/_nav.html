@@ -1,6 +1,14 @@
 <header class="border-b border-slate-200 bg-white">
     <nav class="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 py-4">
-        <a href="{% url 'index' %}" class="text-lg font-semibold tracking-tight">{{ SITE_NAME }}</a>
+        {# The badge sits beside the wordmark rather than inside the link: it   #}
+        {# labels the site, it is not somewhere to click. Neutral slate on     #}
+        {# purpose — amber already means "unfinished, act on it" on the        #}
+        {# unclaimed banner, and a beta that never resolves should not borrow  #}
+        {# a colour that asks for a response.                                  #}
+        <div class="flex items-baseline gap-2">
+            <a href="{% url 'index' %}" class="text-lg font-semibold tracking-tight">{{ SITE_NAME }}</a>
+            <span class="chip" title="This site is still in development.">Beta</span>
+        </div>
 
         <div class="flex items-center gap-3 text-sm">
             {% if user.is_authenticated %}
