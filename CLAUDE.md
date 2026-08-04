@@ -33,12 +33,15 @@ make superuser
 make deploy INSTANCE=<name> TAG=<git-sha>   # from an IP-allowlisted machine
 ```
 
-One file, one test, or by name:
+One file, one test, or by name. **`DEBUG=true` is not optional** — without it
+`DATABASE_URL` is unset and every test errors at setup with "settings.DATABASES
+is improperly configured", which looks like a broken checkout and is only a
+missing environment variable:
 
 ```bash
-.venv/bin/python -m pytest tests/test_moderation.py -q
-.venv/bin/python -m pytest tests/test_moderation.py::test_assignment_is_a_toggle -q
-.venv/bin/python -m pytest -k rising -q
+DEBUG=true .venv/bin/python -m pytest tests/test_moderation.py -q
+DEBUG=true .venv/bin/python -m pytest tests/test_moderation.py::test_assignment_is_a_toggle -q
+DEBUG=true .venv/bin/python -m pytest -k rising -q
 ```
 
 **When asked to start the server, start both processes.** `make dev` alone
@@ -135,6 +138,32 @@ create-only version forked it: the queue entry pointed at an abandoned row while
 the answer sat in an event nobody was looking at. It also replaces occurrences
 rather than merging them, and never touches `prominence`.
 
+**An occurrence has a duration, and every layer has to honour it.** Two
+different things are called "multi-day" and they break in opposite directions.
+
+A *span* is one occurrence running continuously across days — a festival from
+Friday evening to Sunday afternoon. It disappears if any query asks "does it
+*start* in this window", because on Saturday it started yesterday. So the test
+is overlap, not containment: `events.models.occurrence_overlaps` is the single
+definition, used by the browse filters, `active_venues` and
+`Event.upcoming_occurrences`. An occurrence with no stated end counts as ending
+when it starts, which keeps the ordinary single-instant case identical.
+
+A *repeat* is several occurrences with different hours — a market open Fridays
+9–2 and Saturdays 7–2. It loses its hours if the form has one "ends at" box and
+a list of bare dates, which is what it had: every closing time but the first
+was stored as null. Dates are now an `OccurrenceFormSet`, every row carrying
+its own start, end and note, with no privileged first row.
+
+Two consequences worth knowing. `web.filters` annotates `next_start` and
+`next_end` with a **subquery**, not two `Min()` aggregates — `Min` skips nulls,
+so the two aggregates straddle different occurrences the moment one has an end
+and another does not, and the card prints one date's start beside another's
+finish. And templates must never format an end on its own: `{% occurrence_when %}`
+in `events/templatetags/event_dates.py` owns the three shapes (no end, ends the
+same day, ends later), because the obvious `{{ o.end|date:"H:i" }}` renders a
+weekend-long festival as "Fri 5 Sep, 18:00 – 17:00".
+
 **The crowd nominates, a human decides.** The "Interested" count feeds a mod
 *Rising* queue and breaks ties within a prominence tier; it can never move an
 event between tiers. That is why anonymous interest with weak cookie/IP dedup
@@ -177,8 +206,12 @@ model an acceptable trade — a rough extraction costs a submitter a minute of
 editing rather than putting invented-but-plausible details in front of someone
 who will trust them. The load-bearing defence against the model's habit of
 guessing the wrong *year* is not the prompt — a rule was added and the next live
-run got it wrong anyway — it is `EventDraftForm.clean_starts_at`, which rejects
-a date more than a day in the past.
+run got it wrong anyway — it is `BaseOccurrenceFormSet.clean`, which rejects a
+submission whose dates have *all* gone by. Deliberately the whole set and not
+each row: both live misextractions were wrong uniformly, while a series sent
+back with a moderator's question has legitimately lost a date or two by the
+time its owner replies. Rejecting past rows one at a time would block that
+resubmission to catch a mistake the set-level test already catches.
 
 **The fetcher is an SSRF boundary.** The URL is user-supplied, so hostnames are
 resolved and checked against private, loopback, link-local (including cloud

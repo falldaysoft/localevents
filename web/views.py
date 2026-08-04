@@ -177,6 +177,10 @@ def events_geojson(request):
                             "title": e.title,
                             "url": f"/events/{e.slug}/",
                             "start": e.next_start.isoformat() if e.next_start else None,
+                            # Without the end, a consumer of this feed repeats
+                            # the mistake the cards used to make and shows a
+                            # three-day event as a single moment.
+                            "end": e.next_end.isoformat() if e.next_end else None,
                             "free": e.is_free,
                             "series": e.is_series,
                         }

@@ -50,6 +50,15 @@ is not there. An empty field is fine and expected; a plausible guess is not, \
 because a moderator will trust it.
 - If the page lists several dates for the same event, return them all as \
 occurrences and set is_series when they follow a repeating pattern.
+- Every occurrence carries its own start and its own end. A market open \
+Fridays 9am-2pm and Saturdays 7am-2pm is two occurrences with different hours, \
+not one occurrence plus a list of bare dates. Never leave an end empty because \
+you already gave one on an earlier occurrence.
+- Something that runs continuously across more than one day is ONE occurrence \
+whose end falls on a later date — a festival from Friday 6pm to Sunday 5pm is \
+a single occurrence, not three. Something that stops and restarts each day is \
+one occurrence per day, each with that day's hours.
+- Leave an end empty only when the page genuinely does not say when it stops.
 - If the page is about several different events, extract the one it is \
 primarily about.
 - Times are local to the venue. Use ISO 8601 without a timezone offset unless \

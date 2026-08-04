@@ -1,4 +1,4 @@
-{% load humanize %}
+{% load humanize event_dates %}
 <li class="card transition hover:border-slate-300">
     <div class="flex items-start justify-between gap-4">
         <div class="min-w-0">
@@ -13,7 +13,13 @@
             <p class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
                 {% if event.next_start %}
                     <span>
-                        <time datetime="{{ event.next_start|date:'c' }}">{{ event.next_start|date:"D j M, g:i a" }}</time>
+                        {% comment %}
+                            The end matters as much as the start here: a
+                            listing that runs from Friday to Sunday reads as a
+                            single Friday evening without it, and someone
+                            checking on Saturday concludes they have missed it.
+                        {% endcomment %}
+                        <time datetime="{{ event.next_start|date:'c' }}">{% occurrence_when event.next_start event.next_end %}</time>
                         {% comment %}
                             A series shows its next date and says so, rather
                             than emitting one card per week.
@@ -31,6 +37,13 @@
         </div>
 
         <div class="flex shrink-0 flex-col items-end gap-1">
+            {% comment %}
+                Only reachable now that a span stays in the feed while it runs.
+                It is the most useful thing a card can say, so it goes first.
+            {% endcomment %}
+            {% if event.next_start|is_under_way:event.next_end %}
+                <span class="chip bg-rose-100 text-rose-800">On now</span>
+            {% endif %}
             {% if event.is_free %}
                 <span class="chip bg-emerald-100 text-emerald-800">Free</span>
             {% elif event.price_display %}

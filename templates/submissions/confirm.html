@@ -66,10 +66,42 @@
 
             <section class="card space-y-4">
                 <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">When</h2>
-                {% include "submissions/_field.html" with field=form.starts_at %}
-                {% include "submissions/_field.html" with field=form.ends_at %}
+
+                {{ dates.management_form }}
+
+                {% if dates.non_form_errors %}
+                    <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                        {{ dates.non_form_errors.0 }}
+                    </div>
+                {% endif %}
+
+                {# One row per date, each with its own hours. An event running #}
+                {# Friday evening to Sunday afternoon is a single row whose    #}
+                {# end lands on a later day, not three rows.                   #}
+                <ol class="space-y-4">
+                    {% for date_form in dates %}
+                        <li class="rounded-lg border border-slate-200 p-4">
+                            <div class="grid gap-4 sm:grid-cols-2">
+                                {% include "submissions/_field.html" with field=date_form.start %}
+                                {% include "submissions/_field.html" with field=date_form.end %}
+                            </div>
+                            <div class="mt-4">
+                                {% include "submissions/_field.html" with field=date_form.note %}
+                            </div>
+                            {% if date_form.DELETE %}
+                                <div class="mt-3">
+                                    {% include "submissions/_checkbox.html" with field=date_form.DELETE %}
+                                </div>
+                            {% endif %}
+                        </li>
+                    {% endfor %}
+                </ol>
+
+                <button type="submit" name="add_dates" value="1" class="btn-secondary">
+                    Add more dates
+                </button>
+
                 {% include "submissions/_checkbox.html" with field=form.is_series %}
-                {% include "submissions/_field.html" with field=form.additional_dates %}
             </section>
 
             <section class="card space-y-4">

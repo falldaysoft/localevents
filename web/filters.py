@@ -9,10 +9,10 @@ parameters and cannot drift apart.
 from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta
 
-from django.db.models import Min, Q
+from django.db.models import OuterRef, Q, Subquery
 from django.utils import timezone
 
-from events.models import Category, Event, Venue
+from events.models import Category, Event, Occurrence, Venue, occurrence_overlaps
 
 WHEN_CHOICES = [
     ("", "Any time"),
@@ -113,15 +113,18 @@ class EventFilter:
 
         return now, None
 
-    def occurrence_window(self, now=None):
-        """Q object restricting occurrences to the chosen window."""
+    def occurrence_window(self, now=None, prefix="occurrences"):
+        """Q object restricting occurrences to the chosen window.
+
+        Overlap, not containment — see `events.models.occurrence_overlaps`. A
+        three-day festival is on all three days, so it answers to Today on each
+        of them rather than only on the day it began.
+        """
         start, end = self.date_range(now)
-        condition = Q(occurrences__start__gte=start) & Q(
-            occurrences__is_cancelled=False
+        cancelled = f"{prefix}__is_cancelled" if prefix else "is_cancelled"
+        return occurrence_overlaps(start, end, prefix=prefix) & Q(
+            **{cancelled: False}
         )
-        if end is not None:
-            condition &= Q(occurrences__start__lte=end)
-        return condition
 
     def apply(self, queryset, now=None):
         """Narrow `queryset` and annotate each event with its next date.
@@ -150,10 +153,16 @@ class EventFilter:
                 | Q(organizer__name__icontains=self.query)
             )
 
+        # The start and end have to come from the *same* occurrence, so this is
+        # a subquery rather than two aggregates. Min(start) and Min(end) over
+        # the same set can straddle two different dates — and do, the moment one
+        # occurrence has an end and another does not, since Min skips nulls.
+        soonest = Occurrence.objects.filter(
+            self.occurrence_window(now, prefix=""), event=OuterRef("pk")
+        ).order_by("start")
         queryset = queryset.annotate(
-            next_start=Min(
-                "occurrences__start", filter=self.occurrence_window(now)
-            )
+            next_start=Subquery(soonest.values("start")[:1]),
+            next_end=Subquery(soonest.values("end")[:1]),
         ).filter(next_start__isnull=False)
 
         return (
@@ -220,12 +229,12 @@ class EventFilter:
 
 
 def active_venues():
-    """Venues with at least one published, upcoming event."""
+    """Venues with at least one published event on now or still to come."""
     now = timezone.now()
     return (
         Venue.objects.filter(
+            occurrence_overlaps(now, prefix="events__occurrences"),
             events__status=Event.Status.PUBLISHED,
-            events__occurrences__start__gte=now,
             events__occurrences__is_cancelled=False,
         )
         .distinct()

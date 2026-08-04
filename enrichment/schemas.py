@@ -15,9 +15,20 @@ from pydantic import BaseModel, Field
 
 
 class ExtractedOccurrence(BaseModel):
+    """One dated instance, with its own hours.
+
+    The end is per-occurrence and not optional out of convenience. A weekly
+    market with different Friday and Saturday hours has to be able to say so,
+    and an event that runs from Friday evening to Sunday afternoon is this one
+    object with an end two days after its start.
+    """
+
     start: datetime = Field(description="Local start time, ISO 8601.")
     end: datetime | None = Field(
-        default=None, description="Local end time if stated, otherwise null."
+        default=None,
+        description="Local end time if the page states one, otherwise null. "
+        "May fall on a later day than the start, for something that runs "
+        "continuously across more than one day.",
     )
     note: str = Field(
         default="", max_length=200,

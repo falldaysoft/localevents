@@ -6,7 +6,7 @@ live in `CLAUDE.md`; the full plan lives in
 what those two don't: what is actually done, what is proven versus merely
 written, and the traps that cost time.
 
-Last updated after Phase 4.
+Last updated after the multi-day work that followed Phase 4.
 
 ## Done
 
@@ -17,12 +17,13 @@ Last updated after Phase 4.
 | 2 — public browse, filters, map | done | `43c6115` |
 | 3 — submission + AI enrichment | done | `0e4cece`, `6ed920e`, `4e5c4c8` |
 | 4 — moderation queue, Rising | done | this commit |
+| multi-day events | done | this commit |
 | 5 — feed importers | **next** | |
 | 6 — outbound feeds (ICS/RSS/JSON) | not started | |
 | 7 — interest button (Rising itself is done) | not started | |
 | 8 — series lifecycle, reusability docs | not started | |
 
-169 tests passing. `make check` clean.
+265 tests passing. `make check` clean.
 
 Phase 7 shrank: the `Interest` model, the Rising ranking and the promotion
 action all landed with Phase 4, because the mod queue is where they are read.
@@ -132,9 +133,15 @@ with no year, use the next occurrence of that date in the future — never a pas
 one"* — and the second run happened with that rule in force and got it wrong
 anyway. **Do not assume the prompt fixed it.**
 
-What actually catches it is `EventDraftForm.clean_starts_at`, which rejects
-anything more than a day in the past with *"That date has already passed. Is it
-the right year?"*. That is the load-bearing defence and it has a test.
+What actually catches it is `BaseOccurrenceFormSet.clean`, which rejects a
+submission whose dates have *all* gone by with *"That date has already passed.
+Is it the right year?"*. That is the load-bearing defence and it has a test.
+
+It moved from a single field to the whole set when dates became a formset, and
+the "all" is deliberate. Both misextractions were wrong uniformly — every date
+a year back — while a series returning from a moderator's question has
+legitimately lost a date or two by the time its owner answers. A per-row test
+would catch the same mistake and block that resubmission as well.
 
 If this is worth attacking further, the promising direction is not more
 prompting but post-processing: when an extracted date lands in the past and the
@@ -218,6 +225,56 @@ guards it.
 Rising is ranked by `interest_count / tier average`, floored by
 `MIN_INTEREST_TO_RISE`. Raw counts across tiers would only rediscover that
 featured events get more attention.
+
+## Multi-day events
+
+Prompted by the Brantford Farmers' Market — open Fridays 9–2 and Saturdays 7–2,
+year round. The model read it correctly; the application threw the answer away.
+Two separate faults, and it is worth keeping them apart because the fix for one
+does nothing for the other.
+
+**Extra dates lost their hours.** The confirmation form had one *Starts* and one
+*Ends*, then a textarea of bare timestamps for everything else, and
+`save_event_from_draft` wrote `end` onto the first occurrence and null onto the
+rest. So the market published as a Saturday morning with no closing time.
+Dates are now an `OccurrenceFormSet` — every row has its own start, end and
+note, and no row is privileged. "Add more dates" is a plain submit button that
+re-renders the page with more blank rows; it deliberately does not validate,
+because someone asking for more space has not said they are finished.
+
+**A span vanished while it was running.** Every query asked whether an
+occurrence *starts* in the window, so a festival from Friday to Sunday was
+absent from Today on Saturday, from This Weekend, from the map, from the feed
+and from its own detail page — at exactly the moment it was worth showing. The
+test is now overlap, defined once in `events.models.occurrence_overlaps`.
+
+Three things this turned up that were not the point but were real:
+
+- **A `datetime-local` input silently discards a value it cannot parse.** The
+  draft holds ISO strings and `_initial_from_draft` handed them to the widget
+  as `"2026-09-05 09:00"` — space, not `T`. The field rendered empty. So the
+  extracted time was being lost between the model reading it and the submitter
+  confirming it, on the URL path, without a word. Draft datetimes are parsed to
+  real `datetime`s now and the widget formats them itself.
+- **`Min(start)` and `Min(end)` do not describe the same occurrence.** `Min`
+  skips nulls, so an event with one dated-but-open occurrence and one with an
+  end annotates the first one's start beside the second one's finish. It is a
+  subquery now.
+- **schema.org pages publish one `Event` node per date.** Reading only the
+  first turned a weekly market into a single date, with nothing to tell the
+  submitter anything had been dropped.
+
+Not attempted: **recurrence rules.** A market open every Friday and Saturday
+indefinitely is still entered as explicit dates, capped at 60 rows, and renewed
+through the existing series lifecycle. That is the honest limit of this change
+— an RRULE, its expansion, and what editing one means for occurrences that have
+already been published is a piece of work in its own right, and nothing here
+forecloses it.
+
+Verified locally against the real Brantford page: it publishes no schema.org
+markup, so it takes the model path, and the prompt now states the Friday/Saturday
+case explicitly. A two-date draft renders as two populated rows with all four
+times. **Not verified against a live model run** — see below.
 
 ## Starting Phase 5
 

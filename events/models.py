@@ -328,6 +328,41 @@ class Category(models.Model):
 # ---------------------------------------------------------------------------
 
 
+def occurrence_overlaps(window_start, window_end=None, prefix=""):
+    """A Q matching occurrences that are on at any point in a window.
+
+    The obvious test — "does it start inside the window" — quietly loses every
+    event that spans days. A festival running Friday evening to Sunday
+    afternoon started before Saturday, so on Saturday it vanishes from Today,
+    from This Weekend, from the map and from the feed, while it is *actually
+    happening*. That is the worst possible time for a listing site to hide it.
+
+    So the test is overlap, not containment: the occurrence has begun by the
+    end of the window, and has not finished before the window starts. An
+    occurrence with no stated end is treated as ending when it starts, which
+    makes this identical to the old behaviour for the single-instant case.
+
+    `prefix` lets a caller ask about a related name, e.g. "occurrences".
+    """
+    field = f"{prefix}__" if prefix else ""
+
+    not_over = models.Q(**{f"{field}end__gte": window_start}) | models.Q(
+        **{f"{field}end__isnull": True, f"{field}start__gte": window_start}
+    )
+    if window_end is None:
+        return not_over
+    return models.Q(**{f"{field}start__lte": window_end}) & not_over
+
+
+class OccurrenceQuerySet(models.QuerySet):
+    def live(self, now=None):
+        """Not cancelled, and not yet over."""
+        now = now or timezone.now()
+        return self.filter(
+            occurrence_overlaps(now), is_cancelled=False
+        )
+
+
 class EventQuerySet(models.QuerySet):
     def published(self):
         return self.filter(status=Event.Status.PUBLISHED)
@@ -518,18 +553,16 @@ class Event(models.Model):
         return f"${self.price_min:,.0f}–${self.price_max:,.0f}"
 
     def next_occurrence(self, now=None):
-        now = now or timezone.now()
-        return (
-            self.occurrences.filter(start__gte=now, is_cancelled=False)
-            .order_by("start")
-            .first()
-        )
+        """The one that is on now, or failing that the next one to come.
+
+        Ordering by start rather than by end means an in-progress span is
+        returned ahead of a date later today, which is the right answer to
+        "what is happening here" while it is happening.
+        """
+        return self.upcoming_occurrences(now).first()
 
     def upcoming_occurrences(self, now=None):
-        now = now or timezone.now()
-        return self.occurrences.filter(
-            start__gte=now, is_cancelled=False
-        ).order_by("start")
+        return self.occurrences.live(now).order_by("start")
 
     def needs_region_review(self):
         """True when the venue sits outside the instance's bounds.
@@ -560,24 +593,53 @@ class Occurrence(models.Model):
         help_text="Anything specific to this date, e.g. 'Guest speaker'.",
     )
 
+    objects = OccurrenceQuerySet.as_manager()
+
     class Meta:
         ordering = ["start"]
         indexes = [
             models.Index(fields=["start"]),
             models.Index(fields=["event", "start"]),
+            # The overlap test reads `end` for every candidate occurrence, on
+            # every browse query. Without this it is a scan.
+            models.Index(fields=["end"]),
         ]
         constraints = [
             models.UniqueConstraint(
                 fields=["event", "start"], name="unique_event_start"
-            )
+            ),
+            models.CheckConstraint(
+                condition=models.Q(end__isnull=True) | models.Q(end__gt=models.F("start")),
+                name="occurrence_ends_after_it_starts",
+            ),
         ]
 
     def __str__(self):
         return f"{self.event.title} — {self.start:%Y-%m-%d %H:%M}"
 
     @property
+    def finishes_at(self):
+        """When this is over. An occurrence with no stated end is an instant."""
+        return self.end or self.start
+
+    @property
     def has_ended(self):
-        return (self.end or self.start) < timezone.now()
+        return self.finishes_at < timezone.now()
+
+    @property
+    def is_under_way(self):
+        return self.start <= timezone.now() <= self.finishes_at
+
+    @property
+    def spans_days(self):
+        """Does this run past midnight into another local day?
+
+        Asked by every template that formats a date, because "Fri 5 Sep, 6:00
+        pm – 5:00 pm" is not a thing that can be read.
+        """
+        if self.end is None:
+            return False
+        return timezone.localtime(self.start).date() != timezone.localtime(self.end).date()
 
 
 class Interest(models.Model):

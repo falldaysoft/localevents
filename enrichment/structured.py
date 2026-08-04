@@ -105,6 +105,44 @@ def _offers(node):
     return False, low, (high if high != low else None), url
 
 
+def _occurrences_for(title, nodes):
+    """Every date this event runs on, from every node that names it.
+
+    A recurring listing is routinely published as one Event node per date —
+    same name, same place, a different `startDate`. Reading only the first one
+    turns a market that runs every Saturday into a market that ran once, and
+    the submitter has no way of knowing anything was dropped.
+
+    Matching on the title is what keeps this safe on a page that lists several
+    *different* events: only the nodes naming the event we settled on
+    contribute dates, and the others are ignored exactly as before.
+
+    A node's `endDate` may fall on a later day than its start. That is not
+    treated specially — it is a span, and it stays one occurrence.
+    """
+    seen = set()
+    occurrences = []
+
+    for node in nodes:
+        if _text(node.get("name")) != title:
+            continue
+        start = _parse_datetime(node.get("startDate"))
+        if start is None or start in seen:
+            continue
+        seen.add(start)
+
+        end = _parse_datetime(node.get("endDate"))
+        # A publisher that stamps endDate equal to startDate is saying nothing
+        # about duration, and an end that precedes its start is a typo. Either
+        # way the honest answer is "not stated" — and Occurrence will not store
+        # it, since the database refuses an end that is not after the start.
+        if end is not None and end <= start:
+            end = None
+        occurrences.append(ExtractedOccurrence(start=start, end=end))
+
+    return sorted(occurrences, key=lambda o: o.start)
+
+
 def extract(html, source_url=""):
     """Build an EventDraft from schema.org markup, or return None.
 
@@ -114,10 +152,11 @@ def extract(html, source_url=""):
     """
     soup = BeautifulSoup(html, "html.parser")
 
-    node = next((n for n in _iter_json_ld(soup) if _is_event(n)), None)
-    if node is None:
+    nodes = [n for n in _iter_json_ld(soup) if _is_event(n)]
+    if not nodes:
         return None
 
+    node = nodes[0]
     title = _text(node.get("name"))
     if not title:
         return None
@@ -139,12 +178,7 @@ def extract(html, source_url=""):
 
     is_free, price_min, price_max, ticket_url = _offers(node)
 
-    occurrences = []
-    start = _parse_datetime(node.get("startDate"))
-    if start:
-        occurrences.append(
-            ExtractedOccurrence(start=start, end=_parse_datetime(node.get("endDate")))
-        )
+    occurrences = _occurrences_for(title, nodes)
 
     image = node.get("image")
     image_url = _text(image) if not isinstance(image, dict) else _text(image.get("url"))
@@ -163,8 +197,17 @@ def extract(html, source_url=""):
         ticket_url=(ticket_url or "")[:500],
         image_url=(image_url or "")[:500],
         occurrences=occurrences,
+        # Say how many dates came back. Silence here reads as "we found the
+        # date", and a submitter skimming a page of prefilled fields will not
+        # count the rows unless something tells them there is a count to check.
+        is_series=len(occurrences) > 1,
         notes_for_submitter=(
-            "Read from the page's own event data. Please check the date and "
-            "venue before submitting."
+            "Read from the page's own event data. Please check the "
+            + (
+                f"{len(occurrences)} dates and the venue"
+                if len(occurrences) > 1
+                else "date and venue"
+            )
+            + " before submitting."
         ),
     )

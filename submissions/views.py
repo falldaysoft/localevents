@@ -1,3 +1,6 @@
+from datetime import datetime
+
+from django import forms
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
@@ -7,7 +10,15 @@ from django.utils import timezone
 from core.models import SiteConfig
 from events.models import Category
 
-from .forms import EventDraftForm, StartSubmissionForm
+from .forms import (
+    EXTRA_OCCURRENCE_ROWS,
+    MAX_OCCURRENCE_ROWS,
+    BaseOccurrenceFormSet,
+    EventDraftForm,
+    OccurrenceForm,
+    OccurrenceFormSet,
+    StartSubmissionForm,
+)
 from .models import Submission, SubmissionMessage, SubmissionQuota
 from .services import save_event_from_draft
 from .sources import advice_for
@@ -101,13 +112,24 @@ def submission_detail(request, pk):
 
     if request.method == "POST":
         form = EventDraftForm(request.POST)
-        if form.is_valid():
+        dates = OccurrenceFormSet(request.POST, prefix="dates")
+
+        # "Add more dates" is a submit button, not JavaScript. Alpine cannot
+        # run under this site's CSP, so a row-adding widget would have to be
+        # hand-written JS; one round trip through the server costs a submitter
+        # nothing and keeps the page working with scripting off entirely.
+        if "add_dates" in request.POST:
+            form = EventDraftForm(initial=_initial_from_post(request.POST))
+            dates = _formset_with_more_rows(request.POST)
+        elif form.is_valid() and dates.is_valid():
             reply = form.cleaned_data.get("reply", "").strip()
             if reply:
                 SubmissionMessage.objects.create(
                     submission=submission, author=request.user, body=reply
                 )
-            event = save_event_from_draft(submission, form.cleaned_data)
+            event = save_event_from_draft(
+                submission, {**form.cleaned_data, "occurrences": dates.dates()}
+            )
             messages.success(
                 request,
                 f"Thanks — “{event.title}” is with the moderators now. "
@@ -119,12 +141,13 @@ def submission_detail(request, pk):
         # not the original extraction — is what the submitter has been asked
         # about. Prefilling from the stale draft would silently undo their own
         # earlier corrections.
-        initial = (
+        initial, occurrences = (
             _initial_from_event(submission.event)
             if submission.event_id
             else _initial_from_draft(submission.draft)
         )
         form = EventDraftForm(initial=initial)
+        dates = OccurrenceFormSet(prefix="dates", initial=occurrences)
 
     return render(
         request,
@@ -132,18 +155,102 @@ def submission_detail(request, pk):
         {
             "submission": submission,
             "form": form,
+            "dates": dates,
             "categories": Category.objects.filter(is_active=True),
             "site_config": SiteConfig.load(),
         },
     )
 
 
-def _initial_from_event(event):
-    """Map an existing event back onto the confirmation form."""
-    occurrences = list(event.occurrences.order_by("start"))
-    first = occurrences[0] if occurrences else None
+def _initial_from_post(post):
+    """Echo a half-filled form back without validating it.
 
-    return {
+    Rebinding would be simpler, but a bound form reports its errors the moment
+    the template touches a field — so asking for another date row would answer
+    with a page of red complaints about the parts not filled in yet. Nobody
+    asking for more space has said they are finished.
+    """
+    initial = {key: post[key] for key in post if key != "categories"}
+    initial["categories"] = post.getlist("categories")
+    return initial
+
+
+def _echoed_datetime(raw):
+    """A submitted date, parsed so the widget can render it back.
+
+    Handing the string straight back looks like it works and mostly does,
+    because a browser posts exactly the format the input wants. But Django
+    accepts several other formats on the way in, and a `datetime-local` input
+    given one of them renders *empty* — so a value the server understood
+    perfectly well would vanish from the page. Parsing first means the widget
+    always formats it itself.
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    try:
+        return forms.DateTimeField(required=False).clean(raw)
+    except forms.ValidationError:
+        # Unparseable: give it back as typed so the submitter can see what
+        # they wrote and correct it, rather than facing a blank box.
+        return raw
+
+
+def _formset_with_more_rows(post):
+    """The dates as submitted, plus another batch of blank rows.
+
+    Unbound, for the same reason as above. The rows already filled in come back
+    as initial data, so nobody loses their typing, and the blank count grows
+    each time rather than resetting — pressing the button twice gives four
+    empty rows, which is what pressing it twice ought to mean.
+    """
+    try:
+        total = int(post.get("dates-TOTAL_FORMS", 0))
+    except (TypeError, ValueError):
+        total = 0
+    total = min(total, MAX_OCCURRENCE_ROWS)
+
+    rows = []
+    for index in range(total):
+        start = post.get(f"dates-{index}-start", "").strip()
+        if not start or post.get(f"dates-{index}-DELETE"):
+            continue
+        rows.append(
+            {
+                "start": _echoed_datetime(start),
+                "end": _echoed_datetime(post.get(f"dates-{index}-end", "")),
+                "note": post.get(f"dates-{index}-note", "").strip(),
+            }
+        )
+
+    blank = max(total - len(rows), 0) + EXTRA_OCCURRENCE_ROWS
+    formset_class = forms.formset_factory(
+        OccurrenceForm,
+        formset=BaseOccurrenceFormSet,
+        extra=min(blank, MAX_OCCURRENCE_ROWS - len(rows)),
+        max_num=MAX_OCCURRENCE_ROWS,
+        can_delete=True,
+        can_delete_extra=False,
+    )
+    return formset_class(prefix="dates", initial=rows)
+
+
+def _initial_from_event(event):
+    """Map an existing event back onto the confirmation form.
+
+    Returns the plain fields and the date rows separately, because the dates
+    are a formset and the rest is one form.
+    """
+    occurrences = [
+        {
+            "start": timezone.localtime(o.start),
+            "end": timezone.localtime(o.end) if o.end else None,
+            "note": o.note,
+        }
+        for o in event.occurrences.order_by("start")
+    ]
+
+    fields = {
         "title": event.title,
         "summary": event.summary,
         "description": event.description,
@@ -151,13 +258,7 @@ def _initial_from_event(event):
         "venue_address": event.venue.address if event.venue else "",
         "venue_city": event.venue.city if event.venue else "",
         "organizer_name": event.organizer.name if event.organizer else "",
-        "starts_at": first.start if first else None,
-        "ends_at": first.end if first else None,
         "is_series": event.is_series,
-        "additional_dates": "\n".join(
-            timezone.localtime(o.start).strftime("%Y-%m-%d %H:%M")
-            for o in occurrences[1:]
-        ),
         "is_free": event.is_free,
         "price_note": event.price_note,
         "is_family_friendly": event.is_family_friendly,
@@ -166,6 +267,30 @@ def _initial_from_event(event):
         "source_url": event.source_url,
         "ticket_url": event.ticket_url,
     }
+    return fields, occurrences
+
+
+def _draft_datetime(value):
+    """A datetime out of whatever the extraction put in the draft.
+
+    The draft is JSON, so these arrive as ISO strings. They have to become real
+    datetimes before reaching the form: a `datetime-local` input silently
+    ignores a value it cannot parse, so handing the widget a string in the
+    wrong shape loses the extracted time without saying so.
+    """
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if timezone.is_naive(parsed):
+        # The model is told to report local time, so a naive value is local.
+        return timezone.make_aware(parsed)
+    return timezone.localtime(parsed)
 
 
 def _initial_from_draft(draft):
@@ -175,10 +300,20 @@ def _initial_from_draft(draft):
     every field here tolerates being absent.
     """
     if not draft:
-        return {}
+        return {}, []
 
-    occurrences = draft.get("occurrences") or []
-    first = occurrences[0] if occurrences else {}
+    occurrences = [
+        {
+            "start": _draft_datetime(occurrence.get("start")),
+            "end": _draft_datetime(occurrence.get("end")),
+            "note": (occurrence.get("note") or "")[:200],
+        }
+        for occurrence in (draft.get("occurrences") or [])
+    ]
+    # A row with an unparseable start is a row the submitter cannot correct —
+    # the input renders empty either way — so drop it and let them add one.
+    occurrences = [o for o in occurrences if o["start"]]
+    occurrences.sort(key=lambda row: row["start"])
 
     slugs = draft.get("category_slugs") or []
     category_ids = list(
@@ -187,13 +322,7 @@ def _initial_from_draft(draft):
         )
     )
 
-    extra = "\n".join(
-        occurrence["start"].replace("T", " ")[:16]
-        for occurrence in occurrences[1:]
-        if occurrence.get("start")
-    )
-
-    return {
+    fields = {
         "title": draft.get("title", ""),
         "summary": draft.get("summary", ""),
         "description": draft.get("description", ""),
@@ -201,10 +330,7 @@ def _initial_from_draft(draft):
         "venue_address": draft.get("venue_address", ""),
         "venue_city": draft.get("venue_city", ""),
         "organizer_name": draft.get("organizer_name", ""),
-        "starts_at": (first.get("start") or "").replace("T", " ")[:16] or None,
-        "ends_at": (first.get("end") or "").replace("T", " ")[:16] or None,
         "is_series": draft.get("is_series", False),
-        "additional_dates": extra,
         "is_free": draft.get("is_free", False),
         "price_note": draft.get("price_note", ""),
         "is_family_friendly": draft.get("is_family_friendly", False),
@@ -212,6 +338,7 @@ def _initial_from_draft(draft):
         "categories": category_ids,
         "ticket_url": draft.get("ticket_url", ""),
     }
+    return fields, occurrences
 
 
 @login_required

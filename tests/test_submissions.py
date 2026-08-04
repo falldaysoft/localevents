@@ -41,8 +41,32 @@ def signed_in(client, submitter):
     return client
 
 
-def _valid_form_data(**overrides):
-    start = timezone.now() + timedelta(days=10)
+def _dates(*rows):
+    """Management form and rows for the occurrence formset.
+
+    Each row is a (start, end, note) tuple, or a bare start. Written out here
+    rather than hidden behind a helper import so a test reading back shows
+    exactly what a submitter's browser would post.
+    """
+    data = {
+        "dates-TOTAL_FORMS": str(len(rows)),
+        "dates-INITIAL_FORMS": "0",
+        "dates-MIN_NUM_FORMS": "0",
+        "dates-MAX_NUM_FORMS": "60",
+    }
+    for index, row in enumerate(rows):
+        start, end, note = row if isinstance(row, tuple) else (row, None, "")
+        data[f"dates-{index}-start"] = (
+            start.strftime("%Y-%m-%d %H:%M") if hasattr(start, "strftime") else start
+        )
+        data[f"dates-{index}-end"] = (
+            end.strftime("%Y-%m-%d %H:%M") if hasattr(end, "strftime") else (end or "")
+        )
+        data[f"dates-{index}-note"] = note
+    return data
+
+
+def _valid_form_data(dates=None, **overrides):
     data = {
         "title": "Spring Choir Concert",
         "summary": "An evening of choral music.",
@@ -51,14 +75,12 @@ def _valid_form_data(**overrides):
         "venue_address": "12 River Road",
         "venue_city": "Anytown",
         "organizer_name": "Anytown Choir",
-        "starts_at": start.strftime("%Y-%m-%d %H:%M"),
-        "ends_at": "",
-        "additional_dates": "",
         "price_note": "",
         "accessibility_notes": "",
         "source_url": "",
         "ticket_url": "",
     }
+    data.update(_dates(*(dates or [timezone.now() + timedelta(days=10)])))
     data.update(overrides)
     return data
 
@@ -200,7 +222,14 @@ def test_the_form_is_prefilled_from_the_draft(signed_in, submitter):
     assert initial["title"] == "Spring Choir Concert"
     assert initial["venue_name"] == "Community Hall"
     assert initial["is_free"] is True
-    assert initial["starts_at"].startswith(start.strftime("%Y-%m-%d"))
+
+    # A real datetime, not the ISO string the draft holds. A `datetime-local`
+    # input drops a value it cannot parse without saying so, which would lose
+    # the extracted time between the model reading it and the submitter
+    # confirming it — the one place this pipeline cannot afford a silent loss.
+    prefilled = response.context["dates"].forms[0].initial["start"]
+    assert timezone.localtime(prefilled) == timezone.localtime(start)
+    assert start.strftime("%Y-%m-%dT%H:%M") in response.content.decode()
 
 
 # --- the confirmation step -------------------------------------------------
@@ -252,7 +281,34 @@ def test_confirming_reuses_an_existing_venue(signed_in, submitter):
 @pytest.mark.django_db
 def test_a_series_submission_records_every_date(signed_in, submitter):
     first = timezone.now() + timedelta(days=7)
-    extra = [first + timedelta(days=7 * n) for n in (1, 2)]
+    dates = [first + timedelta(days=7 * n) for n in (0, 1, 2)]
+    submission = Submission.objects.create(
+        submitted_by=submitter, status=Submission.Status.AWAITING_SUBMITTER
+    )
+
+    signed_in.post(
+        reverse("submission_detail", args=[submission.pk]),
+        _valid_form_data(dates=dates, is_series="on"),
+    )
+
+    event = Event.objects.get()
+    assert event.listing_type == Event.ListingType.SERIES
+    assert Occurrence.objects.filter(event=event).count() == 3
+
+
+@pytest.mark.django_db
+def test_every_date_keeps_its_own_hours(signed_in, submitter):
+    """The farmers market case, and the reason this stopped being a textarea.
+
+    A market open Fridays 9–2 and Saturdays 7–2 used to publish as a Saturday
+    with no closing time at all: the form had one "ends at" field, the extra
+    dates were a list of bare timestamps, and every end but the first was
+    written to the database as null.
+    """
+    friday = (timezone.now() + timedelta(days=7)).replace(
+        hour=9, minute=0, second=0, microsecond=0
+    )
+    saturday = (friday + timedelta(days=1)).replace(hour=7, minute=0)
     submission = Submission.objects.create(
         submitted_by=submitter, status=Submission.Status.AWAITING_SUBMITTER
     )
@@ -260,15 +316,125 @@ def test_a_series_submission_records_every_date(signed_in, submitter):
     signed_in.post(
         reverse("submission_detail", args=[submission.pk]),
         _valid_form_data(
-            starts_at=first.strftime("%Y-%m-%d %H:%M"),
+            dates=[
+                (friday, friday.replace(hour=14), "Fewer stalls in winter"),
+                (saturday, saturday.replace(hour=14), ""),
+            ],
             is_series="on",
-            additional_dates="\n".join(d.strftime("%Y-%m-%d %H:%M") for d in extra),
         ),
     )
 
-    event = Event.objects.get()
-    assert event.listing_type == Event.ListingType.SERIES
-    assert Occurrence.objects.filter(event=event).count() == 3
+    occurrences = list(Occurrence.objects.order_by("start"))
+    assert [timezone.localtime(o.end).hour for o in occurrences] == [14, 14]
+    assert [timezone.localtime(o.start).hour for o in occurrences] == [9, 7]
+    assert occurrences[0].note == "Fewer stalls in winter"
+
+
+@pytest.mark.django_db
+def test_an_event_may_run_past_midnight_into_another_day(signed_in, submitter):
+    """One occurrence, not three. A festival is a span, not a set of days."""
+    start = (timezone.now() + timedelta(days=20)).replace(hour=18, minute=0)
+    submission = Submission.objects.create(
+        submitted_by=submitter, status=Submission.Status.AWAITING_SUBMITTER
+    )
+
+    signed_in.post(
+        reverse("submission_detail", args=[submission.pk]),
+        _valid_form_data(
+            dates=[(start, start + timedelta(days=2, hours=-1), "")]
+        ),
+    )
+
+    occurrence = Occurrence.objects.get()
+    assert occurrence.spans_days
+    assert (occurrence.end - occurrence.start).days == 1
+
+
+@pytest.mark.django_db
+def test_an_end_before_its_start_is_refused(signed_in, submitter):
+    start = timezone.now() + timedelta(days=10)
+    submission = Submission.objects.create(
+        submitted_by=submitter, status=Submission.Status.AWAITING_SUBMITTER
+    )
+
+    response = signed_in.post(
+        reverse("submission_detail", args=[submission.pk]),
+        _valid_form_data(dates=[(start, start - timedelta(hours=1), "")]),
+    )
+
+    assert Event.objects.count() == 0
+    assert "after the start" in str(response.context["dates"].errors)
+
+
+@pytest.mark.django_db
+def test_removing_a_date_drops_it_and_keeps_the_others(signed_in, submitter):
+    """A cancelled week is one checkbox, not retyping the whole schedule."""
+    first = timezone.now() + timedelta(days=7)
+    second = first + timedelta(days=7)
+    submission = Submission.objects.create(
+        submitted_by=submitter, status=Submission.Status.AWAITING_SUBMITTER
+    )
+
+    data = _valid_form_data(dates=[first, second], is_series="on")
+    data["dates-INITIAL_FORMS"] = "2"
+    data["dates-0-DELETE"] = "on"
+
+    signed_in.post(reverse("submission_detail", args=[submission.pk]), data)
+
+    assert Occurrence.objects.count() == 1
+    assert timezone.localtime(
+        Occurrence.objects.get().start
+    ).date() == timezone.localtime(second).date()
+
+
+@pytest.mark.django_db
+def test_removing_every_date_is_refused(signed_in, submitter):
+    """An event with no dates is not an event, and the queue cannot show it."""
+    start = timezone.now() + timedelta(days=7)
+    submission = Submission.objects.create(
+        submitted_by=submitter, status=Submission.Status.AWAITING_SUBMITTER
+    )
+
+    data = _valid_form_data(dates=[start])
+    data["dates-INITIAL_FORMS"] = "1"
+    data["dates-0-DELETE"] = "on"
+
+    response = signed_in.post(
+        reverse("submission_detail", args=[submission.pk]), data
+    )
+
+    assert Event.objects.count() == 0
+    assert "at least one date" in str(response.context["dates"].non_form_errors())
+
+
+@pytest.mark.django_db
+def test_asking_for_more_date_rows_keeps_what_was_typed(signed_in, submitter):
+    """Pressing "Add more dates" is not a submission.
+
+    It has to come back with the typing intact and without a page of
+    complaints about the parts not filled in yet — nobody asking for more
+    space has said they are finished.
+    """
+    start = timezone.now() + timedelta(days=10)
+    submission = Submission.objects.create(
+        submitted_by=submitter, status=Submission.Status.AWAITING_SUBMITTER
+    )
+
+    response = signed_in.post(
+        reverse("submission_detail", args=[submission.pk]),
+        _valid_form_data(dates=[start], title="", add_dates="1"),
+    )
+
+    dates = response.context["dates"]
+    assert Event.objects.count() == 0
+    assert len(dates.forms) > 1
+    assert timezone.localtime(dates.forms[0].initial["start"]).hour == (
+        timezone.localtime(start).hour
+    )
+    # The title is blank and required, but the submitter has not claimed to be
+    # done, so nothing is marked wrong yet.
+    assert not response.context["form"].errors
+    assert not dates.errors
 
 
 @pytest.mark.django_db
@@ -278,27 +444,62 @@ def test_a_past_date_is_rejected_with_a_useful_message(signed_in, submitter):
     )
     response = signed_in.post(
         reverse("submission_detail", args=[submission.pk]),
-        _valid_form_data(starts_at=(timezone.now() - timedelta(days=30)).strftime("%Y-%m-%d %H:%M")),
+        _valid_form_data(dates=[timezone.now() - timedelta(days=30)]),
     )
 
     assert Event.objects.count() == 0
-    assert "already passed" in str(response.context["form"].errors)
+    assert "already passed" in str(response.context["dates"].non_form_errors())
 
 
 @pytest.mark.django_db
-def test_a_bad_extra_date_names_the_line_that_failed(signed_in, submitter):
-    """A series can carry a dozen dates; 'invalid format' would mean hunting."""
+def test_a_bad_date_is_flagged_on_the_row_it_is_on(signed_in, submitter):
+    """A series can carry a dozen dates; one blanket error would mean hunting.
+
+    The row is the unit now, so the error lands next to the input rather than
+    naming a line number in a textarea.
+    """
     submission = Submission.objects.create(
         submitted_by=submitter, status=Submission.Status.AWAITING_SUBMITTER
     )
-    good = (timezone.now() + timedelta(days=14)).strftime("%Y-%m-%d %H:%M")
+    good = timezone.now() + timedelta(days=14)
     response = signed_in.post(
         reverse("submission_detail", args=[submission.pk]),
-        _valid_form_data(additional_dates=f"{good}\nnext tuesday"),
+        _valid_form_data(dates=[good, "next tuesday"]),
     )
 
-    errors = str(response.context["form"].errors)
-    assert "Line 2" in errors and "next tuesday" in errors
+    errors = response.context["dates"].errors
+    assert not errors[0]
+    assert "start" in errors[1]
+
+
+@pytest.mark.django_db
+def test_a_series_part_way_through_its_run_can_still_be_resubmitted(
+    signed_in, submitter
+):
+    """The wrong-year guard must not block an answer to a moderator.
+
+    A weekly series sent back with a question has usually lost a date or two
+    by the time its owner replies. Rejecting each past row individually to
+    catch a misextracted year would make that resubmission impossible, so the
+    rule is that *something* has to still be ahead — not that everything does.
+    """
+    submission = Submission.objects.create(
+        submitted_by=submitter, status=Submission.Status.AWAITING_SUBMITTER
+    )
+
+    signed_in.post(
+        reverse("submission_detail", args=[submission.pk]),
+        _valid_form_data(
+            dates=[
+                timezone.now() - timedelta(days=14),
+                timezone.now() - timedelta(days=7),
+                timezone.now() + timedelta(days=7),
+            ],
+            is_series="on",
+        ),
+    )
+
+    assert Occurrence.objects.count() == 3
 
 
 @pytest.mark.django_db
@@ -326,12 +527,12 @@ def test_a_misextracted_year_is_caught_at_the_confirmation_step(
         reverse("submission_detail", args=[submission.pk]),
         _valid_form_data(
             title="Tween Freeze Fest",
-            starts_at=(timezone.now() - timedelta(days=365)).strftime("%Y-%m-%d %H:%M"),
+            dates=[timezone.now() - timedelta(days=365)],
         ),
     )
 
     assert Event.objects.count() == 0
-    assert "right year" in str(response.context["form"].errors)
+    assert "right year" in str(response.context["dates"].non_form_errors())
 
 
 @pytest.mark.django_db

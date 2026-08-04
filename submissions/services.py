@@ -94,15 +94,20 @@ def save_event_from_draft(submission, data):
 
     event.categories.set(data.get("categories") or [])
 
-    starts = [data["starts_at"], *data.get("additional_dates", [])]
+    # Every date carries its own hours. An earlier version wrote `end` onto the
+    # first occurrence and null onto the rest, which silently threw away the
+    # closing time of every date but one — a market open Fridays 9–2 and
+    # Saturdays 7–2 published as "Saturday, 7am" and nothing more.
+    dates = data.get("occurrences") or []
+
     # Replace rather than merge: a submitter correcting a wrong date expects the
     # wrong one to be gone, and get_or_create alone would leave it behind.
-    event.occurrences.exclude(start__in=starts).delete()
-    for index, start in enumerate(starts):
+    event.occurrences.exclude(start__in=[row["start"] for row in dates]).delete()
+    for row in dates:
         Occurrence.objects.update_or_create(
             event=event,
-            start=start,
-            defaults={"end": data.get("ends_at") if index == 0 else None},
+            start=row["start"],
+            defaults={"end": row.get("end"), "note": row.get("note", "")},
         )
 
     submission.event = event
