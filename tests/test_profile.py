@@ -156,3 +156,39 @@ def test_passkey_page_is_not_about_security_keys(client, reauthenticated):
 
     assert "Add a passkey" in body
     assert "Add Security Key" not in body
+
+
+@pytest.mark.django_db
+def test_no_authenticator_app_is_offered_anywhere(client, reauthenticated):
+    """Passkeys are the whole of the offer here.
+
+    A TOTP app is a second step on top of a password — a security ritual to ask
+    of someone whose account can post a church bazaar. A passkey *replaces* the
+    password and is less work than what it replaces. Offering both put an
+    "Authenticator App / Activate" panel in front of someone who had come to
+    set up Touch ID, which is how this was reported.
+    """
+    from django.urls import NoReverseMatch
+
+    for page in (reverse("mfa_index"), reverse("profile")):
+        body = client.get(page).content.decode()
+        assert "Authenticator" not in body, f"{page} still offers an authenticator app"
+        assert "Two-Factor" not in body, f"{page} frames passkeys as a second factor"
+
+    with pytest.raises(NoReverseMatch):
+        reverse("mfa_activate_totp")
+
+
+@pytest.mark.django_db
+def test_the_passkey_pages_say_passkey(client, reauthenticated):
+    """allauth's own word throughout is "security key".
+
+    Landing on "Two-Factor Authentication → Security Keys → You have added 1
+    security key" after setting up Touch ID describes neither what was done nor
+    what it is for. Every page reachable from the profile is overridden; this
+    is what notices when an allauth upgrade adds one back.
+    """
+    for page in (reverse("mfa_index"), reverse("mfa_list_webauthn")):
+        body = client.get(page).content.decode()
+        assert "passkey" in body.lower(), f"{page} never says passkey"
+        assert "security key" not in body.lower(), f"{page} still says security key"

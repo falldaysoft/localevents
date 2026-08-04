@@ -210,7 +210,15 @@ ACCOUNT_RATE_LIMITS = {
 
 # Passkeys are offered as an additional method, not a replacement — the email
 # address still has to be confirmed either way.
-MFA_SUPPORTED_TYPES = ["webauthn", "totp"]
+#
+# Passkeys only, deliberately. A TOTP app is a second step *in addition to* a
+# password, which is a security ritual to ask of someone whose account can post
+# a church bazaar to a listings page; a passkey replaces the password with a
+# fingerprint and is less work than what it replaces. Offering both put an
+# "Authenticator App / Activate" panel in front of people who came to set up
+# Touch ID. Recovery codes stay out for the same reason — they only exist to
+# rescue a second factor there is now no way to be locked out by.
+MFA_SUPPORTED_TYPES = ["webauthn"]
 MFA_PASSKEY_LOGIN_ENABLED = True
 MFA_PASSKEY_SIGNUP_ENABLED = False
 

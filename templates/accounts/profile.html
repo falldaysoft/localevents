@@ -48,17 +48,6 @@
             </li>
             <li class="flex items-center justify-between gap-4 py-3">
                 <div>
-                    <p class="font-medium">Authenticator app</p>
-                    <p class="mt-0.5 text-slate-500">
-                        {% if has_totp %}Active.{% else %}A six-digit code at sign-in, as a second step.{% endif %}
-                    </p>
-                </div>
-                <a href="{% url 'mfa_index' %}" class="btn-secondary shrink-0">
-                    {% if has_totp %}Manage{% else %}Set up{% endif %}
-                </a>
-            </li>
-            <li class="flex items-center justify-between gap-4 py-3">
-                <div>
                     <p class="font-medium">Password</p>
                     <p class="mt-0.5 text-slate-500">Change the password you sign in with.</p>
                 </div>

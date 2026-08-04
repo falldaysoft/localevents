@@ -20,10 +20,10 @@ def profile(request):
     """Everything about your own account, in one place.
 
     Reached by clicking your name in the nav. It owns almost nothing itself —
-    passwords, email addresses, passkeys and TOTP all live in allauth's own
-    pages, which handle re-authentication properly. What it adds is a way in:
-    those pages had no link anywhere in the site, so passkeys were a feature
-    you had to already know the URL for.
+    passwords, email addresses and passkeys all live in allauth's own pages,
+    which handle re-authentication properly. What it adds is a way in: those
+    pages had no link anywhere in the site, so passkeys were a feature you had
+    to already know the URL for.
     """
     form = ProfileForm(request.POST or None, instance=request.user)
 
@@ -36,19 +36,14 @@ def profile(request):
     else:
         status = 200
 
-    authenticators = list(Authenticator.objects.filter(user=request.user))
-
     return render(
         request,
         "accounts/profile.html",
         {
             "form": form,
-            "passkey_count": sum(
-                1 for a in authenticators if a.type == Authenticator.Type.WEBAUTHN
-            ),
-            "has_totp": any(
-                a.type == Authenticator.Type.TOTP for a in authenticators
-            ),
+            "passkey_count": Authenticator.objects.filter(
+                user=request.user, type=Authenticator.Type.WEBAUTHN
+            ).count(),
         },
         status=status,
     )

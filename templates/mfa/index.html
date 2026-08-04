@@ -1,0 +1,58 @@
+{% extends "mfa/base_manage.html" %}
+{% load allauth %}
+{% load i18n %}
+
+{% comment %}allauth's MFA landing page, which on this site is a passkey page.
+
+    Their version is built around "Two-Factor Authentication" with a panel per
+    supported type. With MFA_SUPPORTED_TYPES down to webauthn alone the TOTP and
+    recovery-code panels drop out on their own, but the heading and the words
+    "security key" do not — and a passkey here is not a second factor at all,
+    it is the whole sign-in. Someone who has just added Touch ID should not be
+    told they have configured two-factor authentication.
+
+    allauth redirects here after a key is added, which is how this page is
+    normally seen at all; the profile page links to the list below instead.
+{% endcomment %}
+
+{% block head_title %}
+    {% trans "Passkeys" %}
+{% endblock head_title %}
+
+{% block content %}
+    {% element h1 tags="mfa,index" %}
+        {% trans "Passkeys" %}
+    {% endelement %}
+    {% element p %}
+        {% trans "A passkey signs you in with Touch ID, Face ID, Windows Hello, or your phone — no password to remember or type." %}
+    {% endelement %}
+    {% element panel %}
+        {% slot title %}
+            {% trans "Your passkeys" %}
+        {% endslot %}
+        {% slot body %}
+            {% if authenticators.webauthn|length %}
+                {% element p %}
+                    {% blocktranslate count count=authenticators.webauthn|length %}You have {{ count }} passkey.{% plural %}You have {{ count }} passkeys.{% endblocktranslate %}
+                {% endelement %}
+            {% else %}
+                {% element p %}
+                    {% trans "You have not added a passkey yet." %}
+                {% endelement %}
+            {% endif %}
+        {% endslot %}
+        {% slot actions %}
+            {% if authenticators.webauthn|length %}
+                {% url 'mfa_list_webauthn' as webauthn_list_url %}
+                {% element button href=webauthn_list_url %}
+                    {% trans "Manage" %}
+                {% endelement %}
+            {% else %}
+                {% url 'mfa_add_webauthn' as webauthn_add_url %}
+                {% element button href=webauthn_add_url %}
+                    {% trans "Add a passkey" %}
+                {% endelement %}
+            {% endif %}
+        {% endslot %}
+    {% endelement %}
+{% endblock content %}
