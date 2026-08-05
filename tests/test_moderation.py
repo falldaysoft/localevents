@@ -495,13 +495,22 @@ def test_no_template_syntax_leaks_into_a_moderation_page(signed_in_mod, submitte
     renders as visible body text. It happened on the public side once and
     happened again on this page during the build — a check per page area is
     cheaper than remembering.
+
+    The event screens were added to this list after a two-line comment on the
+    edit form was found rendering to the page. It had been there since the
+    form was written: the guard existed, and simply did not cover that URL.
     """
     submission = _pending(submitter)
+    event = submission.event
     pages = [
         reverse("mod_queue"),
         reverse("mod_rising"),
         reverse("mod_audit"),
+        reverse("mod_refreshes"),
         reverse("mod_submission", args=[submission.pk]),
+        reverse("mod_event_edit", args=[event.pk]),
+        reverse("mod_event_dates", args=[event.pk]),
+        reverse("mod_event_refresh", args=[event.pk]),
     ]
 
     for url in pages:

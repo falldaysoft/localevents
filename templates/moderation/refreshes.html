@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Refreshes — {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+    {% include "moderation/_tabs.html" with section='refreshes' %}
+
+    <h1 class="mt-6 text-2xl font-semibold tracking-tight">Pages read again</h1>
+    <p class="mt-1 text-sm text-slate-500">
+        Source pages that have been re-read and are waiting on a decision.
+        Nothing here has changed a listing yet.
+    </p>
+
+    {% if refreshes %}
+        <ul class="mt-6 space-y-3">
+            {% for refresh in refreshes %}
+                <li class="card flex flex-wrap items-baseline justify-between gap-3">
+                    <div>
+                        <a href="{% url 'mod_event_refresh' refresh.event.pk %}"
+                           class="font-medium hover:underline">{{ refresh.event.title }}</a>
+                        <p class="mt-0.5 text-sm text-slate-500">
+                            {{ refresh.message }}
+                        </p>
+                        <p class="mt-0.5 text-xs text-slate-400">
+                            {{ refresh.created_at|timesince }} ago
+                            {% if refresh.requested_by %}&middot; asked for by {{ refresh.requested_by.display_name }}{% endif %}
+                            {% if refresh.method_label %}&middot; {{ refresh.method_label }}{% endif %}
+                        </p>
+                    </div>
+                    <a href="{% url 'mod_event_refresh' refresh.event.pk %}" class="btn-secondary">Review</a>
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <div class="card mt-6 text-sm text-slate-600">
+            Nothing waiting. A refresh starts from a listing's own
+            <em>Read the source page again</em> link, or in bulk from the admin.
+        </div>
+    {% endif %}
+{% endblock %}

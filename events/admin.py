@@ -4,6 +4,7 @@ from django.utils.html import format_html
 from .models import (
     Category,
     Event,
+    EventRefresh,
     GeocodeThrottle,
     Interest,
     Occurrence,
@@ -135,7 +136,40 @@ class EventAdmin(admin.ModelAdmin):
             return format_html('<span style="color:#999">—</span>')
         return occurrence.start.strftime("%Y-%m-%d %H:%M")
 
-    actions = ["publish", "feature", "send_to_background"]
+    actions = ["publish", "feature", "send_to_background", "refresh_from_source"]
+
+    @admin.action(description="Read the source page again")
+    def refresh_from_source(self, request, queryset):
+        """Queue a re-read of every selected listing's source page.
+
+        The bulk case is the reason this exists at all: a site carries a
+        backlog of events entered before it could record more than one date,
+        and fixing those one listing at a time is the kind of chore that never
+        gets done. Results wait under Refreshes in the moderation queue — none
+        of them touches a listing until a moderator accepts it.
+
+        Each read may cost a model call, so the daily spend cap in AIConfig is
+        the thing standing between this action and a surprising bill. Selecting
+        two hundred events is allowed; paying for two hundred extractions in
+        one afternoon is not.
+        """
+        from events.refresh import request_refresh
+
+        queued = skipped = 0
+        for event in queryset:
+            if not event.source_url:
+                skipped += 1
+                continue
+            request_refresh(event, request.user)
+            queued += 1
+
+        self.message_user(request, f"{queued} page(s) queued for re-reading.")
+        if skipped:
+            self.message_user(
+                request,
+                f"{skipped} skipped — no source page to read.",
+                level="warning",
+            )
 
     @admin.action(description="Publish selected events")
     def publish(self, request, queryset):
@@ -182,4 +216,26 @@ class GeocodeThrottleAdmin(admin.ModelAdmin):
         return False
 
     def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(EventRefresh)
+class EventRefreshAdmin(admin.ModelAdmin):
+    """Visible for diagnostics, not for deciding.
+
+    Accepting a proposal happens in the moderation queue, where the current
+    value sits beside the new one. A row of raw JSON is not a surface on which
+    anyone should be agreeing to change a published listing.
+    """
+
+    list_display = ("event", "status", "method", "created_at", "requested_by")
+    list_filter = ("status", "method")
+    search_fields = ("event__title", "source_url")
+    readonly_fields = (
+        "event", "source_url", "status", "method", "message", "draft",
+        "requested_by", "applied_by", "applied_fields",
+        "created_at", "updated_at", "finished_at",
+    )
+
+    def has_add_permission(self, request):
         return False

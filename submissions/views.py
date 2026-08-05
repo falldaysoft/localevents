@@ -1,6 +1,5 @@
 from datetime import datetime
 
-from django import forms
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
@@ -11,13 +10,10 @@ from core.models import SiteConfig
 from events.models import Category
 
 from .forms import (
-    EXTRA_OCCURRENCE_ROWS,
-    MAX_OCCURRENCE_ROWS,
-    BaseOccurrenceFormSet,
     EventDraftForm,
-    OccurrenceForm,
     OccurrenceFormSet,
     StartSubmissionForm,
+    formset_with_more_rows,
 )
 from .models import Submission, SubmissionMessage, SubmissionQuota
 from .services import save_event_from_draft
@@ -114,13 +110,9 @@ def submission_detail(request, pk):
         form = EventDraftForm(request.POST)
         dates = OccurrenceFormSet(request.POST, prefix="dates")
 
-        # "Add more dates" is a submit button, not JavaScript. Alpine cannot
-        # run under this site's CSP, so a row-adding widget would have to be
-        # hand-written JS; one round trip through the server costs a submitter
-        # nothing and keeps the page working with scripting off entirely.
         if "add_dates" in request.POST:
             form = EventDraftForm(initial=_initial_from_post(request.POST))
-            dates = _formset_with_more_rows(request.POST)
+            dates = formset_with_more_rows(request.POST, OccurrenceFormSet)
         elif form.is_valid() and dates.is_valid():
             reply = form.cleaned_data.get("reply", "").strip()
             if reply:
@@ -173,66 +165,6 @@ def _initial_from_post(post):
     initial = {key: post[key] for key in post if key != "categories"}
     initial["categories"] = post.getlist("categories")
     return initial
-
-
-def _echoed_datetime(raw):
-    """A submitted date, parsed so the widget can render it back.
-
-    Handing the string straight back looks like it works and mostly does,
-    because a browser posts exactly the format the input wants. But Django
-    accepts several other formats on the way in, and a `datetime-local` input
-    given one of them renders *empty* — so a value the server understood
-    perfectly well would vanish from the page. Parsing first means the widget
-    always formats it itself.
-    """
-    raw = (raw or "").strip()
-    if not raw:
-        return None
-    try:
-        return forms.DateTimeField(required=False).clean(raw)
-    except forms.ValidationError:
-        # Unparseable: give it back as typed so the submitter can see what
-        # they wrote and correct it, rather than facing a blank box.
-        return raw
-
-
-def _formset_with_more_rows(post):
-    """The dates as submitted, plus another batch of blank rows.
-
-    Unbound, for the same reason as above. The rows already filled in come back
-    as initial data, so nobody loses their typing, and the blank count grows
-    each time rather than resetting — pressing the button twice gives four
-    empty rows, which is what pressing it twice ought to mean.
-    """
-    try:
-        total = int(post.get("dates-TOTAL_FORMS", 0))
-    except (TypeError, ValueError):
-        total = 0
-    total = min(total, MAX_OCCURRENCE_ROWS)
-
-    rows = []
-    for index in range(total):
-        start = post.get(f"dates-{index}-start", "").strip()
-        if not start or post.get(f"dates-{index}-DELETE"):
-            continue
-        rows.append(
-            {
-                "start": _echoed_datetime(start),
-                "end": _echoed_datetime(post.get(f"dates-{index}-end", "")),
-                "note": post.get(f"dates-{index}-note", "").strip(),
-            }
-        )
-
-    blank = max(total - len(rows), 0) + EXTRA_OCCURRENCE_ROWS
-    formset_class = forms.formset_factory(
-        OccurrenceForm,
-        formset=BaseOccurrenceFormSet,
-        extra=min(blank, MAX_OCCURRENCE_ROWS - len(rows)),
-        max_num=MAX_OCCURRENCE_ROWS,
-        can_delete=True,
-        can_delete_extra=False,
-    )
-    return formset_class(prefix="dates", initial=rows)
 
 
 def _initial_from_event(event):

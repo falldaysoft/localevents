@@ -199,6 +199,17 @@ class BaseOccurrenceFormSet(forms.BaseFormSet):
     is still ahead catches the first and leaves the second alone.
     """
 
+    # The guard is aimed at an extraction the submitter is being asked to
+    # rubber-stamp. A moderator correcting the dates of an event that already
+    # happened is doing something legitimate and is looking straight at the
+    # year they typed, so their formset turns it off.
+    reject_all_past = True
+
+    # Which per-row fields, besides the start, this formset carries. Read by
+    # `dates()` and by `formset_with_more_rows` so a subclass that adds a
+    # column does not have to reimplement either.
+    row_fields = ("end", "note")
+
     def add_fields(self, form, index):
         super().add_fields(form, index)
         if self.can_delete and "DELETE" in form.fields:
@@ -226,7 +237,9 @@ class BaseOccurrenceFormSet(forms.BaseFormSet):
                 "The same date and time is listed twice."
             )
 
-        if max(dated) < timezone.now() - timezone.timedelta(days=1):
+        if self.reject_all_past and max(dated) < timezone.now() - timezone.timedelta(
+            days=1
+        ):
             raise forms.ValidationError(
                 "That date has already passed. Is it the right year?"
                 if len(dated) == 1
@@ -238,8 +251,7 @@ class BaseOccurrenceFormSet(forms.BaseFormSet):
         rows = [
             {
                 "start": form.cleaned_data["start"],
-                "end": form.cleaned_data.get("end"),
-                "note": form.cleaned_data.get("note", ""),
+                **{name: form.cleaned_data.get(name) for name in self.row_fields},
             }
             for form in self.forms
             if form.cleaned_data.get("start")
@@ -256,3 +268,72 @@ OccurrenceFormSet = forms.formset_factory(
     can_delete=True,
     can_delete_extra=False,
 )
+
+
+def echoed_datetime(raw):
+    """A submitted date, parsed so the widget can render it back.
+
+    Handing the string straight back looks like it works and mostly does,
+    because a browser posts exactly the format the input wants. But Django
+    accepts several other formats on the way in, and a `datetime-local` input
+    given one of them renders *empty* — so a value the server understood
+    perfectly well would vanish from the page. Parsing first means the widget
+    always formats it itself.
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    try:
+        return forms.DateTimeField(required=False).clean(raw)
+    except forms.ValidationError:
+        # Unparseable: give it back as typed so whoever wrote it can see what
+        # they wrote and correct it, rather than facing a blank box.
+        return raw
+
+
+def formset_with_more_rows(post, formset_class, prefix="dates"):
+    """The dates as submitted, plus another batch of blank rows.
+
+    "Add more dates" is a submit button, not JavaScript: Alpine cannot run
+    under this site's CSP, so a row-adding widget would have to be hand-written
+    JS, and one round trip through the server costs nothing and keeps the page
+    working with scripting off entirely.
+
+    The result is deliberately *unbound*. Rebinding would be simpler, but a
+    bound form reports its errors the moment the template touches a field — so
+    asking for another row would answer with a page of red complaints about the
+    parts not filled in yet, and nobody asking for more space has said they are
+    finished. The rows already filled in come back as initial data, so nobody
+    loses their typing, and the blank count grows each time rather than
+    resetting: pressing the button twice gives four empty rows, which is what
+    pressing it twice ought to mean.
+    """
+    try:
+        total = int(post.get(f"{prefix}-TOTAL_FORMS", 0))
+    except (TypeError, ValueError):
+        total = 0
+    total = min(total, MAX_OCCURRENCE_ROWS)
+
+    rows = []
+    for index in range(total):
+        start = post.get(f"{prefix}-{index}-start", "").strip()
+        if not start or post.get(f"{prefix}-{index}-DELETE"):
+            continue
+        row = {"start": echoed_datetime(start)}
+        for name in formset_class.row_fields:
+            raw = post.get(f"{prefix}-{index}-{name}", "")
+            # A checkbox posts "on" or nothing at all, and either is already
+            # the right truthiness for a BooleanField's initial value.
+            row[name] = echoed_datetime(raw) if name == "end" else raw.strip()
+        rows.append(row)
+
+    blank = max(total - len(rows), 0) + EXTRA_OCCURRENCE_ROWS
+    grown = forms.formset_factory(
+        formset_class.form,
+        formset=formset_class,
+        extra=min(blank, MAX_OCCURRENCE_ROWS - len(rows)),
+        max_num=MAX_OCCURRENCE_ROWS,
+        can_delete=True,
+        can_delete_extra=False,
+    )
+    return grown(prefix=prefix, initial=rows)

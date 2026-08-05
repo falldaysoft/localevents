@@ -58,6 +58,12 @@ The same goes for templates: more than once, "my fix didn't work" turned out to
 be a stray `runserver` from an earlier session still bound to the port. Check
 `ps aux | grep runserver` before believing a puzzling result.
 
+**`runserver --noreload` serves stale templates.** Django caches compiled
+templates even in development and relies on the autoreloader to drop that cache
+when a file changes, so `--noreload` means template edits are invisible until a
+restart — a fixed template rendering its old text, which reads exactly like the
+fix not working. Same symptom as the stray process above, different cause.
+
 `createsuperuser` produces an account that **cannot sign in** — email
 confirmation is mandatory and a shell-created account has no confirmation mail
 to click. Follow it with `manage.py verify_email you@example.com`, or use
@@ -164,6 +170,45 @@ finish. And templates must never format an end on its own: `{% occurrence_when %
 in `events/templatetags/event_dates.py` owns the three shapes (no end, ends the
 same day, ends later), because the obvious `{{ o.end|date:"H:i" }}` renders a
 weekend-long festival as "Fri 5 Sep, 18:00 – 17:00".
+
+**A listing can be re-read from its source page, and a human still decides.**
+Two things go stale after approval: the page (a time moves, dates are added)
+and *our reading of it* — an event entered before occurrences carried their own
+hours holds one date where the page always listed six. `events/refresh.py`
+re-runs the same pipeline against `event.source_url` on the worker, stores the
+result as an `EventRefresh`, and shows a moderator each field the page now
+disagrees with, current value beside new, with a checkbox. Nothing is written
+without a tick, because after publication there is no submitter left in the
+loop and a rewritten page would otherwise silently replace a listing a human
+already checked. Four rules fall out of that and each is tested: a refresh
+never proposes *emptying* a field (a page redesigned into a JavaScript shell
+extracts as a title and nothing else); never proposes a boolean as False (the
+schema defaults them, so False is indistinguishable from "didn't say"); never
+touches status, prominence, listing type or slug; and only replaces dates from
+today onward, or re-reading a weekly class in its ninth month would delete
+every date it had ever run. Categories are added to, never replaced. There is a
+bulk `EventAdmin` action for the backlog case, and its results queue under
+`/moderate/refreshes/` — the daily `AIConfig` spend cap is what stands between
+that action and a surprising bill.
+
+**Dates are edited on their own screen.** `/moderate/event/<pk>/dates/`, not the
+edit form: everything there is text a mistake in is embarrassing, and a mistake
+in a date sends someone to a locked hall. It shares the submitter's
+`OccurrenceFormSet` with two changes — a `Cancelled` box (keeps the date listed
+and struck through, which is what a reader who already has it in their calendar
+needs) and `reject_all_past = False`, because the wrong-year guard is aimed at
+an extraction a submitter is rubber-stamping and a moderator fixing the record
+of a past event is doing something ordinary. Before this screen the only way to
+add a second date to a published event was the Django admin, which means a staff
+account — a far larger grant than "may correct a listing".
+
+**`events/services.py` owns the writes more than one path makes.** `venue_for`,
+`organizer_for` and `set_occurrences` are shared by the submission confirmation,
+the dates screen and the refresh. When only the submission path had them, the
+map grew a second pin the moment another path created a venue the first would
+have reused. `set_occurrences` writes only the keys a row actually carries,
+which is what lets a refresh restate a page's dates without un-cancelling one a
+moderator cancelled.
 
 **The crowd nominates, a human decides.** The "Interested" count feeds a mod
 *Rising* queue and breaks ties within a prominence tier; it can never move an

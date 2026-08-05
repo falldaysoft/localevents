@@ -11,7 +11,7 @@ from django.db import transaction
 from django.db.models import Avg, Q
 from django.utils import timezone
 
-from events.models import Event
+from events.models import Event, EventRefresh
 from submissions.models import ModerationAction, Submission, SubmissionMessage
 
 from .tasks import email_submitter
@@ -316,6 +316,11 @@ def queue_counts(moderator):
             ]
         ),
     )
+    # A second query, because refreshes hang off events rather than
+    # submissions. Worth it: a bulk re-read queued from the admin lands
+    # nowhere a moderator would think to look, and an unbadged tab is a
+    # feature nobody uses.
+    rows["refreshes"] = EventRefresh.objects.awaiting_review().count()
     return rows
 
 

@@ -61,8 +61,14 @@ def page_text(html):
     return "\n".join(lines)
 
 
-def enrich_url(url, submission=None):
-    """Read `url` into an EventDraft, recording what it cost."""
+def enrich_url(url, submission=None, event=None):
+    """Read `url` into an EventDraft, recording what it cost.
+
+    `submission` and `event` are both optional and both go straight onto the
+    cost record: a page is read once for a new submission and again later when
+    a moderator refreshes a published listing, and the two are indistinguishable
+    in the table without them.
+    """
     started = time.monotonic()
 
     try:
@@ -70,6 +76,7 @@ def enrich_url(url, submission=None):
     except FetchError as exc:
         EnrichmentRun.objects.create(
             submission=submission,
+            event=event,
             source_url=url,
             method=EnrichmentRun.Method.STRUCTURED,
             status=EnrichmentRun.Status.FAILED,
@@ -88,6 +95,7 @@ def enrich_url(url, submission=None):
     if draft is not None:
         EnrichmentRun.objects.create(
             submission=submission,
+            event=event,
             source_url=final_url,
             method=EnrichmentRun.Method.STRUCTURED,
             status=EnrichmentRun.Status.OK,
@@ -104,7 +112,7 @@ def enrich_url(url, submission=None):
 
     if not config.enabled:
         EnrichmentRun.objects.create(
-            submission=submission, source_url=final_url,
+            submission=submission, event=event, source_url=final_url,
             method=EnrichmentRun.Method.LLM,
             status=EnrichmentRun.Status.SKIPPED,
             error="AI enrichment is switched off.",
@@ -119,7 +127,7 @@ def enrich_url(url, submission=None):
     if not config.is_within_budget():
         logger.warning("daily enrichment spend cap reached; skipping %s", url)
         EnrichmentRun.objects.create(
-            submission=submission, source_url=final_url,
+            submission=submission, event=event, source_url=final_url,
             method=EnrichmentRun.Method.LLM,
             status=EnrichmentRun.Status.SKIPPED,
             error="Daily spend cap reached.",
@@ -140,7 +148,7 @@ def enrich_url(url, submission=None):
     except llm.LLMError as exc:
         logger.warning("llm extraction failed for %s: %s", url, exc)
         EnrichmentRun.objects.create(
-            submission=submission, source_url=final_url,
+            submission=submission, event=event, source_url=final_url,
             method=EnrichmentRun.Method.LLM,
             status=EnrichmentRun.Status.FAILED,
             endpoint=_endpoint_of(config), model=config.model,
@@ -157,7 +165,7 @@ def enrich_url(url, submission=None):
     output_tokens = usage.get("output_tokens", 0)
 
     EnrichmentRun.objects.create(
-        submission=submission, source_url=final_url,
+        submission=submission, event=event, source_url=final_url,
         method=EnrichmentRun.Method.LLM,
         status=EnrichmentRun.Status.OK,
         endpoint=_endpoint_of(config), model=config.model,

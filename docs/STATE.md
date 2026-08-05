@@ -18,12 +18,13 @@ Last updated after the multi-day work that followed Phase 4.
 | 3 — submission + AI enrichment | done | `0e4cece`, `6ed920e`, `4e5c4c8` |
 | 4 — moderation queue, Rising | done | this commit |
 | multi-day events | done | this commit |
+| refresh from source, editable dates | done | this commit |
 | 5 — feed importers | **next** | |
 | 6 — outbound feeds (ICS/RSS/JSON) | not started | |
 | 7 — interest button (Rising itself is done) | not started | |
 | 8 — series lifecycle, reusability docs | not started | |
 
-265 tests passing. `make check` clean.
+316 tests passing. `make check` clean.
 
 Phase 7 shrank: the `Interest` model, the Rising ranking and the promotion
 action all landed with Phase 4, because the mod queue is where they are read.
@@ -275,6 +276,87 @@ Verified locally against the real Brantford page: it publishes no schema.org
 markup, so it takes the model path, and the prompt now states the Friday/Saturday
 case explicitly. A two-date draft renders as two populated rows with all four
 times. **Not verified against a live model run** — see below.
+
+## Refreshing a listing from its source
+
+Prompted by two problems that turn out to be one. A published listing goes
+stale when the page moves on, and it also carries whatever *we* could
+understand of that page on the day it was submitted — so events entered before
+occurrences had their own end times hold one date where the page always listed
+six. And there was no way to fix that: dates were not editable outside the
+Django admin, which means a staff account.
+
+Two screens, both under `/moderate/event/<pk>/`:
+
+- **`dates/`** — an `OccurrenceFormSet` for an existing event. Same rows as the
+  submitter's form plus a **Cancelled** box, which is a genuinely different
+  action from **Remove this date**: cancelled keeps the date listed and struck
+  through for someone who already has it in their calendar, removed takes it
+  off as though it was never real. The formset's wrong-year guard is switched
+  off here (`reject_all_past = False`) — it is aimed at an extraction a
+  submitter is rubber-stamping, and a moderator correcting the record of an
+  event that already happened is doing something ordinary.
+- **`refresh/`** — re-reads `event.source_url` through the same pipeline, on
+  the worker, and shows what the page now disagrees with: current value beside
+  new, one checkbox each.
+
+The refresh's design is entirely in what it refuses to do. It never writes to
+an event on its own. After publication there is no submitter in the loop, so an
+auto-applying refresh would let a rewritten page silently replace a listing a
+human had already checked, and the first anyone would know is a reader turning
+up on the wrong evening. Four more restraints, each with a test:
+
+- **Never propose emptying a field.** A page redesigned into a JavaScript shell
+  extracts as a title and nothing else, and reading that silence as "the
+  description is gone now" would gut every listing whose source moved.
+- **Never propose a boolean as False.** `EventDraft` defaults them, so a False
+  is indistinguishable from "the page didn't mention it".
+- **Never touch placement** — status, prominence, listing type, slug. A page
+  has no opinion about where an event sits.
+- **Only replace dates from today onward.** A source page describes what is
+  coming. Without `keep_before`, re-reading a weekly class in its ninth month
+  would delete every date it had ever run.
+
+Categories are added to rather than replaced, because a moderator's
+categorisation is a judgement made with the whole site in view and an
+extraction that recognised one slug is not grounds for dropping the other two.
+
+`EventRefresh` lives in `events` and stores the proposal; storing rather than
+diffing on the fly is not bookkeeping, it is that extraction takes 116–336s and
+the moderator arrives minutes after it finished. `EnrichmentRun` gained an
+`event` FK so a refresh's cost lands in the same table as a submission's —
+otherwise they are orphan rows nobody can account for.
+
+For the backlog case there is an `EventAdmin` action that queues a re-read for
+every selected listing, and a `/moderate/refreshes/` tab so the results are
+somewhere a moderator would look. The daily `AIConfig` spend cap is the only
+thing between that action and a large bill; selecting two hundred events is
+allowed, paying for two hundred extractions in one afternoon is not.
+
+`events/services.py` is new and holds `venue_for`, `organizer_for` and
+`set_occurrences` — previously private to `submissions.services`, now shared by
+all three write paths, because a second path creating venues its own way is how
+the map grows two pins for one hall.
+
+**Verified in a browser against the real server**, not only in tests: a
+proposal with three changes, one unticked, applied — summary and dates written,
+venue left alone, status/prominence/slug untouched, both audit rows present.
+Then the dates screen, where a cancellation and a per-date note round-tripped.
+**Not verified against a live model run**; the read was seeded, so what is
+unproven is the same thing that was already unproven — extraction quality — not
+the plumbing around it.
+
+Two things this turned up that were not the point:
+
+- **A two-line `{# #}` was rendering as body text on the moderator's edit
+  form**, and had been since that form was written. The guard against exactly
+  this exists in `tests/test_moderation.py` — it simply did not list the event
+  URLs. It does now.
+- **`runserver --noreload` serves stale templates.** Django caches compiled
+  templates in development and drops that cache from the autoreloader, so with
+  `--noreload` a fixed template keeps rendering its old text. That is how the
+  comment above was found *after* being fixed, and it looks exactly like a fix
+  not working.
 
 ## Starting Phase 5
 

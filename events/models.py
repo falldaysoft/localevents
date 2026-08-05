@@ -703,3 +703,135 @@ class Interest(models.Model):
         Event.objects.filter(pk=event_id, interest_count__gt=0).update(
             interest_count=models.F("interest_count") - 1
         )
+
+
+# ---------------------------------------------------------------------------
+# Re-reading a source page
+# ---------------------------------------------------------------------------
+
+
+class EventRefreshQuerySet(models.QuerySet):
+    def awaiting_review(self):
+        return self.filter(status=EventRefresh.Status.READY)
+
+    def stranded(self, now=None):
+        """Refreshes whose worker is never coming back. See Submission.stranded."""
+        from submissions.models import STALE_ENRICHMENT_AFTER
+
+        now = now or timezone.now()
+        return self.filter(
+            status__in=[EventRefresh.Status.QUEUED, EventRefresh.Status.READING],
+            updated_at__lt=now - STALE_ENRICHMENT_AFTER,
+        )
+
+
+class EventRefresh(models.Model):
+    """A re-read of an event's source page, held until a human accepts it.
+
+    Two things go stale after a listing is approved: the page itself — a time
+    moves, a date is added — and *our* reading of it. An event entered before
+    occurrences carried their own hours has one date where the page always
+    listed six, and no amount of re-reading the old draft recovers them. Both
+    are fixed by reading the page again.
+
+    What is deliberately *not* here is applying the result. A refresh never
+    writes to its event on its own, however confident the extraction looks.
+    The same rule that governs submissions holds after publication and matters
+    more, because there is no submitter left in the loop: a moderator sees each
+    field the page now disagrees with and ticks the ones to take. An
+    auto-applying refresh would let a rewritten page silently replace a listing
+    a human had already checked, and the first anyone would know of it is a
+    reader turning up on the wrong evening.
+
+    Storing the proposal rather than diffing on the fly is not bookkeeping for
+    its own sake: extraction measured 116s and 336s against real pages, so it
+    runs on the worker, and the moderator arrives at a result that was produced
+    minutes earlier.
+    """
+
+    class Status(models.TextChoices):
+        QUEUED = "queued", "Queued"
+        READING = "reading", "Reading the page"
+        READY = "ready", "Ready to review"
+        FAILED = "failed", "Couldn't read the page"
+        APPLIED = "applied", "Applied"
+        DISCARDED = "discarded", "Discarded"
+
+    event = models.ForeignKey(
+        Event, on_delete=models.CASCADE, related_name="refreshes"
+    )
+    # Copied at request time rather than read from the event when the worker
+    # picks it up, so the record says which page was actually read even if
+    # somebody edits the event's link in between.
+    source_url = models.URLField()
+
+    status = models.CharField(
+        max_length=12, choices=Status.choices, default=Status.QUEUED
+    )
+    draft = models.JSONField(default=dict, blank=True)
+    method = models.CharField(max_length=12, blank=True)
+    message = models.CharField(max_length=300, blank=True)
+
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="requested_refreshes",
+    )
+    applied_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="applied_refreshes",
+    )
+    # Which changes were taken, for the audit trail. A moderator who accepted
+    # the dates and left the description alone should be readable as such
+    # months later.
+    applied_fields = models.JSONField(default=list, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    objects = EventRefreshQuerySet.as_manager()
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["status", "created_at"])]
+        verbose_name_plural = "event refreshes"
+
+    def __str__(self):
+        return f"{self.event.title} — {self.get_status_display()}"
+
+    @property
+    def is_running(self):
+        return self.status in {self.Status.QUEUED, self.Status.READING}
+
+    @property
+    def method_label(self):
+        """"Page's own event data" or "Language model", for the moderator.
+
+        Worth showing: the free path is exact and the model's is a guess, and
+        that changes how carefully the proposal below it deserves reading.
+        """
+        from enrichment.models import EnrichmentRun
+
+        return dict(EnrichmentRun.Method.choices).get(self.method, "")
+
+    @property
+    def is_stranded(self):
+        """Has this been claimed by a worker that died? See Submission."""
+        # Imported here rather than at module scope: `events` is the domain
+        # every other app reads, and importing a consumer from it at import
+        # time would invert that and risk a cycle.
+        from submissions.models import STALE_ENRICHMENT_AFTER
+
+        if not self.is_running:
+            return False
+        return (timezone.now() - self.updated_at) > STALE_ENRICHMENT_AFTER
+
+    def give_up(self):
+        """Stop waiting on a worker that is not coming back."""
+        self.status = self.Status.FAILED
+        self.message = (
+            "We didn't finish reading that page. Try again, or edit the "
+            "listing by hand."
+        )
+        self.finished_at = timezone.now()
+        self.save(update_fields=["status", "message", "finished_at", "updated_at"])

@@ -36,6 +36,18 @@ class EnrichmentRun(models.Model):
         on_delete=models.SET_NULL,
         related_name="enrichment_runs",
     )
+    # A page is also read *after* publication, when a moderator refreshes a
+    # listing from its source. Those calls cost the same money and count
+    # against the same daily cap, so they belong in the same table — and
+    # without somewhere to put the event they would show up as orphan rows
+    # with no submission and no way to tell what they were for.
+    event = models.ForeignKey(
+        "events.Event",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="enrichment_runs",
+    )
     source_url = models.URLField(blank=True)
 
     method = models.CharField(max_length=12, choices=Method.choices)

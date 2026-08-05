@@ -12,7 +12,15 @@ urlpatterns = [
     path("<int:pk>/reject/", views.reject, name="mod_reject"),
     path("<int:pk>/ask/", views.request_info, name="mod_request_info"),
     path("promote/<int:pk>/", views.promote, name="mod_promote"),
+    path("refreshes/", views.refresh_queue, name="mod_refreshes"),
     # Namespaced under event/ so it never collides with the bare <int:pk>
     # submission route above, which it would otherwise shadow.
     path("event/<int:pk>/edit/", views.event_edit, name="mod_event_edit"),
+    path("event/<int:pk>/dates/", views.event_dates, name="mod_event_dates"),
+    path("event/<int:pk>/refresh/", views.event_refresh, name="mod_event_refresh"),
+    path(
+        "event/<int:pk>/refresh/status/",
+        views.event_refresh_status,
+        name="mod_event_refresh_status",
+    ),
 ]

@@ -6,44 +6,10 @@ by tests without going through HTTP.
 
 from django.db import transaction
 
-from events.geocoding import geocode_venue
-from events.models import Event, Occurrence, Organizer, Venue
+from events.models import Event
+from events.services import organizer_for, set_occurrences, venue_for
 
 from .models import ModerationAction, Submission
-
-
-def _venue_for(name, address, city):
-    """Find or create a venue, queueing geocoding only for genuinely new ones.
-
-    Matching on name and city rather than creating blindly is what keeps the
-    map useful — three events at the community hall should share one pin, and
-    one geocode.
-    """
-    if not name.strip():
-        return None
-
-    venue = Venue.objects.filter(name__iexact=name.strip(), city__iexact=city.strip()).first()
-    if venue:
-        # Fill in an address we didn't have before; don't overwrite a good one.
-        if address and not venue.address:
-            venue.address = address
-            venue.save(update_fields=["address"])
-        return venue
-
-    venue = Venue.objects.create(
-        name=name.strip()[:200], address=address.strip()[:300], city=city.strip()[:120]
-    )
-    geocode_venue.enqueue(venue.pk)
-    return venue
-
-
-def _organizer_for(name):
-    if not name.strip():
-        return None
-    organizer = Organizer.objects.filter(name__iexact=name.strip()).first()
-    if organizer:
-        return organizer
-    return Organizer.objects.create(name=name.strip()[:200])
 
 
 @transaction.atomic
@@ -60,12 +26,12 @@ def save_event_from_draft(submission, data):
     details are right, not that the event belongs on the site. Prominence is
     never touched here at all, because placement is a moderator's call.
     """
-    venue = _venue_for(
+    venue = venue_for(
         data.get("venue_name", ""),
         data.get("venue_address", ""),
         data.get("venue_city", ""),
     )
-    organizer = _organizer_for(data.get("organizer_name", ""))
+    organizer = organizer_for(data.get("organizer_name", ""))
 
     event = submission.event or Event(
         source=Event.Source.SUBMISSION,
@@ -98,17 +64,7 @@ def save_event_from_draft(submission, data):
     # first occurrence and null onto the rest, which silently threw away the
     # closing time of every date but one — a market open Fridays 9–2 and
     # Saturdays 7–2 published as "Saturday, 7am" and nothing more.
-    dates = data.get("occurrences") or []
-
-    # Replace rather than merge: a submitter correcting a wrong date expects the
-    # wrong one to be gone, and get_or_create alone would leave it behind.
-    event.occurrences.exclude(start__in=[row["start"] for row in dates]).delete()
-    for row in dates:
-        Occurrence.objects.update_or_create(
-            event=event,
-            start=row["start"],
-            defaults={"end": row.get("end"), "note": row.get("note", "")},
-        )
+    set_occurrences(event, data.get("occurrences") or [])
 
     submission.event = event
     submission.status = Submission.Status.PENDING_REVIEW

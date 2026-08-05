@@ -8,13 +8,21 @@ backlog should never have to open a second tab to find out what a page said.
 
 from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from core.models import SiteConfig
 from submissions.models import ModerationAction, Submission
 
 from . import services
-from .forms import ApproveForm, EventEditForm, RejectForm, RequestInfoForm
+from .forms import (
+    ApproveForm,
+    EventEditForm,
+    ModeratorOccurrenceFormSet,
+    RefreshApplyForm,
+    RejectForm,
+    RequestInfoForm,
+)
 from .permissions import moderator_required
 
 
@@ -262,4 +270,208 @@ def event_edit(request, pk):
         request,
         "moderation/event_edit.html",
         _chrome(request, event=event, form=form),
+    )
+
+
+@moderator_required
+def event_dates(request, pk):
+    """When a listing happens, on its own screen.
+
+    Split out from the edit form deliberately. Everything else there is text a
+    mistake in is embarrassing; a mistake here sends someone to a locked hall,
+    and burying the dates among twenty other fields is how one gets changed by
+    accident while somebody fixes a typo.
+
+    Until this existed the only way to add a second date to a published event
+    was the Django admin — which means a staff account, which is a far larger
+    grant than "may correct a listing". Events entered before an occurrence
+    could carry its own end time are the reason it was needed: they hold one
+    date where the source page always listed six.
+    """
+    from events.models import Event
+    from events.services import set_occurrences
+    from submissions.forms import formset_with_more_rows
+
+    event = get_object_or_404(Event, pk=pk)
+
+    if request.method == "POST":
+        dates = ModeratorOccurrenceFormSet(request.POST, prefix="dates")
+
+        if "add_dates" in request.POST:
+            dates = formset_with_more_rows(
+                request.POST, ModeratorOccurrenceFormSet
+            )
+        elif dates.is_valid():
+            rows = dates.dates()
+            set_occurrences(event, rows)
+            ModerationAction.record(
+                request.user,
+                "dates_edited",
+                event=event,
+                detail=f"{len(rows)} date{'' if len(rows) == 1 else 's'} — {event.title}",
+            )
+            messages.success(request, f"Dates updated for “{event.title}”.")
+            return redirect("mod_event_edit", pk=event.pk)
+    else:
+        dates = ModeratorOccurrenceFormSet(
+            prefix="dates", initial=_date_rows(event)
+        )
+
+    return render(
+        request,
+        "moderation/event_dates.html",
+        _chrome(request, event=event, dates=dates),
+    )
+
+
+def _date_rows(event):
+    """An event's occurrences as formset initial data.
+
+    Localised on the way out because a `datetime-local` input has no timezone
+    of its own: handing it a UTC value renders the right instant under the
+    wrong clock, and a moderator would "fix" a 7pm concert that was never
+    wrong.
+    """
+    from django.utils import timezone as tz
+
+    return [
+        {
+            "start": tz.localtime(o.start),
+            "end": tz.localtime(o.end) if o.end else None,
+            "note": o.note,
+            "is_cancelled": o.is_cancelled,
+        }
+        for o in event.occurrences.order_by("start")
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Refreshing a listing from its source page
+# ---------------------------------------------------------------------------
+
+
+@moderator_required
+def event_refresh(request, pk):
+    """Read the source page again and offer a moderator what changed.
+
+    A GET shows whatever the last run produced; a POST either starts a run,
+    takes some of its changes, or throws it away. Nothing is ever written to
+    the event without a tick against it — see `events.refresh` for why that is
+    not negotiable.
+    """
+    from events.models import Event
+    from events.refresh import (
+        apply_refresh,
+        changes_for,
+        discard_refresh,
+        request_refresh,
+    )
+
+    event = get_object_or_404(
+        Event.objects.select_related("venue", "organizer"), pk=pk
+    )
+    refresh = event.refreshes.first()
+
+    # A worker that died mid-read never releases its claim, so a page that
+    # only ever polls would spin forever.
+    if refresh is not None and refresh.is_stranded:
+        refresh.give_up()
+
+    if request.method == "POST":
+        if "start" in request.POST:
+            if not event.source_url:
+                messages.error(
+                    request, "This listing has no source page to read."
+                )
+                return redirect("mod_event_refresh", pk=event.pk)
+            request_refresh(event, request.user)
+            return redirect("mod_event_refresh", pk=event.pk)
+
+        if refresh is None or refresh.status != refresh.Status.READY:
+            messages.error(request, "That proposal is no longer current.")
+            return redirect("mod_event_refresh", pk=event.pk)
+
+        if "discard" in request.POST:
+            discard_refresh(refresh, request.user)
+            messages.info(request, "Discarded. The listing is unchanged.")
+            return redirect("mod_event_edit", pk=event.pk)
+
+        form = RefreshApplyForm(changes_for(refresh), request.POST)
+        if form.is_valid():
+            taken = apply_refresh(refresh, form.chosen(), request.user)
+            if taken:
+                ModerationAction.record(
+                    request.user,
+                    "refreshed_from_source",
+                    event=event,
+                    detail=f"{', '.join(taken)} — {event.title}",
+                )
+                messages.success(
+                    request, f"Updated {', '.join(taken).lower()} from the page."
+                )
+            else:
+                messages.info(request, "Nothing taken. The listing is unchanged.")
+            return redirect("mod_event_edit", pk=event.pk)
+    else:
+        form = None
+
+    changes = (
+        changes_for(refresh)
+        if refresh is not None and refresh.status == refresh.Status.READY
+        else []
+    )
+
+    return render(
+        request,
+        "moderation/event_refresh.html",
+        _chrome(
+            request,
+            event=event,
+            refresh=refresh,
+            changes=changes,
+            form=form or RefreshApplyForm(changes),
+        ),
+    )
+
+
+@moderator_required
+def event_refresh_status(request, pk):
+    """HTMX poll target while a page is being read."""
+    from events.models import Event
+
+    event = get_object_or_404(Event, pk=pk)
+    refresh = event.refreshes.first()
+
+    if refresh is not None and refresh.is_stranded:
+        refresh.give_up()
+
+    response = render(
+        request,
+        "moderation/event_refresh.html#status",
+        {"event": event, "refresh": refresh},
+    )
+    if refresh is None or not refresh.is_running:
+        # Stop polling and show the result.
+        response["HX-Redirect"] = reverse("mod_event_refresh", args=[event.pk])
+    return response
+
+
+@moderator_required
+def refresh_queue(request):
+    """Every re-read waiting on a decision.
+
+    Without this a bulk refresh is invisible: the admin can queue fifty and
+    each result would sit on a listing nobody has a reason to open.
+    """
+    from events.models import EventRefresh
+
+    refreshes = (
+        EventRefresh.objects.awaiting_review()
+        .select_related("event", "event__venue", "requested_by")
+        .order_by("-created_at")[:100]
+    )
+    return render(
+        request,
+        "moderation/refreshes.html",
+        _chrome(request, refreshes=refreshes),
     )

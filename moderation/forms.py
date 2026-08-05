@@ -9,6 +9,12 @@ from django import forms
 from django.db.models import Q
 
 from events.models import Category, Event
+from submissions.forms import (
+    EXTRA_OCCURRENCE_ROWS,
+    MAX_OCCURRENCE_ROWS,
+    BaseOccurrenceFormSet,
+    OccurrenceForm,
+)
 
 INPUT_CLASS = (
     "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm "
@@ -157,3 +163,75 @@ class EventEditForm(forms.ModelForm):
             )
 
         return cleaned
+
+
+class ModeratorOccurrenceForm(OccurrenceForm):
+    """A date row as a moderator sees it.
+
+    One field more than the submitter's: cancelling a single date is a
+    moderator's job and nobody else's. A submitter with a cancelled date would
+    delete the row; a moderator must not, because "cancelled" is information a
+    reader who already has the date in their calendar needs to see.
+    """
+
+    is_cancelled = forms.BooleanField(
+        required=False,
+        label="Cancelled",
+        help_text="Keeps the date listed, struck through, rather than "
+                  "removing it from a page someone may already have seen.",
+    )
+
+
+class BaseModeratorOccurrenceFormSet(BaseOccurrenceFormSet):
+    """The dates of an existing event, edited by someone trusted with them.
+
+    The submitter's formset refuses a set of dates that has entirely gone by,
+    because the mistake it is aimed at is an extraction quietly dating an
+    undated page to last year. That guard is wrong here: a moderator correcting
+    the record of an event that already happened is doing something ordinary,
+    and unlike a submitter reviewing a machine's guess they are looking
+    straight at the year they typed.
+    """
+
+    reject_all_past = False
+    row_fields = ("end", "note", "is_cancelled")
+
+
+ModeratorOccurrenceFormSet = forms.formset_factory(
+    ModeratorOccurrenceForm,
+    formset=BaseModeratorOccurrenceFormSet,
+    extra=EXTRA_OCCURRENCE_ROWS,
+    max_num=MAX_OCCURRENCE_ROWS,
+    can_delete=True,
+    can_delete_extra=False,
+)
+
+
+class RefreshApplyForm(forms.Form):
+    """Which of a re-read's proposed changes to take.
+
+    Built from the diff at request time rather than declared, because the
+    fields a page disagrees with are different every time. Validating against
+    that list is what stops a stale form — one left open while a second
+    refresh ran — writing a change the moderator never saw.
+    """
+
+    def __init__(self, changes, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.changes = changes
+        for change in changes:
+            self.fields[change.key] = forms.BooleanField(
+                required=False, label=change.label, initial=True
+            )
+
+    def rows(self):
+        """Each change beside its checkbox.
+
+        Paired here rather than in the template because a template cannot look
+        a bound field up by a variable name without a filter written for the
+        purpose, and one method beats one filter.
+        """
+        return [(change, self[change.key]) for change in self.changes]
+
+    def chosen(self):
+        return [key for key, value in self.cleaned_data.items() if value]

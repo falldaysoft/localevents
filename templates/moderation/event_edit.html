@@ -40,9 +40,15 @@
             <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Where and who</h2>
             {% include "submissions/_field.html" with field=form.venue %}
             {% include "submissions/_field.html" with field=form.organizer %}
+            {% comment %}
+                Django's {# #} is single-line only, and this was two — so the
+                note to the next developer was rendering as body text on the
+                page. Reached the site because the raw-syntax guard in
+                tests/test_browse.py only covers the public pages.
+                Venues and organizers are shared records; renaming one here
+                would rename it on every other event that uses it.
+            {% endcomment %}
             <p class="text-sm text-slate-500">
-                {# Venues and organizers are shared records; renaming one here would
-                   rename it on every other event that uses it. #}
                 Editing a venue or organizer's own details is a separate job — this
                 only chooses which one this event points at.
             </p>
@@ -134,9 +140,26 @@
             Dates are not on this form. They live on Occurrence, and changing
             when something happens is a bigger decision than fixing a typo.
         {% endcomment %}
-        <div class="card text-sm text-slate-500">
-            Dates are not edited here. This listing has
-            {{ event.occurrences.count }} date{{ event.occurrences.count|pluralize }} on record.
+        <div class="card space-y-3 text-sm text-slate-600">
+            <p>
+                Dates are not edited here. This listing has
+                {{ event.occurrences.count }} date{{ event.occurrences.count|pluralize }} on record.
+            </p>
+            <div class="flex flex-wrap items-center gap-3">
+                <a href="{% url 'mod_event_dates' event.pk %}" class="btn-secondary">Edit the dates</a>
+                {% if event.source_url %}
+                    <a href="{% url 'mod_event_refresh' event.pk %}" class="btn-secondary">
+                        Read the source page again
+                    </a>
+                {% endif %}
+            </div>
+            {% if event.source_url %}
+                <p class="text-slate-500">
+                    Re-reading finds what the page has added since — including
+                    dates a listing entered before this site recorded them
+                    could not hold. Nothing is changed without your say-so.
+                </p>
+            {% endif %}
         </div>
 
         <div class="flex items-center gap-3">
