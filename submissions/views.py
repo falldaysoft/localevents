@@ -138,6 +138,12 @@ def submission_detail(request, pk):
             if submission.event_id
             else _initial_from_draft(submission.draft)
         )
+        # An extraction says what a page contains, never where it was — so the
+        # link the submitter pasted has to be put back on the form here. Left
+        # out, the source field shows blank on the one screen that claims to be
+        # everything we hold, and a page that failed to read has an empty form
+        # with no sign the link survived at all.
+        initial.setdefault("source_url", submission.source_url)
         form = EventDraftForm(initial=initial)
         dates = OccurrenceFormSet(prefix="dates", initial=occurrences)
 

@@ -232,6 +232,53 @@ def test_the_form_is_prefilled_from_the_draft(signed_in, submitter):
     assert start.strftime("%Y-%m-%dT%H:%M") in response.content.decode()
 
 
+@pytest.mark.django_db
+def test_the_form_carries_back_the_link_that_was_submitted(signed_in, submitter):
+    """An extraction says what a page contains, never where it was.
+
+    Nothing in the draft holds the address, so the source field rendered blank
+    on the very screen that claims to show everything we hold — and the
+    submitter had no way to tell the link was still attached.
+    """
+    submission = Submission.objects.create(
+        submitted_by=submitter,
+        source_url="https://example.org/spring-concert",
+        status=Submission.Status.AWAITING_SUBMITTER,
+        draft=EventDraft(
+            title="Spring Choir Concert",
+            occurrences=[
+                ExtractedOccurrence(start=timezone.now() + timedelta(days=9))
+            ],
+        ).model_dump(mode="json"),
+    )
+
+    response = signed_in.get(reverse("submission_detail", args=[submission.pk]))
+
+    assert (
+        response.context["form"].initial["source_url"]
+        == "https://example.org/spring-concert"
+    )
+    assert "https://example.org/spring-concert" in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_a_page_that_could_not_be_read_still_shows_its_link(signed_in, submitter):
+    """The empty-form case, where the reassurance matters most."""
+    submission = Submission.objects.create(
+        submitted_by=submitter,
+        source_url="https://example.org/unreadable",
+        status=Submission.Status.AWAITING_SUBMITTER,
+        enrichment_failed=True,
+    )
+
+    response = signed_in.get(reverse("submission_detail", args=[submission.pk]))
+
+    assert (
+        response.context["form"].initial["source_url"]
+        == "https://example.org/unreadable"
+    )
+
+
 # --- the confirmation step -------------------------------------------------
 
 
