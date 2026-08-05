@@ -277,6 +277,16 @@ that GitHub-hosted runners cannot satisfy. CI runs the checks, the
 missing-migration check and the tests, then pushes the image; `make deploy` runs
 from an allowlisted machine. Images are linux/amd64 only.
 
+**A deploy names its cluster.** `instances/<name>.yaml` carries an optional
+`context:` beside `namespace:`, and `scripts/deploy.sh` switches to it before
+touching anything. Without it the deploy goes wherever kubectl was last
+pointed, which on a machine that administers other clusters is not a
+hypothetical: one ran far enough to create a namespace on an unrelated
+production cluster, and the only symptom was a complaint about a missing
+`ghcr-secret` — indistinguishable from an ordinary first deploy. Which cluster
+a community's site lives on is a fact about that instance, so it belongs in the
+overlay rather than in the product.
+
 ## Testing
 
 pytest with `pytest-django`, tests in top-level `tests/`, one file per concern,

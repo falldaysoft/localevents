@@ -93,6 +93,44 @@ if [[ -z "$NAMESPACE" ]]; then
 fi
 echo "==> namespace: $NAMESPACE"
 
+# ---------------------------------------------------------------------------
+# Which cluster
+#
+# Everything below runs against whatever context kubectl happens to be on, and
+# nothing in a values file used to say which that should be. A machine that
+# also administers other clusters therefore deploys wherever it was last
+# pointed — and the failure is silent, because this script's next complaint is
+# "secret 'ghcr-secret' missing", which reads like an ordinary first deploy
+# rather than like being on someone else's cluster. It got as far as creating
+# a namespace on an unrelated production cluster before stopping.
+#
+# `context:` is declared in the instance file for the same reason `namespace:`
+# is: which cluster a community's site lives on is a fact about that instance,
+# not about the product. It stays optional — a single-cluster machine has
+# nothing to disambiguate — but when it is set it is enforced rather than
+# assumed.
+# ---------------------------------------------------------------------------
+
+CONTEXT=$(grep -E '^context:' "$VALUES_FILE" | head -1 | awk '{print $2}' | tr -d '"')
+CURRENT=$(kubectl config current-context 2>/dev/null || true)
+
+if [[ -n "$CONTEXT" ]]; then
+    if [[ "$CONTEXT" != "$CURRENT" ]]; then
+        echo "==> context:   $CURRENT -> $CONTEXT"
+        if ! kubectl config use-context "$CONTEXT" >/dev/null 2>&1; then
+            echo "error: no kubectl context named '$CONTEXT'." >&2
+            echo "$VALUES_FILE names it; 'kubectl config get-contexts' lists" >&2
+            echo "what this machine has." >&2
+            exit 1
+        fi
+    else
+        echo "==> context:   $CONTEXT"
+    fi
+else
+    # Say it out loud rather than deploying silently into the dark.
+    echo "==> context:   ${CURRENT:-<none>} (no 'context:' in $VALUES_FILE)"
+fi
+
 # Ask the registry whether the tag is really there. Three answers, not two: the
 # image is private, so a machine that is not logged in to ghcr cannot tell us
 # anything, and refusing to deploy because a local docker login expired would

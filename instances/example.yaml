@@ -12,6 +12,13 @@
 namespace: yourtown            # k8s namespace; also the helm release name
 host: events.example.org       # public hostname, no scheme, no www
 
+# The kubectl context to deploy through. Optional, and worth setting on any
+# machine that also administers another cluster: without it the deploy goes
+# wherever kubectl was last pointed, and the first sign of trouble is a
+# complaint about a missing secret rather than about the wrong cluster.
+# `kubectl config get-contexts` lists the names this machine knows.
+# context: my-cluster-ctx
+
 replicaCount: 1
 
 worker:
