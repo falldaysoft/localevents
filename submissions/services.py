@@ -56,6 +56,14 @@ def save_event_from_draft(submission, data):
         else Event.ListingType.ONE_OFF
     )
     event.status = Event.Status.PENDING
+
+    rows = data.get("occurrences") or []
+    if not event.slug:
+        # Before the save, not after: the slug is permanent, so a one-off has
+        # to know its year while there is still no slug to break. A
+        # resubmission already has one and keeps it, whatever its dates now
+        # say — someone has shared that link.
+        event.assign_slug(min((row["start"] for row in rows), default=None))
     event.save()
 
     event.categories.set(data.get("categories") or [])

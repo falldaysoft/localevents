@@ -343,6 +343,103 @@ def test_a_series_submission_records_every_date(signed_in, submitter):
     assert Occurrence.objects.filter(event=event).count() == 3
 
 
+# --- slugs -----------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_a_one_off_is_slugged_with_the_year_it_runs(signed_in, submitter):
+    """This year's fair and next year's are the collision worth resolving."""
+    when = timezone.now() + timedelta(days=10)
+    submission = Submission.objects.create(
+        submitted_by=submitter, status=Submission.Status.AWAITING_SUBMITTER
+    )
+
+    signed_in.post(
+        reverse("submission_detail", args=[submission.pk]),
+        _valid_form_data(title="Spring Fair", dates=[when]),
+    )
+
+    year = timezone.localtime(when).year
+    assert Event.objects.get().slug == f"spring-fair-{year}"
+
+
+@pytest.mark.django_db
+def test_the_same_event_next_year_gets_a_readable_slug(signed_in, submitter):
+    """The point of the year: no random hex suffix on the second one."""
+    for offset in (10, 400):
+        submission = Submission.objects.create(
+            submitted_by=submitter, status=Submission.Status.AWAITING_SUBMITTER
+        )
+        signed_in.post(
+            reverse("submission_detail", args=[submission.pk]),
+            _valid_form_data(
+                title="Spring Fair", dates=[timezone.now() + timedelta(days=offset)]
+            ),
+        )
+
+    slugs = sorted(Event.objects.values_list("slug", flat=True))
+    assert len(slugs) == 2
+    assert all(slug.startswith("spring-fair-") for slug in slugs)
+    assert all(slug.rsplit("-", 1)[1].isdigit() for slug in slugs)
+
+
+@pytest.mark.django_db
+def test_a_series_is_not_dated(signed_in, submitter):
+    """A market stamped with the year it was added reads as stale in year two.
+
+    A series has no single date to name it by, and it is not the kind of thing
+    that repeats as a second listing, so the plain title is both honest and
+    unlikely to collide.
+    """
+    submission = Submission.objects.create(
+        submitted_by=submitter, status=Submission.Status.AWAITING_SUBMITTER
+    )
+
+    signed_in.post(
+        reverse("submission_detail", args=[submission.pk]),
+        _valid_form_data(
+            title="Farmers Market",
+            dates=[timezone.now() + timedelta(days=7 * n) for n in (1, 2, 3)],
+            is_series="on",
+        ),
+    )
+
+    assert Event.objects.get().slug == "farmers-market"
+
+
+@pytest.mark.django_db
+def test_a_resubmission_keeps_the_slug_it_was_given(signed_in, submitter):
+    """Answering a moderator's question must not move the event's URL.
+
+    The dates can legitimately change between the two confirmations — that is
+    often what the question was about — and the slug has to survive it,
+    because by then the link may have been shared.
+    """
+    submission = Submission.objects.create(
+        submitted_by=submitter, status=Submission.Status.AWAITING_SUBMITTER
+    )
+    signed_in.post(
+        reverse("submission_detail", args=[submission.pk]),
+        _valid_form_data(
+            title="Spring Fair", dates=[timezone.now() + timedelta(days=10)]
+        ),
+    )
+    before = Event.objects.get().slug
+
+    submission.refresh_from_db()
+    submission.status = Submission.Status.AWAITING_SUBMITTER
+    submission.save(update_fields=["status"])
+    signed_in.post(
+        reverse("submission_detail", args=[submission.pk]),
+        _valid_form_data(
+            title="Spring Fair", dates=[timezone.now() + timedelta(days=400)]
+        ),
+    )
+
+    assert Event.objects.count() == 1
+    assert Event.objects.get().slug == before
+
+
 @pytest.mark.django_db
 def test_every_date_keeps_its_own_hours(signed_in, submitter):
     """The farmers market case, and the reason this stopped being a textarea.

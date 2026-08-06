@@ -527,9 +527,33 @@ class Event(models.Model):
     def __str__(self):
         return self.title
 
+    def assign_slug(self, start=None):
+        """Settle the permanent slug, dating a one-off with the year it runs.
+
+        Only a one-off is dated. Its year is a permanent fact about it, and
+        this year's fair sitting beside last year's is the collision worth
+        resolving — without the year the second one lands on a random hex
+        suffix, which tells a reader nothing. A series has no single date:
+        stamping a weekly market with its first occurrence would file it under
+        the year it was *added*, and read as stale every year after.
+
+        The caller passes the date rather than this reading `self.occurrences`
+        because a slug is never rewritten — links get shared — so the year has
+        to be known before the first save, and a brand-new event has no
+        occurrences yet.
+        """
+        text = self.title
+        if start and self.listing_type == self.ListingType.ONE_OFF:
+            if timezone.is_aware(start):
+                start = timezone.localtime(start)
+            # Slugify before appending so a very long title is truncated
+            # without taking the year down with it.
+            text = f"{slugify(self.title)[:195] or 'event'}-{start.year}"
+        self.slug = _unique_slug(self, text)
+
     def save(self, *args, **kwargs):
         if not self.slug:
-            self.slug = _unique_slug(self, self.title)
+            self.assign_slug()
         if self.status == self.Status.PUBLISHED and self.published_at is None:
             self.published_at = timezone.now()
         if self.listing_type == self.ListingType.SERIES and not self.renewal_token:
