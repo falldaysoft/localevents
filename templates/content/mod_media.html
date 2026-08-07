@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Media — {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+    {% include "moderation/_tabs.html" %}
+
+    <h1 class="mt-6 text-2xl font-semibold tracking-tight">Media</h1>
+    <p class="mt-1 text-sm text-slate-500">
+        Images for pages. Big photos are resized on upload, and location data is
+        removed from them.
+    </p>
+
+    {# <details> rather than a toggle: Alpine cannot run under this site's CSP. #}
+    <details class="card mt-6" {% if form.errors %}open{% endif %}>
+        <summary class="cursor-pointer font-medium">Upload an image</summary>
+
+        <form method="post" enctype="multipart/form-data" class="mt-4 space-y-4">
+            {% csrf_token %}
+            {% include "submissions/_field.html" with field=form.file %}
+            {% include "submissions/_field.html" with field=form.title %}
+            {% include "submissions/_field.html" with field=form.alt_text %}
+            <button type="submit" class="btn-primary">Upload</button>
+        </form>
+    </details>
+
+    {% if images %}
+        <ul class="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+            {% for image in images %}
+                <li class="card p-3">
+                    <a href="{% url 'mod_image_edit' image.pk %}">
+                        {# The thumbnail, never the full image: a grid of      #}
+                        {# full-size pictures is megabytes to show a contact   #}
+                        {# sheet.                                              #}
+                        {# No width/height attributes: the only dimensions this  #}
+                        {# row knows are the full image's, and stamping those on #}
+                        {# the thumbnail would describe a box it is not. The     #}
+                        {# aspect ratio is fixed in CSS instead, which is what   #}
+                        {# actually keeps the grid from shifting as it loads.    #}
+                        <img src="{{ image.thumbnail_url }}" alt="{{ image.alt_text }}"
+                             loading="lazy"
+                             class="aspect-square w-full rounded-lg bg-slate-100 object-cover">
+                        <p class="mt-2 truncate text-sm font-medium">{{ image.title }}</p>
+                    </a>
+                    <p class="truncate text-xs text-slate-500">
+                        {{ image.width }}&times;{{ image.height }} &middot; {{ image.byte_size|filesizeformat }}
+                    </p>
+                    {% if not image.alt_text %}
+                        <p class="mt-1 text-xs text-amber-700">No alt text</p>
+                    {% endif %}
+                    <input type="text" readonly value="{{ image.markdown }}"
+                           class="mt-2 w-full rounded border border-slate-200 bg-slate-50 px-2 py-1 font-mono text-xs"
+                           data-copy>
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <div class="card mt-6 text-sm text-slate-600">
+            <p>Nothing uploaded yet.</p>
+        </div>
+    {% endif %}
+{% endblock %}
+
+{% block scripts %}
+    <script nonce="{{ csp_nonce }}">
+        document.querySelectorAll("[data-copy]").forEach(function (box) {
+            box.addEventListener("click", function () { box.select(); });
+        });
+    </script>
+{% endblock %}

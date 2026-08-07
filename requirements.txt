@@ -13,6 +13,13 @@ django-allauth[mfa]>=65.0
 # Pinned <0.12 because 0.12 dropped the database backend module.
 django-tasks[database]>=0.11,<0.12
 
+# Pages and media. Pillow normalises uploads; markdown and nh3 turn a page's
+# source into HTML that is safe to serve — nh3 rather than bleach, which is
+# deprecated and unmaintained.
+pillow>=11.0
+markdown>=3.7
+nh3>=0.2
+
 # Enrichment: fetching, parsing, and geocoding.
 httpx>=0.27
 beautifulsoup4>=4.12

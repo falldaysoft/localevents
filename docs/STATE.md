@@ -19,12 +19,13 @@ Last updated after the multi-day work that followed Phase 4.
 | 4 — moderation queue, Rising | done | this commit |
 | multi-day events | done | this commit |
 | refresh from source, editable dates | done | this commit |
+| pages and media (small CMS) | done | this commit |
 | 5 — feed importers | **next** | |
 | 6 — outbound feeds (ICS/RSS/JSON) | not started | |
 | 7 — interest button (Rising itself is done) | not started | |
 | 8 — series lifecycle, reusability docs | not started | |
 
-316 tests passing. `make check` clean.
+373 tests passing. `make check` clean.
 
 Phase 7 shrank: the `Interest` model, the Rising ranking and the promotion
 action all landed with Phase 4, because the mod queue is where they are read.
@@ -57,6 +58,14 @@ fingerprint dedup.
 - **Rising ranks within a tier, not across.** With live data: 34 marks in a
   tier averaging 12 outranked 42 marks in a tier averaging 27. Promoting moved
   exactly one tier and re-ranked the queue.
+- **A page written and an image uploaded, in a browser, over real HTTP.** A
+  93KB 3000x2000 JPEG carrying an orientation flag and a GPS block was stored
+  as a 3KB WebP at 1067x1600 — 3.3% of the original, *rotated upright*, with
+  every EXIF tag gone. The page embedded it, the `<script>` and the
+  `javascript:` link in its Markdown did not survive the save, the footer
+  picked the page up, and a second request for the image returned 304 with
+  zero bytes. The nonce on the moderator screens' one script matches the
+  header, so it actually runs where Alpine could not.
 
 ## Not verified
 
@@ -357,6 +366,68 @@ Two things this turned up that were not the point:
   `--noreload` a fixed template keeps rendering its old text. That is how the
   comment above was found *after* being fixed, and it looks exactly like a fix
   not working.
+
+## Pages and media — the small CMS, and why it is small
+
+A site needs an About page, house rules, and the ability to put a photograph on
+them. The question asked first was whether that wants a headless CMS or
+Wagtail; the answer was neither, and the reasoning is worth keeping because it
+will come up again the first time someone wants a richer page.
+
+Wagtail supports Django 6 and would drop in. It also brings 22 packages, a
+second admin, a shared `django-tasks` dependency next to the pin this project
+holds at `<0.12` for the database backend, and an admin that
+[has needed a relaxed CSP since 2015](https://github.com/wagtail/wagtail/issues/1288)
+— inline scripts without nonces and `eval()` in its modals. This project
+already declined `unsafe-eval` for Alpine, on a site that renders text
+strangers submitted. The decisive part was subtler: Wagtail's image renditions
+write several derived files per upload, which does not remove the "where do
+bytes live" problem, it just rules out the cheapest answer to it.
+
+**So images are rows.** There is no volume mounted; the container filesystem is
+scratch that a deploy discards, and a file written to `MEDIA_ROOT` becomes a
+broken image on a published page about a week later — the worst failure shape
+available, because it looks fine at first. Object storage is right at volume;
+this is not volume. A town's site accumulates a few dozen images, and
+`content.images` normalises each to a couple of hundred KB, so the whole
+library is a rounding error beside the events table — and the database backup
+already covers it. **If this ever grows a photo gallery, revisit rather than
+scale**: the exit is a storage backend and a data migration, and it is far
+easier while the library is small.
+
+The cost of that decision is one rule: **nothing may load an image row
+casually.** `Image.objects.light()` defers both blob columns and every listing
+uses it. The test for this asserts that the media page's query count *does not
+grow with the library* rather than that it equals some number — a deferred blob
+is fetched lazily, so the failure shape is one extra query per row, and a magic
+constant would break on the next change to the page chrome for no reason.
+
+**What is stored is what is served.** The original upload is discarded. Every
+step in `content/images.py` is there because of something a real upload does:
+EXIF orientation is applied *then* all metadata dropped (applied because a
+phone photo is landscape-plus-a-flag; dropped because the same block carries
+GPS, and a photo taken at a volunteer's home would otherwise publish their
+address). SVG is refused outright — it is the one image format that is also a
+document, and a reader following a direct link to it would run its `<script>`
+as same-origin. Dimensions are bounded from the header, before any decode.
+HEIC is not supported: iOS Safari converts to JPEG through a file input, so it
+mostly arrives from a desktop drag-and-drop, and the error message names it.
+
+Pages are Markdown, sanitised with `nh3` **at save**, not at render — the
+public view should read one column and nothing else. The consequence is that
+tightening `content/render.py` does not reach pages already stored, which is
+what `Page.rerender()` is for. Sanitising at all, given the author is a
+moderator, is not distrust: `SiteConfig.head_html` is raw HTML *restricted to
+superusers*, and letting a moderator write `<script>` into a page would quietly
+widen that grant to everyone who can work the queue.
+
+Two smaller things that were deliberate. The upload form uses a plain
+`FileField`, not `ImageField`, because `ImageField`'s own Pillow check runs
+first and fails with "Upload a valid image" — shadowing every specific
+explanation the normaliser gives. And a page's slug is *rejected* on collision
+when typed but silently suffixed when derived, the opposite of an event's
+random suffix: nobody reads an event slug, whereas a moderator picks a page's
+address and can see it.
 
 ## Starting Phase 5
 

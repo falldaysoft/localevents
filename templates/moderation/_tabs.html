@@ -21,5 +21,16 @@
        class="font-medium {% if section == 'audit' %}text-slate-900{% else %}text-slate-500 hover:text-slate-900{% endif %}">
         Log
     </a>
+    {# Pages and media are not a queue — nothing here is waiting on a decision. #}
+    {# Separated by a rule so the tabs to the left keep reading as "work".      #}
+    <span class="hidden h-4 w-px bg-slate-200 sm:block" aria-hidden="true"></span>
+    <a href="{% url 'mod_pages' %}"
+       class="font-medium {% if section == 'pages' %}text-slate-900{% else %}text-slate-500 hover:text-slate-900{% endif %}">
+        Pages
+    </a>
+    <a href="{% url 'mod_media' %}"
+       class="font-medium {% if section == 'media' %}text-slate-900{% else %}text-slate-500 hover:text-slate-900{% endif %}">
+        Media
+    </a>
     <a href="{% url 'admin:index' %}" class="ml-auto text-slate-400 hover:text-slate-700">Admin</a>
 </div>

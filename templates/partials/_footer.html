@@ -2,6 +2,12 @@
     <div class="mx-auto flex w-full max-w-5xl flex-col gap-3 px-4 py-8 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
         <p>{{ SITE_NAME }} &mdash; a community-run listing. <a href="mailto:{{ CONTACT_EMAIL }}" class="underline hover:text-slate-700">Get in touch</a>.</p>
         <div class="flex flex-wrap gap-4">
+            {# Pages first, then SiteConfig's hand-written links. The two coexist #}
+            {# because they answer different needs: a page is content this site   #}
+            {# owns, a footer link is usually somewhere else entirely.            #}
+            {% for page in FOOTER_PAGES %}
+                <a href="{{ page.get_absolute_url }}" class="hover:text-slate-700">{{ page.title }}</a>
+            {% endfor %}
             {% for link in site_config.footer_links %}
                 <a href="{{ link.url }}" class="hover:text-slate-700">{{ link.label }}</a>
             {% endfor %}

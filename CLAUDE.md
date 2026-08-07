@@ -71,7 +71,7 @@ to click. Follow it with `manage.py verify_email you@example.com`, or use
 
 ## Layout
 
-Six apps, split by who acts rather than by data:
+Seven apps, split by who acts rather than by data:
 
 - **`events`** — the domain: `Venue`, `Organizer`, `Category`, `Event`,
   `Occurrence`, `Interest`, plus `GeocodeThrottle` and the geocoding tasks.
@@ -82,6 +82,10 @@ Six apps, split by who acts rather than by data:
   is far easier to audit than a mixed one.
 - **`enrichment`** — `fetcher` (the SSRF boundary), `structured` (schema.org),
   `llm`, `pipeline` (which orders those three), `EnrichmentRun` (the cost record).
+- **`content`** — `Page` and `Image`, the small CMS. Its moderator screens mount
+  under `/moderate/` from `mod_urls.py`; its public routes (`/p/<slug>/`, the
+  image blobs) mount at the root from `urls.py`. Two url modules so the prefix
+  and the access rule line up exactly.
 - **`web`** — public browse, filters, map geojson, `/healthz`.
 - **`accounts`** — custom `User` (email is the credential, username is only a
   display name), `/claim/`, profile.
@@ -258,6 +262,29 @@ each row: both live misextractions were wrong uniformly, while a series sent
 back with a moderator's question has legitimately lost a date or two by the
 time its owner replies. Rejecting past rows one at a time would block that
 resubmission to catch a mistake the set-level test already catches.
+
+**Uploaded images are database rows, and nothing may load one casually.** There
+is no volume mounted, so a file written to `MEDIA_ROOT` survives until the next
+deploy and then becomes a broken image on a published page. A town's library is
+a few dozen images normalised to a couple of hundred KB each, which the database
+backup then covers for free — but every byte is in a column, so listings go
+through `Image.objects.light()`, which defers both blobs. `content/images.py` is
+the only way bytes get stored: it applies EXIF orientation *then* strips all
+metadata (the same block carries GPS, and a photo taken at a volunteer's home
+would otherwise publish their address), refuses SVG outright (the one image
+format that is also a document, and would run as same-origin script if a reader
+followed a direct link), bounds dimensions from the header before decoding, and
+re-encodes everything to WebP. The original is discarded — what is stored is
+what is served. Grow a photo gallery and this wants revisiting, not scaling.
+
+**Page HTML is sanitised at save, not at render.** `content/render.py` runs
+Markdown through `nh3` into `Page.body_html`, so the public view reads one
+column and does no work. Tightening the allowlist therefore does not reach pages
+already stored — that is what `Page.rerender()` is for, and a migration that
+adds a rule should sweep with it. It is sanitised even though the author is a
+moderator because `SiteConfig.head_html` is raw HTML *restricted to superusers*,
+and letting a moderator write `<script>` into a page would quietly widen that
+grant to anyone who can work the queue.
 
 **The fetcher is an SSRF boundary.** The URL is user-supplied, so hostnames are
 resolved and checked against private, loopback, link-local (including cloud

@@ -91,6 +91,7 @@ INSTALLED_APPS = [
     "allauth.mfa",
     # Project
     "accounts",
+    "content",
     "core",
     "enrichment",
     "events",
@@ -131,6 +132,7 @@ TEMPLATES = [
                 "core.context_processors.site",
                 "core.context_processors.site_head",
                 "accounts.context_processors.claim",
+                "content.context_processors.footer_pages",
             ],
         },
     },
@@ -182,6 +184,32 @@ STORAGES = {
 }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+
+# ---------------------------------------------------------------------------
+# Pages and media
+#
+# Uploaded images are normalised and stored as rows, not files — see
+# content/models.py for why, and content/images.py for what "normalised" does.
+# These bound what a single upload can cost in database bytes and in RAM while
+# it is being processed, so they are settings rather than constants: an
+# instance with a beefier pod and a taste for large photographs can raise them
+# without a fork.
+#
+# The defaults aim at "a photo on a page read on a phone". 1600px is enough for
+# a full-width image on a 2x display; the WebP quality is the point where the
+# next step up costs real bytes for a difference nobody sees.
+# ---------------------------------------------------------------------------
+
+CMS_MAX_UPLOAD_BYTES = int(os.environ.get("CMS_MAX_UPLOAD_BYTES", 12 * 1024 * 1024))
+# Checked from the image header before anything decodes it. 50 megapixels is
+# far beyond any camera a volunteer owns and far below what it takes to
+# exhaust a pod's memory.
+CMS_MAX_UPLOAD_PIXELS = int(os.environ.get("CMS_MAX_UPLOAD_PIXELS", 50_000_000))
+CMS_IMAGE_MAX_DIMENSION = int(os.environ.get("CMS_IMAGE_MAX_DIMENSION", 1600))
+CMS_IMAGE_QUALITY = int(os.environ.get("CMS_IMAGE_QUALITY", 82))
+CMS_THUMBNAIL_MAX_DIMENSION = int(os.environ.get("CMS_THUMBNAIL_MAX_DIMENSION", 400))
+CMS_THUMBNAIL_QUALITY = int(os.environ.get("CMS_THUMBNAIL_QUALITY", 70))
 
 
 # ---------------------------------------------------------------------------
