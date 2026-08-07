@@ -3,7 +3,11 @@
 PY := .venv/bin/python
 PIP := .venv/bin/pip
 INSTANCE ?=
-TAG ?= latest
+# Deliberately empty. `scripts/deploy.sh` resolves an unset tag to HEAD and is
+# the only place that should decide what "no tag given" means — this used to
+# default to `latest`, which quietly overrode that and shipped a mutable tag.
+# See the refusal in that script for what mutable tags do to a rollout.
+TAG ?=
 
 help:
 	@echo "localevents"
@@ -58,8 +62,11 @@ migrate:
 superuser:
 	DEBUG=true $(PY) manage.py createsuperuser
 
+# `dev`, not `latest`: this builds on a laptop and never reaches the registry,
+# so naming it after the tag CI publishes only invites confusion about which
+# one a `docker run` picked up.
 build:
-	docker build -t ghcr.io/falldaysoft/localevents:$(TAG) .
+	docker build -t ghcr.io/falldaysoft/localevents:$(or $(TAG),dev) .
 
 deploy:
 	@test -n "$(INSTANCE)" || (echo "usage: make deploy INSTANCE=<name> [TAG=<full-sha>]  # TAG defaults to HEAD" && exit 1)

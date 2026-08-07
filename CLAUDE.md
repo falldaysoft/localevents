@@ -304,6 +304,19 @@ that GitHub-hosted runners cannot satisfy. CI runs the checks, the
 missing-migration check and the tests, then pushes the image; `make deploy` runs
 from an allowlisted machine. Images are linux/amd64 only.
 
+**A deploy names an immutable tag, and `scripts/deploy.sh` refuses `latest`.**
+A mutable tag does not deploy: helm writes the same image string into the pod
+spec, Kubernetes correctly sees no change, and no pod is replaced — while both
+`helm upgrade` and `rollout status` report success, because nothing failed. The
+migrate hook is a Job, so it gets a fresh pod and *does* pull the new image,
+which leaves the database ahead of the code with a green deploy log. An
+additive migration hides that until someone notices the feature is missing; a
+migration that drops a column takes the site down. This happened once on a real
+instance — the Makefile defaulted `TAG` to `latest`, silently overriding the
+script's own "default to HEAD", and the pods' age was the only evidence.
+`TAG` is now empty in the Makefile so one place decides, and `latest` and
+`main` are rejected before anything touches the cluster.
+
 **A deploy names its cluster.** `instances/<name>.yaml` carries an optional
 `context:` beside `namespace:`, and `scripts/deploy.sh` switches to it before
 touching anything. Without it the deploy goes wherever kubectl was last

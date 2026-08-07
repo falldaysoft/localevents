@@ -56,6 +56,30 @@ if [[ -z "$TAG" ]]; then
         exit 1
     fi
     echo "==> no tag given, using HEAD"
+elif [[ "$TAG" == "latest" || "$TAG" == "main" ]]; then
+    # A mutable tag does not deploy. Helm writes the same image string into the
+    # pod spec as last time, Kubernetes correctly sees no change, and no pod is
+    # ever replaced — while `helm upgrade` and `rollout status` both report
+    # success, because from their point of view nothing failed.
+    #
+    # What makes this worse than a no-op is the migrate hook. That is a Job, so
+    # it gets a *fresh* pod every deploy and does pull the new image — so the
+    # database moves forward while the application serving traffic stays where
+    # it was. An additive migration hides that until someone notices the new
+    # feature is missing; a migration that drops or renames a column takes the
+    # site down, and the deploy log still says "successfully rolled out".
+    #
+    # Observed exactly once, on brantevents, and the pods' 16-hour age was the
+    # only evidence anything was wrong.
+    echo "error: refusing to deploy the mutable tag '$TAG'." >&2
+    echo "" >&2
+    echo "It would leave the pod spec unchanged, so nothing would roll — and" >&2
+    echo "the migrate job would still run, putting the database ahead of the" >&2
+    echo "code. Deploy an immutable tag instead:" >&2
+    echo "" >&2
+    echo "  make deploy INSTANCE=$INSTANCE                       # HEAD" >&2
+    echo "  make deploy INSTANCE=$INSTANCE TAG=\$(git rev-parse HEAD)" >&2
+    exit 1
 elif [[ "$TAG" =~ ^[0-9a-f]{4,39}$ ]]; then
     # Hex but too short to be a published tag. If git can expand it we know
     # exactly what was meant, so say so and carry on rather than failing.
@@ -71,7 +95,8 @@ fi
 
 # A commit that never reached the remote was never built, so the image cannot
 # exist. Advisory only — the check depends on how recently anyone fetched.
-if [[ "$TAG" != "latest" ]] && git cat-file -e "${TAG}^{commit}" 2>/dev/null; then
+# No `latest` special case needed any more: mutable tags are refused above.
+if git cat-file -e "${TAG}^{commit}" 2>/dev/null; then
     if ! git branch -r --contains "$TAG" 2>/dev/null | grep -q .; then
         echo "warning: $TAG is on no known remote branch — did CI ever build it?" >&2
     fi
