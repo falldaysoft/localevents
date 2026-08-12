@@ -265,6 +265,13 @@ ACCOUNT_RATE_LIMITS = {
 MFA_SUPPORTED_TYPES = ["webauthn"]
 MFA_PASSKEY_LOGIN_ENABLED = True
 MFA_PASSKEY_SIGNUP_ENABLED = False
+# And a passkey is only ever a way *in*. allauth's mfa app treats any
+# registered WebAuthn key as a second factor, so signing in with a password
+# stopped to demand the key as well — two-factor authentication nobody asked
+# for, arrived at by setting up Touch ID, on a site where the worst an account
+# can do is list a jumble sale. `accounts.adapter` drops that login stage; it
+# is the whole reason a custom account adapter exists.
+ACCOUNT_ADAPTER = "accounts.adapter.AccountAdapter"
 
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/"

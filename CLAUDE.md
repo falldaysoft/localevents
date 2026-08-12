@@ -129,6 +129,22 @@ page 404s once any superuser exists, and `accounts.claim` latches that answer
 per process — so it fails closed, and a site that loses its last superuser
 stays closed until a restart.
 
+**A passkey is a way in, never a second step.** allauth's `mfa` app is here
+only because it implements WebAuthn, and it does not distinguish "this account
+has a passkey" from "this account has opted into 2FA": the moment any WebAuthn
+authenticator exists, its `AuthenticateStage` interrupts every *password* sign-in
+to demand the key as well. That is two-factor authentication arrived at by
+setting up Touch ID, on a site where the worst an account can do is list a
+jumble sale — and with TOTP and recovery codes deliberately out
+(`MFA_SUPPORTED_TYPES`), a passkey that lives in one laptop's enclave is a
+lockout rather than a second factor. `accounts.adapter.AccountAdapter` drops
+that stage from `get_login_stages()`, which is the only reason a custom account
+adapter exists; email verification, which is not a factor, stays. Passkey
+*login* is untouched — it is not a stage, it is the alternative to the password
+on the sign-in page. Two tests in `tests/test_profile.py` hold this, because an
+allauth upgrade restoring the default would present as a security feature
+rather than a regression.
+
 **Two orthogonal axes on `Event`.** `listing_type` (one-off vs series) controls
 *collapsing* — a weekly class must never emit 52 cards. `prominence`
 (featured/listed/background) controls *placement* and is set by a moderator.

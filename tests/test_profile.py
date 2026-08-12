@@ -109,6 +109,61 @@ def test_signing_out_from_the_profile_works(client, signed_in):
 
 
 @pytest.fixture
+def keyholder(django_user_model):
+    """An ordinary account that has registered a passkey.
+
+    Same shape as `reauthenticated` below, minus the sign-in — these tests are
+    about what signing in *does*.
+    """
+    from allauth.account.models import EmailAddress
+    from allauth.mfa.models import Authenticator
+
+    user = django_user_model.objects.create_user(
+        username="keyholder", email="keyholder@example.com", password="corn-flake-8842"
+    )
+    EmailAddress.objects.create(
+        user=user, email=user.email, primary=True, verified=True
+    )
+    Authenticator.objects.create(
+        user=user, type=Authenticator.Type.WEBAUTHN, data={}
+    )
+    return user
+
+
+@pytest.mark.django_db
+def test_a_passkey_does_not_turn_the_password_into_a_first_factor(client, keyholder):
+    """Registering a passkey must not add a step to signing in with a password.
+
+    allauth's mfa app reads any WebAuthn authenticator as a second factor, so
+    out of the box this login stopped at "authenticate" and demanded the key as
+    well. That is two-factor authentication arrived at by setting up Touch ID,
+    on a site whose accounts post jumble sales — and with recovery codes
+    deliberately out, it is a lockout waiting for the laptop holding the key to
+    be somewhere else. `accounts.adapter.AccountAdapter` drops the stage; this
+    is what notices if an allauth upgrade or a settings edit puts it back.
+    """
+    response = client.post(
+        reverse("account_login"),
+        {"login": keyholder.email, "password": "corn-flake-8842"},
+        follow=True,
+    )
+
+    assert response.wsgi_request.user.is_authenticated
+    assert reverse("mfa_authenticate") not in [url for url, _ in response.redirect_chain]
+
+
+def test_no_second_factor_stage_is_configured():
+    """The stage list itself, in case a login test ever passes for a lesser reason."""
+    from allauth.account.adapter import get_adapter
+
+    stages = get_adapter().get_login_stages()
+
+    assert not [s for s in stages if s.startswith("allauth.mfa.stages.")]
+    # The email-verification stage is not a factor and has to survive.
+    assert "allauth.account.stages.EmailVerificationStage" in stages
+
+
+@pytest.fixture
 def reauthenticated(client, django_user_model):
     """Signed in with a password within allauth's reauthentication window.
 
