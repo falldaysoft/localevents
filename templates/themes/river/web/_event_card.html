@@ -1,0 +1,47 @@
+{% load event_dates %}
+{% comment %}
+    One listing. The day heading above it already states the date, so this row
+    spends nothing repeating it — the spine carries the category colour and the
+    time leads the meta line instead.
+
+    `--spine` is set from the first category's slug against the palette in the
+    theme stylesheet. A slug the stylesheet has never heard of falls through
+    the CSS variable's own fallback to the default blue, so a category added
+    in the admin renders correctly without a stylesheet change.
+{% endcomment %}
+<li class="le-row"
+    {% for category in event.categories.all|slice:":1" %}style="--spine: var(--cat-{{ category.slug }}, var(--river))"{% endfor %}>
+    <div>
+        <h3><a href="{% url 'event_detail' event.slug %}">{{ event.title }}</a></h3>
+
+        <p class="le-when">
+            {% if event.next_start %}
+                <time datetime="{{ event.next_start|date:'c' }}">{% occurrence_when event.next_start event.next_end %}</time>
+            {% endif %}
+            {% if event.venue %}<span class="le-where">&middot; {{ event.venue.name }}</span>{% endif %}
+        </p>
+
+        {% if event.summary %}<p class="le-summary">{{ event.summary }}</p>{% endif %}
+
+        {% if event.categories.all and not compact %}
+            <div class="le-cats">
+                {% for category in event.categories.all %}
+                    <span class="le-cat" style="--tint: var(--cat-{{ category.slug }}, var(--ink-2))">{{ category.name }}</span>
+                {% endfor %}
+            </div>
+        {% endif %}
+    </div>
+
+    <div class="le-meta">
+        {% if event.next_start|is_under_way:event.next_end %}
+            <span class="le-flag le-flag--now">On now</span>
+        {% endif %}
+        {% if event.is_free %}
+            <span class="le-price le-price--free">Free</span>
+        {% elif event.price_display %}
+            <span class="le-price">{{ event.price_display|truncatechars:24 }}</span>
+        {% endif %}
+        {% if event.is_series %}<span class="le-flag">Weekly</span>{% endif %}
+        {% if event.is_commercial %}<span class="le-flag">Commercial</span>{% endif %}
+    </div>
+</li>

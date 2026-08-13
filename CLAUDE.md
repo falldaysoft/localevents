@@ -279,6 +279,40 @@ back with a moderator's question has legitimately lost a date or two by the
 time its owner replies. Rejecting past rows one at a time would block that
 resubmission to catch a mistake the set-level test already catches.
 
+**A theme is a look; an instance is a community. They are not the same axis.**
+`SiteConfig.theme` picks from `core/themes.py`, and a theme is a stylesheet
+plus an optional set of template *overlays* — `core.themes.template_name`
+prefers `themes/<slug>/<path>` and falls back to the shared template, so a
+theme overrides the pages it cares about and inherits the rest. Adding one is
+a directory under `templates/themes/` and a file under `static/themes/`; no
+existing code changes, which is the property that makes a second theme cheap
+enough to actually happen. `{% include %}` resolves a literal name and so
+would never reach an override, which is why `base.html` uses
+`{% theme_include %}` for its partials. Themes carry no place name, no
+coordinates and no prose — `test_reusability.py` now scans `.css` for exactly
+that reason. The default is `classic`, the built-in Tailwind look, because
+upgrading the product must never restyle a running site: an instance opts in
+by changing one admin field, which is a decision its administrators make
+rather than one a deploy makes for them. An unknown slug falls back to the
+default instead of raising, so a theme retired from a later release leaves a
+plain site rather than a 500 on every page.
+
+**The `river` theme groups by day, and that is why featured listings sit
+above the list rather than in it.** `main_feed` is ordered by `-prominence,
+next_start`, so grouping it directly would emit the same date twice and print
+a featured event under a day heading weeks from its own. `web.views` splits
+the tiers first and only day-groups the remainder — `_group_by_day` walks a
+single date-ordered run rather than building a lookup, which is correct only
+because that split has already happened. Prominence keeps controlling
+placement, which is what it is documented to do. The day heading also owns the
+date, so the card underneath spends nothing repeating it: it carries a
+category-coloured spine instead, drawn as an inset pseudo-element because a
+`border-left` against a large `border-radius` renders as a crescent. Secondary
+filters live inside a `<details>` — this shipped wrong once with the panel as
+a *sibling*, so the summary toggled nothing and eleven chips stayed open,
+which looks entirely fine in a screenshot of an opened page and is held by a
+test for that reason.
+
 **Uploaded images are database rows, and nothing may load one casually.** There
 is no volume mounted, so a file written to `MEDIA_ROOT` survives until the next
 deploy and then becomes a broken image on a published page. A town's library is

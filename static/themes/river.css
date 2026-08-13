@@ -1,0 +1,956 @@
+/* River — a theme for localevents.
+ *
+ * Warm sand ground, rounded cards carried on a category-coloured spine, and
+ * listings grouped under the day they fall on. Every rule is scoped under
+ * [data-theme="river"] so that loading this file on an instance that has not
+ * chosen it changes nothing, and so a rule here outranks a utility class
+ * without needing !important.
+ *
+ * Carries no community's identity: no place name, no coordinates, no prose.
+ * The palette is a generic water-and-sand one that any town can wear.
+ *
+ * Category colours are keyed by slug (--cat-music and so on) with a neutral
+ * fallback, so a category this file has never heard of still renders — it
+ * just gets the default blue rather than a colour of its own.
+ */
+
+[data-theme="river"] {
+  --deep: #123a4f;
+  --deep-2: #0b2a3a;
+  --river: #2e7fa8;
+  --shallow: #7cb6ce;
+  --sand: #fdf9f3;
+  --sand-2: #f5ebdd;
+  --sand-3: #e3d3bf;
+  --coral: #e2664a;
+  --peach: #f2a65a;
+  --moss: #3f7d5a;
+  --ink: #17262e;
+  --ink-2: #5a6e78;
+
+  --font-display: "Figtree", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Manrope", ui-sans-serif, system-ui, sans-serif;
+
+  --cat-music: #6e4b9e;
+  --cat-arts-theatre: #b84a80;
+  --cat-family: #de8a38;
+  --cat-food-drink: #c55a38;
+  --cat-markets: #3f7d5a;
+  --cat-sports-outdoors: #1f7f84;
+  --cat-learning: #2e6fb0;
+  --cat-community: #2e7fa8;
+  --cat-volunteering: #4b7d52;
+  --cat-nightlife: #4e4488;
+  --cat-seasonal: #e2664a;
+}
+
+/* ── Shell ─────────────────────────────────────────────────────────────── */
+
+[data-theme="river"] body {
+  background: var(--sand);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+[data-theme="river"] .le-main {
+  max-width: 1020px;
+  margin: 0 auto;
+  padding: 0 24px 56px;
+}
+
+[data-theme="river"] a {
+  color: var(--river);
+}
+
+/* ── Navigation ────────────────────────────────────────────────────────── */
+
+[data-theme="river"] .le-nav {
+  background: var(--deep);
+  color: #fff;
+}
+
+[data-theme="river"] .le-nav__inner {
+  max-width: 1020px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 16px 24px;
+}
+
+[data-theme="river"] .le-brand {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 24px;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: #fff;
+  text-decoration: none;
+}
+
+[data-theme="river"] .le-nav__links {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  font-size: 14px;
+}
+
+[data-theme="river"] .le-nav__links a {
+  color: #a9c9d8;
+  text-decoration: none;
+}
+
+[data-theme="river"] .le-nav__links a:hover {
+  color: #fff;
+}
+
+[data-theme="river"] .le-badge {
+  background: rgba(255, 255, 255, 0.16);
+  color: #d6e7f0;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 3px 10px;
+  line-height: 1.4;
+}
+
+[data-theme="river"] .le-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--peach);
+  color: var(--deep-2);
+  border: 0;
+  border-radius: 999px;
+  padding: 11px 21px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+[data-theme="river"] .le-btn:hover {
+  background: #fff;
+  color: var(--deep-2);
+}
+
+[data-theme="river"] .le-btn--quiet {
+  background: transparent;
+  color: var(--deep);
+  box-shadow: inset 0 0 0 1.5px var(--sand-3);
+}
+
+[data-theme="river"] .le-btn--quiet:hover {
+  background: #fff;
+}
+
+/* ── Hero ──────────────────────────────────────────────────────────────── */
+
+/* A gradient reading as water deepening, rather than a flat band. */
+[data-theme="river"] .le-hero {
+  background: linear-gradient(168deg, var(--deep) 0%, #164b63 52%, var(--river) 100%);
+  color: #fff;
+  padding: 12px 0 62px;
+  position: relative;
+  overflow: hidden;
+}
+
+[data-theme="river"] .le-hero__inner {
+  max-width: 1020px;
+  margin: 0 auto;
+  padding: 0 24px;
+  position: relative;
+  z-index: 2;
+}
+
+[data-theme="river"] .le-hero h1 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(46px, 9vw, 88px);
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+}
+
+[data-theme="river"] .le-hero h1 em {
+  font-style: normal;
+  color: var(--peach);
+}
+
+[data-theme="river"] .le-hero p {
+  margin-top: 13px;
+  font-size: 16.5px;
+  color: #c6deea;
+  max-width: 44ch;
+}
+
+[data-theme="river"] .le-hero__wave {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  width: 100%;
+  height: 88px;
+}
+
+/* ── Filters ───────────────────────────────────────────────────────────── */
+
+[data-theme="river"] .le-filters {
+  background: var(--sand-2);
+  padding: 18px 0;
+  margin-bottom: 8px;
+}
+
+[data-theme="river"] .le-filters__inner {
+  max-width: 1020px;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+[data-theme="river"] .le-filters input[type="search"],
+[data-theme="river"] .le-filters select {
+  border: 0;
+  background: #fff;
+  border-radius: 999px;
+  padding: 12px 20px;
+  font-family: var(--font-body);
+  font-size: 14.5px;
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1.5px var(--sand-3);
+}
+
+[data-theme="river"] .le-filters input[type="search"] {
+  flex: 1;
+  min-width: 210px;
+}
+
+[data-theme="river"] .le-filters input:focus,
+[data-theme="river"] .le-filters select:focus {
+  outline: 0;
+  box-shadow: inset 0 0 0 2px var(--river);
+}
+
+[data-theme="river"] .le-chip {
+  border: 0;
+  background: #fff;
+  padding: 11px 19px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1.5px var(--sand-3);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 14.5px;
+  line-height: 1;
+  color: var(--deep);
+  cursor: pointer;
+}
+
+/* Visually hidden so the chip beside it can be styled freely, but still
+   focusable and still announced — `display:none` would take it out of the tab
+   order and out of the accessibility tree along with it. */
+[data-theme="river"] .le-catbox {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Hiding the input hides the browser's focus ring too — without this a
+   keyboard user cannot tell which chip they are on. */
+[data-theme="river"] .le-catbox:focus-visible + .le-chip {
+  outline: 2px solid var(--river);
+  outline-offset: 2px;
+}
+
+[data-theme="river"] .le-catbox:checked + .le-chip {
+  background: var(--deep);
+  color: #fff;
+  box-shadow: none;
+}
+
+/* Full width so the panel it discloses has somewhere to open. A <details>
+   sized to its summary would clip the chips inside it. */
+[data-theme="river"] .le-more {
+  flex: 1 0 100%;
+}
+
+[data-theme="river"] .le-more > summary {
+  list-style: none;
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 14.5px;
+  color: var(--deep);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+[data-theme="river"] .le-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+[data-theme="river"] .le-more__panel {
+  flex: 1 0 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 14px;
+}
+
+[data-theme="river"] .le-toggles {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  align-items: center;
+  flex: 1 0 100%;
+  padding-top: 4px;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+[data-theme="river"] .le-toggles label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+/* ── Day heading ───────────────────────────────────────────────────────── */
+
+[data-theme="river"] .le-day {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  margin: 36px 0 13px;
+}
+
+[data-theme="river"] .le-day h2 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 22px;
+  letter-spacing: -0.025em;
+  color: var(--deep);
+  white-space: nowrap;
+}
+
+[data-theme="river"] .le-day__rel {
+  background: var(--peach);
+  color: var(--deep-2);
+  border-radius: 999px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 12.5px;
+  padding: 4px 12px;
+  line-height: 1.3;
+}
+
+/* A drawn current in place of a rule. */
+[data-theme="river"] .le-day__wave {
+  flex: 1;
+  height: 12px;
+  opacity: 0.55;
+  min-width: 24px;
+}
+
+[data-theme="river"] .le-day__count {
+  font-size: 13px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+/* ── Event row ─────────────────────────────────────────────────────────── */
+
+[data-theme="river"] .le-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* The day heading owns the date, so the row spends nothing repeating it and
+   keeps only a colour spine for the category. The spine is an inset pseudo-
+   element rather than a border: a border-left against a 26px radius renders
+   as a curved crescent instead of a straight bar. */
+[data-theme="river"] .le-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0;
+  align-items: center;
+  background: #fff;
+  border-radius: 26px;
+  margin-bottom: 11px;
+  padding: 16px 22px 16px 26px;
+  box-shadow:
+    0 2px 3px rgba(23, 38, 46, 0.045),
+    0 12px 26px -16px rgba(23, 38, 46, 0.3);
+  transition:
+    transform 0.18s cubic-bezier(0.2, 0.8, 0.3, 1),
+    box-shadow 0.18s ease;
+}
+
+[data-theme="river"] .le-row::before {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 16px;
+  bottom: 16px;
+  width: 5px;
+  border-radius: 999px;
+  background: var(--spine, var(--river));
+}
+
+[data-theme="river"] .le-row:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 3px 5px rgba(23, 38, 46, 0.06),
+    0 20px 36px -18px rgba(23, 38, 46, 0.38);
+}
+
+[data-theme="river"] .le-row h3 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 23px;
+  line-height: 1.22;
+  letter-spacing: -0.028em;
+}
+
+/* The whole card is the target, not just the title: a row that lifts on
+   hover but only accepts a tap on one line of text is a trap on a phone. */
+[data-theme="river"] .le-row h3 a {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+[data-theme="river"] .le-row h3 a::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 26px;
+}
+
+[data-theme="river"] .le-row h3 a:hover {
+  color: var(--spine, var(--river));
+}
+
+[data-theme="river"] .le-row h3 a:focus-visible {
+  outline: 0;
+}
+
+[data-theme="river"] .le-row:focus-within {
+  outline: 2px solid var(--river);
+  outline-offset: 2px;
+}
+
+[data-theme="river"] .le-when {
+  margin-top: 3px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--spine, var(--river));
+}
+
+[data-theme="river"] .le-where {
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+[data-theme="river"] .le-summary {
+  margin-top: 6px;
+  font-size: 14.5px;
+  color: var(--ink-2);
+  line-height: 1.58;
+  max-width: 60ch;
+}
+
+[data-theme="river"] .le-cats {
+  margin-top: 10px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Tinted, not saturated — the colour whispers the category rather than
+   competing with the title. A solid fallback precedes each color-mix so a
+   browser without it gets a plain pill rather than an unpainted one. */
+[data-theme="river"] .le-cat {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 12.5px;
+  border-radius: 999px;
+  padding: 4px 12px;
+  line-height: 1.35;
+  color: var(--tint, var(--ink-2));
+  background: var(--sand-2);
+  background: color-mix(in srgb, var(--tint, var(--ink-2)) 13%, #fff);
+}
+
+/* Capped: `price_display` is free text, and a submitter explaining their
+   whole ticketing arrangement in it would otherwise squeeze the title and
+   summary into a column an inch wide. */
+[data-theme="river"] .le-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 7px;
+  padding-left: 14px;
+  max-width: 150px;
+}
+
+[data-theme="river"] .le-price {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 17px;
+  line-height: 1.2;
+  color: var(--ink);
+  text-align: right;
+}
+
+[data-theme="river"] .le-price--free {
+  color: var(--moss);
+}
+
+[data-theme="river"] .le-flag {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+[data-theme="river"] .le-flag--now {
+  background: var(--coral);
+  color: #fff;
+  padding: 4px 12px;
+  border-radius: 999px;
+  line-height: 1.35;
+}
+
+/* ── Featured ──────────────────────────────────────────────────────────── */
+
+[data-theme="river"] .le-feature {
+  position: relative;
+  border-radius: 30px;
+  overflow: hidden;
+  margin-bottom: 11px;
+  color: #fff;
+  background: linear-gradient(150deg, var(--deep) 0%, #1a5872 58%, var(--river) 100%);
+  display: grid;
+  grid-template-columns: 1fr 250px;
+  box-shadow: 0 16px 38px -18px rgba(18, 58, 79, 0.72);
+}
+
+[data-theme="river"] .le-feature__txt {
+  padding: 30px 30px 32px;
+}
+
+[data-theme="river"] .le-feature__kicker {
+  display: inline-block;
+  background: var(--peach);
+  color: var(--deep-2);
+  border-radius: 999px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 12.5px;
+  padding: 4px 13px;
+  margin-bottom: 14px;
+  line-height: 1.35;
+}
+
+[data-theme="river"] .le-feature h3 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 42px;
+  line-height: 1.06;
+  letter-spacing: -0.04em;
+  margin-bottom: 10px;
+}
+
+[data-theme="river"] .le-feature h3 a {
+  color: #fff;
+  text-decoration: none;
+}
+
+[data-theme="river"] .le-feature h3 a::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+[data-theme="river"] .le-feature .le-when {
+  color: var(--peach);
+  font-size: 16.5px;
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
+[data-theme="river"] .le-feature .le-where {
+  color: #c6deea;
+}
+
+[data-theme="river"] .le-feature .le-summary {
+  color: #c6deea;
+  max-width: 50ch;
+}
+
+[data-theme="river"] .le-feature .le-cat {
+  background: rgba(255, 255, 255, 0.17);
+  color: #fff;
+}
+
+[data-theme="river"] .le-feature__art {
+  position: relative;
+  min-height: 240px;
+}
+
+[data-theme="river"] .le-feature__art svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* ── Map ───────────────────────────────────────────────────────────────── */
+
+/* Below the results, not above them: on a phone a 320px map between the
+   filters and the first listing means the page opens on no events at all. */
+[data-theme="river"] .le-map {
+  height: 320px;
+  width: 100%;
+  border-radius: 26px;
+  overflow: hidden;
+  margin: 28px 0 0;
+  box-shadow: 0 2px 3px rgba(23, 38, 46, 0.045);
+}
+
+/* ── Sections ──────────────────────────────────────────────────────────── */
+
+[data-theme="river"] .le-section {
+  margin-top: 46px;
+  padding-top: 24px;
+  position: relative;
+}
+
+[data-theme="river"] .le-section::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    #ddcdb8 18%,
+    #ddcdb8 82%,
+    transparent
+  );
+}
+
+[data-theme="river"] .le-section h2 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 24px;
+  letter-spacing: -0.03em;
+  color: var(--deep);
+}
+
+[data-theme="river"] .le-section__lede {
+  font-size: 14.5px;
+  color: var(--ink-2);
+  margin: 5px 0 14px;
+  max-width: 56ch;
+}
+
+[data-theme="river"] .le-prog {
+  position: relative;
+  display: flex;
+  gap: 14px;
+  align-items: baseline;
+  padding: 14px 20px;
+  background: #fff;
+  border-radius: 18px;
+  margin-bottom: 8px;
+  box-shadow: 0 1px 2px rgba(23, 38, 46, 0.05);
+}
+
+[data-theme="river"] .le-prog h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 16.5px;
+  letter-spacing: -0.02em;
+}
+
+[data-theme="river"] .le-prog h3 a {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+[data-theme="river"] .le-prog h3 a::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 18px;
+}
+
+[data-theme="river"] .le-prog__cadence {
+  margin-left: auto;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+
+[data-theme="river"] .le-empty {
+  background: #fff;
+  border-radius: 26px;
+  padding: 28px;
+  text-align: center;
+  color: var(--ink-2);
+  box-shadow: 0 1px 2px rgba(23, 38, 46, 0.05);
+}
+
+[data-theme="river"] .le-empty strong {
+  display: block;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 17px;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+
+/* ── Detail page ───────────────────────────────────────────────────────── */
+
+[data-theme="river"] .le-crumbs {
+  font-size: 13.5px;
+  color: var(--ink-2);
+  padding: 22px 0 10px;
+}
+
+[data-theme="river"] .le-detail {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 28px;
+  align-items: start;
+}
+
+[data-theme="river"] .le-detail h1 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(30px, 4.4vw, 42px);
+  line-height: 1.08;
+  letter-spacing: -0.04em;
+}
+
+[data-theme="river"] .le-detail__lede {
+  margin-top: 10px;
+  font-size: 17px;
+  color: var(--ink-2);
+  max-width: 62ch;
+}
+
+[data-theme="river"] .le-detail__body {
+  margin-top: 20px;
+  font-size: 15.5px;
+  line-height: 1.7;
+  max-width: 66ch;
+}
+
+[data-theme="river"] .le-panel {
+  background: #fff;
+  border-radius: 24px;
+  padding: 20px 22px;
+  margin-bottom: 12px;
+  box-shadow:
+    0 2px 3px rgba(23, 38, 46, 0.045),
+    0 12px 26px -18px rgba(23, 38, 46, 0.28);
+}
+
+[data-theme="river"] .le-panel h2 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  margin-bottom: 9px;
+}
+
+[data-theme="river"] .le-panel ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+[data-theme="river"] .le-panel li + li {
+  margin-top: 5px;
+}
+
+[data-theme="river"] .le-occ--cancelled {
+  text-decoration: line-through;
+  color: var(--ink-2);
+}
+
+/* ── Footer ────────────────────────────────────────────────────────────── */
+
+[data-theme="river"] .le-footer {
+  margin-top: 48px;
+  background: var(--deep);
+  color: #a9c9d8;
+  padding: 28px 0 44px;
+  font-size: 13.5px;
+  position: relative;
+}
+
+[data-theme="river"] .le-footer__inner {
+  max-width: 1020px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+[data-theme="river"] .le-footer a {
+  color: #fff;
+}
+
+[data-theme="river"] .le-footer__wave {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -1px;
+  width: 100%;
+  height: 34px;
+  transform: scaleY(-1);
+}
+
+/* ── Narrow screens ────────────────────────────────────────────────────── */
+
+@media (max-width: 760px) {
+  [data-theme="river"] .le-main,
+  [data-theme="river"] .le-hero__inner,
+  [data-theme="river"] .le-filters__inner,
+  [data-theme="river"] .le-nav__inner,
+  [data-theme="river"] .le-footer__inner {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  [data-theme="river"] .le-hero {
+    padding: 6px 0 46px;
+  }
+
+  /* At 390px the wordmark, the sign-in link and the call to action all wrap
+     onto second lines and the bar doubles in height. Shrink the type and stop
+     the button breaking mid-phrase instead. */
+  [data-theme="river"] .le-nav__inner {
+    gap: 10px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+
+  [data-theme="river"] .le-brand {
+    font-size: 19px;
+  }
+
+  [data-theme="river"] .le-nav__links {
+    gap: 12px;
+    font-size: 13.5px;
+  }
+
+  [data-theme="river"] .le-nav__links a,
+  [data-theme="river"] .le-btn {
+    white-space: nowrap;
+  }
+
+  [data-theme="river"] .le-btn {
+    padding: 9px 15px;
+    font-size: 14px;
+  }
+
+  [data-theme="river"] .le-filters input[type="search"] {
+    flex: 1 0 100%;
+    order: -1;
+  }
+
+  [data-theme="river"] .le-more {
+    margin-left: 0;
+  }
+
+  [data-theme="river"] .le-day {
+    flex-wrap: wrap;
+    gap: 9px;
+  }
+
+  [data-theme="river"] .le-day__wave {
+    display: none;
+  }
+
+  [data-theme="river"] .le-day__count {
+    margin-left: auto;
+  }
+
+  [data-theme="river"] .le-row {
+    grid-template-columns: 1fr;
+    padding: 15px 16px 15px 22px;
+    align-items: start;
+  }
+
+  [data-theme="river"] .le-row h3 {
+    font-size: 20px;
+  }
+
+  [data-theme="river"] .le-meta {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+    padding-left: 0;
+    padding-top: 11px;
+  }
+
+  [data-theme="river"] .le-feature,
+  [data-theme="river"] .le-detail {
+    grid-template-columns: 1fr;
+  }
+
+  [data-theme="river"] .le-feature__art {
+    min-height: 152px;
+    order: -1;
+  }
+
+  [data-theme="river"] .le-feature h3 {
+    font-size: 32px;
+  }
+
+  [data-theme="river"] .le-feature__txt {
+    padding: 22px 20px 24px;
+  }
+
+  [data-theme="river"] .le-prog {
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+
+  [data-theme="river"] .le-prog__cadence {
+    margin-left: 0;
+    flex: 1 0 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-theme="river"] .le-row {
+    transition: none;
+  }
+
+  [data-theme="river"] .le-row:hover {
+    transform: none;
+  }
+}

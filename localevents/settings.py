@@ -131,6 +131,7 @@ TEMPLATES = [
                 "django.template.context_processors.csp",
                 "core.context_processors.site",
                 "core.context_processors.site_head",
+                "core.context_processors.theme",
                 "accounts.context_processors.claim",
                 "content.context_processors.footer_pages",
             ],
@@ -168,6 +169,9 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+# Theme stylesheets live here. Kept as hand-written CSS on purpose: the site
+# has no build step, and a theme has to be addable by dropping in one file.
+STATICFILES_DIRS = [BASE_DIR / "static"]
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {

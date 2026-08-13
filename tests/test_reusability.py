@@ -29,7 +29,20 @@ EXCLUDED_DIRS = {
     "instances",  # instance overlays are *supposed* to name a place
 }
 
-SCANNED_SUFFIXES = {".py", ".html", ".txt", ".cfg", ".ini", ".toml", ".yaml", ".yml"}
+SCANNED_SUFFIXES = {
+    ".py",
+    ".html",
+    ".txt",
+    ".cfg",
+    ".ini",
+    ".toml",
+    ".yaml",
+    ".yml",
+    # Themes are hand-written CSS shipped with the product, so a palette named
+    # after the town that commissioned it, or a comment naming one, is exactly
+    # the kind of drift this file exists to catch.
+    ".css",
+}
 
 # Place names that must not appear in the product. Extend when a deployment
 # adds a new one; the point is to fail loudly rather than to be exhaustive.

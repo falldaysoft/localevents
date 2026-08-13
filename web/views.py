@@ -6,9 +6,38 @@ from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 
 from core.models import SiteConfig
+from core.themes import template_name, theme_for
 from events.models import Category, Event
 
 from .filters import WHEN_CHOICES, EventFilter, active_venues
+
+
+def _group_by_day(events, now):
+    """Consecutive runs of `events` that fall on the same local day.
+
+    A run, not a lookup: `events` arrives ordered by `next_start`, so walking
+    it once is enough and the groups come out in date order for free. Feeding
+    it a list ordered by anything else would emit the same date twice, which
+    is why the featured tier is removed before this is called.
+
+    The local day matters — an evening event in a timezone behind UTC belongs
+    to the day the reader is living in, not the one the column stores.
+    """
+    today = timezone.localdate(now)
+    groups = []
+    for event in events:
+        day = timezone.localtime(event.next_start).date()
+        if not groups or groups[-1]["date"] != day:
+            delta = (day - today).days
+            groups.append(
+                {
+                    "date": day,
+                    "rel": "Today" if delta == 0 else "Tomorrow" if delta == 1 else "",
+                    "events": [],
+                }
+            )
+        groups[-1]["events"].append(event)
+    return groups
 
 
 def _browse_context(request):
@@ -18,9 +47,17 @@ def _browse_context(request):
     main_feed = list(filters.main_feed(now)[:120])
     programs = list(filters.programs(now)[:120])
 
+    # Split by tier so a theme can group the rest by date without a featured
+    # listing appearing under a day heading weeks away. `main_feed` is ordered
+    # by prominence first, so the featured run is contiguous at the front.
+    featured = [e for e in main_feed if e.prominence == Event.Prominence.FEATURED]
+    listed = [e for e in main_feed if e.prominence != Event.Prominence.FEATURED]
+
     return {
         "filters": filters,
         "events": main_feed,
+        "featured": featured,
+        "days": _group_by_day(listed, now),
         "programs": programs,
         "program_count": len(programs),
         "categories": Category.objects.filter(is_active=True),
@@ -38,9 +75,10 @@ def index(request):
     filter bar keep their state and the URL stays shareable.
     """
     context = _browse_context(request)
+    template = template_name(theme_for(request), "web/index.html")
 
     if request.headers.get("HX-Request"):
-        return render(request, "web/index.html#results", context)
+        return render(request, f"{template}#results", context)
 
     context["map_config"] = {
         "center": [settings.MAP_CENTER_LAT, settings.MAP_CENTER_LNG],
@@ -49,7 +87,7 @@ def index(request):
         "attribution": settings.TILE_ATTRIBUTION,
         "geojsonUrl": "/events.geojson",
     }
-    return render(request, "web/index.html", context)
+    return render(request, template, context)
 
 
 def event_detail(request, slug):
@@ -64,7 +102,7 @@ def event_detail(request, slug):
 
     return render(
         request,
-        "web/event_detail.html",
+        template_name(theme_for(request), "web/event_detail.html"),
         {
             "event": event,
             "occurrences": occurrences,

@@ -1,0 +1,23 @@
+<header class="le-nav">
+    <nav class="le-nav__inner">
+        {# The badge sits beside the wordmark rather than inside the link: it #}
+        {# labels the site, it is not somewhere to click.                     #}
+        <span style="display:flex;align-items:baseline;gap:10px">
+            <a href="{% url 'index' %}" class="le-brand">{{ SITE_NAME }}</a>
+            <span class="le-badge" title="This site is still in development.">Beta</span>
+        </span>
+
+        <span class="le-nav__links">
+            {% if user.is_authenticated %}
+                {% if user.is_moderator %}<a href="{% url 'mod_queue' %}">Moderate</a>{% endif %}
+                <a href="{% url 'profile' %}">{{ user.display_name }}</a>
+                <a href="{% url 'submit' %}" class="le-btn">Add an event</a>
+            {% else %}
+                <a href="{% url 'account_login' %}">Sign in</a>
+                {# Signed out, the CTA is the same promise; signing up is just #}
+                {# the first step of it, and 'submit' would bounce here anyway. #}
+                <a href="{% url 'account_signup' %}" class="le-btn">Add an event</a>
+            {% endif %}
+        </span>
+    </nav>
+</header>

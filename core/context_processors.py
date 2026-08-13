@@ -5,6 +5,7 @@ from django.middleware.csp import get_nonce
 from django.utils.safestring import mark_safe
 
 from .models import site_config_for
+from .themes import get_theme
 
 # A <script> without the request's nonce is dead on arrival under this site's
 # CSP, and someone pasting a snippet from an analytics provider has no reason
@@ -39,6 +40,20 @@ def site_head(request):
             lambda _: f'<script nonce="{nonce}"', head_html
         )
     return {"SITE_HEAD_HTML": mark_safe(head_html)}  # noqa: S308 — see docstring
+
+
+def theme(request):
+    """The look this instance has chosen.
+
+    Wrapped in the same defensive try as `site_head`: an error page must
+    render when the database is down, and an unstyled error page is a far
+    better outcome than a second exception raised while reporting the first.
+    """
+    try:
+        slug = site_config_for(request).theme
+    except Exception:
+        slug = None
+    return {"THEME": get_theme(slug)}
 
 
 def site(request):

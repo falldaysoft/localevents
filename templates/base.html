@@ -1,5 +1,9 @@
+{% load static themes %}
 <!DOCTYPE html>
-<html lang="en">
+{# The slug is on <html> so a theme's rules can outrank a utility class    #}
+{# without !important: [data-theme="x"] .card beats .card on specificity,  #}
+{# whatever order the Tailwind CDN happens to inject its own styles in.    #}
+<html lang="en" data-theme="{{ THEME.slug }}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -20,6 +24,8 @@
             .chip { @apply inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700; }
         }
     </style>
+    {% if THEME.font_css %}<link href="{{ THEME.font_css }}" rel="stylesheet">{% endif %}
+    {% if THEME.stylesheet %}<link rel="stylesheet" href="{% static THEME.stylesheet %}">{% endif %}
     {% block head %}{% endblock %}
     {# Last in <head> so an instance can override anything above it. Raw HTML #}
     {# from SiteConfig, editable by superusers only — see                     #}
@@ -27,17 +33,22 @@
     {{ SITE_HEAD_HTML }}
 </head>
 <body class="bg-slate-50 text-slate-900" style="font-family: 'Inter', sans-serif; font-optical-sizing: auto;">
-    {% include "partials/_unclaimed_banner.html" %}
-    {% include "partials/_nav.html" %}
+    {% theme_include "partials/_unclaimed_banner.html" %}
+    {% theme_include "partials/_nav.html" %}
+    {# Full-bleed hooks either side of the column. A theme whose hero and    #}
+    {# filter bar run edge to edge cannot express that from inside <main>,   #}
+    {# and faking it with negative margins fights the scrollbar.            #}
+    {% block before_main %}{% endblock %}
     {# Overridable so a page can change the shell it sits in. The auth pages   #}
     {# are the reason: a sign-in form in a 5xl column looks lost. Wrapping the #}
     {# content block instead does not work, because allauth's own templates    #}
     {# override that block and would discard the wrapper.                      #}
     <main class="{% block main_class %}mx-auto w-full max-w-5xl px-4 py-8{% endblock %}">
-        {% include "partials/_messages.html" %}
+        {% theme_include "partials/_messages.html" %}
         {% block content %}{% endblock %}
     </main>
-    {% include "partials/_footer.html" %}
+    {% block after_main %}{% endblock %}
+    {% theme_include "partials/_footer.html" %}
     {% block scripts %}{% endblock %}
 </body>
 </html>

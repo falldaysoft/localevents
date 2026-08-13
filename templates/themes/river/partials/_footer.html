@@ -1,0 +1,19 @@
+<footer class="le-footer">
+    <svg class="le-footer__wave" viewBox="0 0 1200 34" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+        <path d="M0 12 C200 34 380 0 600 14 C820 28 1000 0 1200 12 V0 H0Z" fill="var(--sand)"/>
+    </svg>
+    <div class="le-footer__inner">
+        <p>{{ SITE_NAME }} &mdash; a community-run listing. <a href="mailto:{{ CONTACT_EMAIL }}">Get in touch</a>.</p>
+        <div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:10px">
+            {# Pages first, then SiteConfig's hand-written links. The two coexist #}
+            {# because they answer different needs: a page is content this site   #}
+            {# owns, a footer link is usually somewhere else entirely.            #}
+            {% for page in FOOTER_PAGES %}
+                <a href="{{ page.get_absolute_url }}">{{ page.title }}</a>
+            {% endfor %}
+            {% for link in site_config.footer_links %}
+                <a href="{{ link.url }}">{{ link.label }}</a>
+            {% endfor %}
+        </div>
+    </div>
+</footer>

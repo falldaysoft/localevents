@@ -1,5 +1,7 @@
 from django.db import models
 
+from .themes import DEFAULT_THEME, theme_choices
+
 
 class SingletonModel(models.Model):
     """A model with exactly one row, edited in the admin.
@@ -55,6 +57,15 @@ class SiteConfig(SingletonModel):
             "verification tag, an analytics snippet. Not escaped and not "
             "checked — whatever is pasted here runs on every page, for every "
             "visitor. Superusers only."
+        ),
+    )
+    theme = models.CharField(
+        max_length=32,
+        default=DEFAULT_THEME,
+        choices=theme_choices,
+        help_text=(
+            "How the public pages look. Changing this restyles the site for "
+            "every visitor immediately; it does not touch any listing."
         ),
     )
     script_hosts = models.TextField(

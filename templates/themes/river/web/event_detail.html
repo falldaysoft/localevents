@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% load event_dates %}
+
+{% block title %}{{ event.title }} — {{ SITE_NAME }}{% endblock %}
+{% block description %}{{ event.summary|default:event.title }}{% endblock %}
+
+{% block main_class %}le-main{% endblock %}
+
+{% block head %}
+    {% if event.venue.has_coordinates %}
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    {% endif %}
+    {% comment %}
+        schema.org markup is how search engines surface this in event results —
+        for a listing site that is a large share of the audience.
+    {% endcomment %}
+    <script type="application/ld+json" nonce="{{ csp_nonce }}">{{ schema_json|safe }}</script>
+{% endblock %}
+
+{% block content %}
+    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px">
+        <nav class="le-crumbs">
+            <a href="{% url 'index' %}">What&rsquo;s on</a>
+            <span>/</span>
+            <span>{{ event.title }}</span>
+        </nav>
+        {% comment %}
+            The page showing the mistake is where the fix gets noticed, so the
+            way to it is here rather than only in the moderation queue.
+        {% endcomment %}
+        {% if user.is_moderator %}
+            <a href="{% url 'mod_event_edit' event.pk %}" class="le-btn le-btn--quiet">Edit</a>
+        {% endif %}
+    </div>
+
+    <article class="le-detail">
+        <div>
+            <header>
+                <h1>{{ event.title }}</h1>
+                {% if event.summary %}<p class="le-detail__lede">{{ event.summary }}</p>{% endif %}
+            </header>
+
+            <div class="le-cats" style="margin-top:16px">
+                {% for category in event.categories.all %}
+                    <a class="le-cat" style="--tint: var(--cat-{{ category.slug }}, var(--ink-2))"
+                       href="{% url 'index' %}?category={{ category.slug }}">{{ category.name }}</a>
+                {% endfor %}
+                {% if event.is_free %}<span class="le-cat" style="--tint: var(--moss)">Free</span>{% endif %}
+                {% if event.is_family_friendly %}<span class="le-cat">Family friendly</span>{% endif %}
+                {% if event.is_commercial %}<span class="le-cat" style="--tint: var(--coral)">Commercial</span>{% endif %}
+            </div>
+
+            {% if event.description %}
+                <div class="le-detail__body" style="white-space:pre-line">{{ event.description }}</div>
+            {% endif %}
+
+            {% if event.accessibility_notes %}
+                <section style="margin-top:24px">
+                    <h2 style="font-family:var(--font-display);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-2)">Accessibility</h2>
+                    <p style="margin-top:6px;white-space:pre-line">{{ event.accessibility_notes }}</p>
+                </section>
+            {% endif %}
+        </div>
+
+        <aside>
+            <div class="le-panel">
+                <h2>{% if event.is_series %}Upcoming dates{% else %}When{% endif %}</h2>
+                {% if occurrences %}
+                    <ul>
+                        {% for occurrence in occurrences %}
+                            <li {% if occurrence.is_cancelled %}class="le-occ--cancelled"{% endif %}>
+                                <time datetime="{{ occurrence.start|date:'c' }}">{% occurrence_when occurrence.start occurrence.end with_year=True %}</time>
+                                {% if occurrence.is_under_way %}<span class="le-flag le-flag--now">On now</span>{% endif %}
+                                {% if occurrence.note %}<span class="le-where">&mdash; {{ occurrence.note }}</span>{% endif %}
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p class="le-where">No upcoming dates listed.</p>
+                {% endif %}
+            </div>
+
+            <div class="le-panel">
+                <h2>Where</h2>
+                {% if event.venue %}
+                    <p style="font-weight:600">{{ event.venue.name }}</p>
+                    {% if event.venue.full_address %}<p class="le-where">{{ event.venue.full_address }}</p>{% endif %}
+                    <p style="margin-top:8px"><a href="{% url 'index' %}?venue={{ event.venue.slug }}">Everything at this venue</a></p>
+                {% else %}
+                    <p class="le-where">Location to be confirmed.</p>
+                {% endif %}
+            </div>
+
+            {% if event.price_display %}
+                <div class="le-panel"><h2>Cost</h2><p>{{ event.price_display }}</p></div>
+            {% endif %}
+
+            {% if event.organizer %}
+                <div class="le-panel">
+                    <h2>Organizer</h2>
+                    <p>
+                        {% if event.organizer.website %}
+                            <a href="{{ event.organizer.website }}" rel="nofollow noopener">{{ event.organizer.name }}</a>
+                        {% else %}
+                            {{ event.organizer.name }}
+                        {% endif %}
+                    </p>
+                </div>
+            {% endif %}
+
+            <div style="display:flex;flex-direction:column;gap:8px">
+                {% if event.ticket_url %}
+                    <a href="{{ event.ticket_url }}" class="le-btn" style="justify-content:center" rel="nofollow noopener">Tickets</a>
+                {% endif %}
+                {% if event.source_url %}
+                    <a href="{{ event.source_url }}" class="le-btn le-btn--quiet" style="justify-content:center" rel="nofollow noopener">More information</a>
+                {% endif %}
+            </div>
+        </aside>
+    </article>
+
+    {% if event.venue.has_coordinates %}
+        <div id="event-map" class="le-map" style="height:260px"></div>
+    {% endif %}
+{% endblock %}
+
+{% block scripts %}
+    {% if event.venue.has_coordinates %}
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+        {{ event.venue.latitude|json_script:"venue-lat" }}
+        {{ event.venue.longitude|json_script:"venue-lng" }}
+        <script nonce="{{ csp_nonce }}">
+            (function () {
+                var el = document.getElementById('event-map');
+                if (!el) return;
+                var lat = JSON.parse(document.getElementById('venue-lat').textContent);
+                var lng = JSON.parse(document.getElementById('venue-lng').textContent);
+                var map = L.map(el).setView([lat, lng], 15);
+                L.tileLayer('{{ TILE_URL|escapejs }}', {
+                    attribution: '{{ TILE_ATTRIBUTION|escapejs }}', maxZoom: 19
+                }).addTo(map);
+                L.marker([lat, lng]).addTo(map);
+            })();
+        </script>
+    {% endif %}
+{% endblock %}

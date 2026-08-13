@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+{% load event_dates %}
+
+{% block title %}{{ SITE_NAME }} — {{ SITE_TAGLINE }}{% endblock %}
+
+{% block head %}
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <link rel="alternate" type="application/rss+xml" title="{{ SITE_NAME }}" href="/events.rss">
+{% endblock %}
+
+{% block main_class %}le-main{% endblock %}
+
+{% comment %}
+    The hero and the filter bar run edge to edge, so they sit in before_main
+    rather than inside the column.
+{% endcomment %}
+{% block before_main %}
+    <section class="le-hero">
+        <svg class="le-hero__wave" viewBox="0 0 1200 88" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+            <path d="M0 34 C170 4 330 58 560 38 C800 17 980 66 1200 36 V88 H0Z" fill="var(--shallow)" opacity=".28"/>
+            <path d="M0 52 C190 24 340 74 580 54 C820 34 1000 80 1200 54 V88 H0Z" fill="var(--sand)" opacity=".2"/>
+            <path d="M0 70 C200 46 350 90 600 72 C840 55 1010 92 1200 72 V88 H0Z" fill="var(--sand)"/>
+        </svg>
+        <div class="le-hero__inner">
+            <h1>What&rsquo;s <em>on</em></h1>
+            <p>{{ SITE_TAGLINE }}</p>
+        </div>
+    </section>
+
+    {% comment %}
+        Filters drive an HTMX GET that swaps only #results. The form pushes the
+        URL so a filtered view stays shareable and the back button works.
+
+        Everything past the search box lives in a <details> — Alpine cannot run
+        under this site's CSP, and on a phone an always-open panel of eleven
+        category chips pushed the first listing below the fold.
+    {% endcomment %}
+    <form id="filters" class="le-filters"
+          hx-get="{% url 'index' %}"
+          hx-target="#results"
+          hx-select="#results"
+          hx-swap="outerHTML"
+          hx-push-url="true"
+          hx-trigger="change, search">
+        <div class="le-filters__inner">
+            <input type="search" name="q" value="{{ filters.query }}"
+                   aria-label="Search events, venues, organizers"
+                   placeholder="Search events, venues, organizers">
+
+            <select name="when" aria-label="When">
+                {% for value, label in when_choices %}
+                    <option value="{{ value }}" {% if filters.when == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+
+            <select name="venue" aria-label="Where">
+                <option value="">Anywhere</option>
+                {% for venue in venues %}
+                    <option value="{{ venue.slug }}" {% if filters.venue == venue.slug %}selected{% endif %}>{{ venue.name }}</option>
+                {% endfor %}
+            </select>
+
+            {% comment %}
+                The panel has to live *inside* the <details>, or the disclosure
+                renders a summary that toggles nothing and the chips stay open
+                — which is the whole problem this was meant to solve. Opened by
+                default when a filter is already applied, so an arriving
+                visitor can see what is narrowing their results.
+            {% endcomment %}
+            <details class="le-more" {% if filters.is_active %}open{% endif %}>
+                <summary>All filters</summary>
+
+                <div class="le-more__panel">
+                    {% for category in categories %}
+                        <label>
+                            <input type="checkbox" name="category" value="{{ category.slug }}"
+                                   class="le-catbox"
+                                   {% if category.slug in filters.categories %}checked{% endif %}>
+                            <span class="le-chip">{{ category.emoji }} {{ category.name }}</span>
+                        </label>
+                    {% endfor %}
+                </div>
+
+                <div class="le-toggles">
+                    <label>
+                        <input type="checkbox" name="free" value="1" {% if filters.free_only %}checked{% endif %}> Free only
+                    </label>
+                    <label>
+                        <input type="checkbox" name="family" value="1" {% if filters.family_only %}checked{% endif %}> Family friendly
+                    </label>
+                    <label>
+                        <input type="checkbox" name="noncommercial" value="1" {% if filters.hide_commercial %}checked{% endif %}> Hide commercial
+                    </label>
+                    {% if filters.is_active %}
+                        <a href="{% url 'index' %}" style="margin-left:auto">Clear filters</a>
+                    {% endif %}
+                </div>
+            </details>
+        </div>
+    </form>
+{% endblock %}
+
+{% block content %}
+    {% partialdef results inline %}
+    <div id="results">
+        <p style="padding-top:20px;font-size:13.5px;color:var(--ink-2)">
+            {{ result_count }} event{{ result_count|pluralize }}
+            {% if program_count %}
+                &middot; <a href="#programs">{{ program_count }} regular program{{ program_count|pluralize }}</a>
+            {% endif %}
+        </p>
+
+        {% comment %}
+            Featured listings sit above the day list rather than inside it.
+            `prominence` is documented as controlling placement, and burying a
+            moderator's featured pick three weeks down a date-ordered page
+            would quietly take that control away.
+        {% endcomment %}
+        {% for event in featured %}
+            <article class="le-feature"
+                     {% for category in event.categories.all|slice:":1" %}style="--spine: var(--cat-{{ category.slug }}, var(--river))"{% endfor %}>
+                <div class="le-feature__txt">
+                    <span class="le-feature__kicker">&#9733; Featured</span>
+                    <h3><a href="{% url 'event_detail' event.slug %}">{{ event.title }}</a></h3>
+                    <p class="le-when">
+                        {% if event.next_start %}
+                            <time datetime="{{ event.next_start|date:'c' }}">{% occurrence_when event.next_start event.next_end %}</time>
+                        {% endif %}
+                        {% if event.venue %}<span class="le-where">&middot; {{ event.venue.name }}</span>{% endif %}
+                    </p>
+                    {% if event.summary %}<p class="le-summary">{{ event.summary }}</p>{% endif %}
+                    <div class="le-cats">
+                        {% for category in event.categories.all %}
+                            <span class="le-cat">{{ category.name }}</span>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="le-feature__art" aria-hidden="true">
+                    <svg viewBox="0 0 250 250" preserveAspectRatio="xMidYMid slice" focusable="false">
+                        <defs>
+                            <radialGradient id="le-sun-{{ event.pk }}" cx="34%" cy="28%">
+                                <stop offset="0%" stop-color="#F7C27E"/><stop offset="100%" stop-color="#E2664A"/>
+                            </radialGradient>
+                        </defs>
+                        <rect width="250" height="250" fill="var(--deep-2)"/>
+                        <circle cx="125" cy="98" r="54" fill="url(#le-sun-{{ event.pk }})"/>
+                        <g fill="none" stroke="var(--peach)" stroke-width="2" stroke-linecap="round" opacity=".5">
+                            <circle cx="125" cy="98" r="70"/><circle cx="125" cy="98" r="84"/>
+                        </g>
+                        <g fill="none" stroke="var(--shallow)" stroke-width="4" stroke-linecap="round">
+                            <path d="M-10 186 C40 168 80 204 130 186 C176 170 210 202 260 184"/>
+                            <path d="M-10 208 C40 190 80 226 130 208 C176 192 210 224 260 206"/>
+                            <path d="M-10 230 C40 212 80 248 130 230 C176 214 210 246 260 228"/>
+                        </g>
+                    </svg>
+                </div>
+            </article>
+        {% endfor %}
+
+        {% for day in days %}
+            <div class="le-day">
+                <h2>{{ day.date|date:"D j F" }}</h2>
+                {% if day.rel %}<span class="le-day__rel">{{ day.rel }}</span>{% endif %}
+                <svg class="le-day__wave" viewBox="0 0 400 12" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+                    <path d="M0 6 C50 0 80 12 130 6 C180 0 210 12 260 6 C310 0 350 12 400 6"
+                          fill="none" stroke="#C9DCE6" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                <span class="le-day__count">{{ day.events|length }} event{{ day.events|length|pluralize }}</span>
+            </div>
+            <ul class="le-list">
+                {% for event in day.events %}
+                    {% include "themes/river/web/_event_card.html" with event=event %}
+                {% endfor %}
+            </ul>
+        {% endfor %}
+
+        {% if not featured and not days %}
+            <div class="le-empty" style="margin-top:20px">
+                <strong>Nothing matches that yet.</strong>
+                <span>Try a wider date range, or clear a filter or two.</span>
+            </div>
+        {% endif %}
+
+        {% if programs %}
+            <section id="programs" class="le-section">
+                <h2>Regular programs</h2>
+                <p class="le-section__lede">
+                    Classes, clubs, and other things that run every week. Kept
+                    separate so they don&rsquo;t crowd out one-off events.
+                </p>
+                {% for event in programs %}
+                    <div class="le-prog">
+                        <h3><a href="{% url 'event_detail' event.slug %}">{{ event.title }}</a></h3>
+                        {% if event.venue %}<span class="le-where">{{ event.venue.name }}</span>{% endif %}
+                        {% if event.next_start %}
+                            <span class="le-prog__cadence">
+                                <time datetime="{{ event.next_start|date:'c' }}">{% occurrence_when event.next_start event.next_end %}</time>
+                            </span>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </section>
+        {% endif %}
+    </div>
+    {% endpartialdef %}
+
+    {% comment %}
+        The map sits below the listings, not above them: at 320px between the
+        filters and the first card it meant the page opened on no events at
+        all on a phone.
+    {% endcomment %}
+    <div id="map" class="le-map"></div>
+{% endblock %}
+
+{% block scripts %}
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    {{ map_config|json_script:"map-config" }}
+    <script nonce="{{ csp_nonce }}">
+        (function () {
+            var el = document.getElementById('map');
+            var cfgEl = document.getElementById('map-config');
+            if (!el || !cfgEl) return;
+            var cfg = JSON.parse(cfgEl.textContent);
+
+            var map = L.map(el).setView(cfg.center, cfg.zoom);
+            L.tileLayer(cfg.tileUrl, { attribution: cfg.attribution, maxZoom: 19 }).addTo(map);
+
+            var layer = L.layerGroup().addTo(map);
+
+            function load() {
+                // The map reads the same query string as the list, so pins and
+                // results can never disagree.
+                var qs = new URLSearchParams(new FormData(document.getElementById('filters'))).toString();
+                fetch(cfg.geojsonUrl + (qs ? '?' + qs : ''))
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        layer.clearLayers();
+                        var bounds = [];
+                        data.features.forEach(function (f) {
+                            var c = f.geometry.coordinates;
+                            var p = f.properties;
+                            var html = '<strong>' + escapeHtml(p.venue) + '</strong><ul style="margin:.35rem 0 0;padding-left:1rem">';
+                            p.events.forEach(function (e) {
+                                html += '<li><a href="' + e.url + '">' + escapeHtml(e.title) + '</a></li>';
+                            });
+                            html += '</ul>';
+                            L.marker([c[1], c[0]]).bindPopup(html).addTo(layer);
+                            bounds.push([c[1], c[0]]);
+                        });
+                        if (bounds.length) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
+                    });
+            }
+
+            function escapeHtml(s) {
+                return String(s).replace(/[&<>"']/g, function (c) {
+                    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+                });
+            }
+
+            load();
+            document.getElementById('filters').addEventListener('change', function () {
+                setTimeout(load, 50);
+            });
+        })();
+    </script>
+{% endblock %}
