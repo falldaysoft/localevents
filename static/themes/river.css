@@ -199,10 +199,16 @@
 
 /* ── Filters ───────────────────────────────────────────────────────────── */
 
+/* Positioning context for the filter panel, which drops below the whole bar.
+   The z-index is what keeps that panel above the map further down the page:
+   Leaflet gives its own panes z-indexes in the hundreds, and without a
+   stacking context here they would paint straight through it. */
 [data-theme="river"] .le-filters {
   background: var(--sand-2);
   padding: 18px 0;
   margin-bottom: 8px;
+  position: relative;
+  z-index: 20;
 }
 
 [data-theme="river"] .le-filters__inner {
@@ -213,6 +219,8 @@
   gap: 9px;
   align-items: center;
   flex-wrap: wrap;
+  /* Containing block for the summary lifted out of the second row below. */
+  position: relative;
 }
 
 [data-theme="river"] .le-filters input[type="search"],
@@ -230,10 +238,22 @@
 /* Capped: `flex: 1` alone stretches the box to whatever is left over, so on a
    wide window it becomes a search field the width of a paragraph beside two
    small selects, which reads as a mistake rather than a hierarchy. */
+/* The flex bases matter as much as the cap. All four controls have to fit one
+   line down to the 760px breakpoint, or the summary wraps and ends up alone on
+   a row of its own — which is what it looked like before. At 760px there is
+   712px of content: 220 + 130 + 170 + ~130 + 27 of gaps leaves room to spare,
+   and the search takes whatever is left over above that. */
 [data-theme="river"] .le-filters input[type="search"] {
-  flex: 1 1 260px;
-  min-width: 210px;
+  flex: 1 1 220px;
+  min-width: 180px;
   max-width: 460px;
+}
+
+/* A <select> is sized by its widest option, so one long venue name silently
+   stretches this to half the bar and pushes everything after it onto a second
+   row. The names truncate natively once a width is imposed. */
+[data-theme="river"] .le-filters select {
+  max-width: 170px;
 }
 
 [data-theme="river"] .le-filters input:focus,
@@ -242,7 +262,13 @@
   box-shadow: inset 0 0 0 2px var(--river);
 }
 
+/* inline-flex, not the default inline: vertical padding on an inline box does
+   not grow the line, so the pill bleeds over the rows above and below it and
+   wrapped chips visibly overlap. These were <button>s in the prototype, which
+   are inline-block already, so porting them to <span> lost it silently. */
 [data-theme="river"] .le-chip {
+  display: inline-flex;
+  align-items: center;
   border: 0;
   background: #fff;
   padding: 11px 19px;
@@ -254,6 +280,10 @@
   line-height: 1;
   color: var(--deep);
   cursor: pointer;
+}
+
+[data-theme="river"] .le-more__panel label {
+  display: inline-flex;
 }
 
 /* Visually hidden so the chip beside it can be styled freely, but still
@@ -281,35 +311,60 @@
   box-shadow: none;
 }
 
-/* Full width so the panel it discloses has somewhere to open. A <details>
-   sized to its summary would clip the chips inside it. */
+/* The <details> is an ordinary item on the first row, so its summary sits
+   inline beside the search box and wraps with everything else when space runs
+   out. The panel it opens is the part that escapes — see below. Taking the
+   summary out of the flow instead does not work: the row then lays out as
+   though it were absent and the select beside it ends up underneath. */
 [data-theme="river"] .le-more {
-  flex: 1 0 100%;
-  margin-top: 4px;
+  flex: 0 1 auto;
 }
 
-/* Styled as a control, not a link. On its own line an underlined phrase reads
-   as a section heading, and nothing about it suggests there is anything to
-   open — the chevron and the pill are what make it look pressable. */
+/* Styled as a control, not a link. An underlined phrase reads as a section
+   heading, and nothing about it suggests there is anything to open — the
+   chevron and the pill are what make it look pressable. */
 [data-theme="river"] .le-more > summary {
-  list-style: none;
-  cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  list-style: none;
+  cursor: pointer;
+  /* Matches the height of the inputs beside it, and clears the 44px minimum
+     for something that has to be tapped. */
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 999px;
   background: #fff;
   box-shadow: inset 0 0 0 1.5px var(--sand-3);
-  border-radius: 999px;
-  padding: 10px 17px;
   font-family: var(--font-display);
   font-weight: 600;
   font-size: 14.5px;
   line-height: 1;
   color: var(--deep);
+  white-space: nowrap;
 }
 
 [data-theme="river"] .le-more > summary::-webkit-details-marker {
   display: none;
+}
+
+/* Says "a filter is applied" without opening anything. Paired with an
+   sr-only phrase, because a coloured dot announces nothing on its own. */
+[data-theme="river"] .le-more__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--coral);
+  margin-left: -1px;
+}
+
+[data-theme="river"] .le-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 [data-theme="river"] .le-more > summary::after {
@@ -335,11 +390,31 @@
   outline-offset: 2px;
 }
 
+/* The panel drops below the whole bar instead of opening inside the row.
+   That is what lets the summary stay inline with the search box: the row
+   holds one small control, and the wide contents hang off the bar itself. */
 [data-theme="river"] .le-more__panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--sand-2);
+  padding: 14px 0 20px;
+  box-shadow: 0 22px 30px -26px rgba(23, 38, 46, 0.85);
+  border-bottom-left-radius: 22px;
+  border-bottom-right-radius: 22px;
+}
+
+[data-theme="river"] .le-more__panel-inner {
+  max-width: 1020px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+[data-theme="river"] .le-more__cats {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  padding-top: 16px;
 }
 
 [data-theme="river"] .le-toggles {
@@ -664,6 +739,10 @@
   overflow: hidden;
   margin: 28px 0 0;
   box-shadow: 0 2px 3px rgba(23, 38, 46, 0.045);
+  /* Its own stacking context, so Leaflet's panes — which carry z-indexes in
+     the hundreds — stay contained and cannot paint over the filter panel. */
+  position: relative;
+  z-index: 0;
 }
 
 /* ── Sections ──────────────────────────────────────────────────────────── */
@@ -915,8 +994,26 @@
     order: -1;
   }
 
+  /* On a phone the panel belongs in the flow, pushing the listings down
+     rather than covering them — there is not enough screen for an overlay to
+     leave anything useful visible underneath it. */
   [data-theme="river"] .le-more {
-    margin-left: 0;
+    flex: 1 0 100%;
+  }
+
+  [data-theme="river"] .le-more__panel {
+    position: static;
+    padding: 14px 0 0;
+    box-shadow: none;
+    border-radius: 0;
+  }
+
+  [data-theme="river"] .le-more__panel-inner {
+    padding: 0;
+  }
+
+  [data-theme="river"] .le-more {
+    margin-top: 4px;
   }
 
   [data-theme="river"] .le-day {

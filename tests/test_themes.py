@@ -188,22 +188,30 @@ def disclosure_is_open(body):
     Reads the opening tag itself rather than searching the page, so the answer
     cannot be changed by reindenting the template.
     """
-    start = body.index('<details class="le-more"')
+    start = body.index("<details class=\"le-more\"")
     return "open" in body[start : body.index(">", start) + 1]
 
 
-def test_a_text_search_does_not_spring_the_filter_panel(client, listings):
-    """The query is already visible in the box; the chips are not an
-    explanation of it, and revealing eleven of them costs a screen of height.
+@pytest.mark.parametrize(
+    "params",
+    [
+        {},
+        {"q": "quiz"},
+        {"category": "music"},
+        {"free": "1"},
+        {"family": "1"},
+        {"noncommercial": "1"},
+    ],
+)
+def test_the_filter_panel_never_opens_by_itself(client, listings, params):
+    """On a wide screen the panel is an overlay over the listings.
+
+    Springing it for an already-filtered URL would cover the very results the
+    visitor followed the link to read.
     """
     set_theme("river")
-    body = client.get(reverse("index"), {"q": "quiz"}).content.decode()
+    body = client.get(reverse("index"), params).content.decode()
     assert not disclosure_is_open(body)
-
-
-def test_an_unfiltered_page_leaves_the_panel_closed(client, listings):
-    set_theme("river")
-    assert not disclosure_is_open(client.get(reverse("index")).content.decode())
 
 
 @pytest.mark.parametrize(
@@ -215,11 +223,21 @@ def test_an_unfiltered_page_leaves_the_panel_closed(client, listings):
         {"noncommercial": "1"},
     ],
 )
-def test_a_filter_inside_the_panel_opens_it(client, listings, params):
-    """Otherwise a visitor sees a narrowed list with no visible cause."""
+def test_an_applied_filter_is_marked_on_the_summary(client, listings, params):
+    """Otherwise a visitor sees a narrowed list with no visible cause, and
+    the cause is hidden inside a panel they have no reason to open.
+    """
     set_theme("river")
     body = client.get(reverse("index"), params).content.decode()
-    assert disclosure_is_open(body)
+    assert "le-more__dot" in body
+
+
+@pytest.mark.parametrize("params", [{}, {"q": "quiz"}, {"when": "weekend"}])
+def test_no_marker_when_nothing_in_the_panel_is_applied(client, listings, params):
+    """A text search is visible in its own box; it is not this dot's business."""
+    set_theme("river")
+    body = client.get(reverse("index"), params).content.decode()
+    assert "le-more__dot" not in body
 
 
 def test_event_detail_renders_under_a_theme(client, listings):

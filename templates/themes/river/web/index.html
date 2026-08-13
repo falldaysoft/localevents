@@ -63,41 +63,58 @@
             {% comment %}
                 The panel has to live *inside* the <details>, or the disclosure
                 renders a summary that toggles nothing and the chips stay open
-                — which is the whole problem this was meant to solve. Opened by
-                default only when one of the filters *inside it* is applied, so
-                an arriving visitor can see what is narrowing their results. A
-                plain text search deliberately does not spring it: the query is
-                already visible in the box above, and revealing eleven category
-                chips to explain it costs a screen of height on a phone.
+                — which is the whole problem this was meant to solve.
+
+                It never opens by itself. On a wide screen it is an overlay, so
+                springing it for an already-filtered URL would cover the very
+                listings the visitor came to read. The dot on the summary is
+                what says a filter is applied; it costs no height and hides
+                nothing.
             {% endcomment %}
-            <details class="le-more"
-                     {% if filters.categories or filters.free_only or filters.family_only or filters.hide_commercial %}open{% endif %}>
-                <summary>All filters</summary>
-
-                <div class="le-more__panel">
-                    {% for category in categories %}
-                        <label>
-                            <input type="checkbox" name="category" value="{{ category.slug }}"
-                                   class="le-catbox"
-                                   {% if category.slug in filters.categories %}checked{% endif %}>
-                            <span class="le-chip">{{ category.emoji }} {{ category.name }}</span>
-                        </label>
-                    {% endfor %}
-                </div>
-
-                <div class="le-toggles">
-                    <label>
-                        <input type="checkbox" name="free" value="1" {% if filters.free_only %}checked{% endif %}> Free only
-                    </label>
-                    <label>
-                        <input type="checkbox" name="family" value="1" {% if filters.family_only %}checked{% endif %}> Family friendly
-                    </label>
-                    <label>
-                        <input type="checkbox" name="noncommercial" value="1" {% if filters.hide_commercial %}checked{% endif %}> Hide commercial
-                    </label>
-                    {% if filters.is_active %}
-                        <a href="{% url 'index' %}" style="margin-left:auto">Clear filters</a>
+            <details class="le-more">
+                <summary>
+                    All filters
+                    {% if filters.categories or filters.free_only or filters.family_only or filters.hide_commercial %}
+                        <span class="le-more__dot" aria-hidden="true"></span>
+                        <span class="le-sr">(filters applied)</span>
                     {% endif %}
+                </summary>
+
+                {% comment %}
+                    One panel wrapping both rows, because on a wide screen the
+                    summary stays inline with the search box and the panel
+                    drops below the whole bar — which it can only do as a
+                    single positioned box. The inner div re-establishes the
+                    page column, since the outer one runs edge to edge.
+                {% endcomment %}
+                <div class="le-more__panel">
+                    <div class="le-more__panel-inner">
+                        <div class="le-more__cats">
+                            {% for category in categories %}
+                                <label>
+                                    <input type="checkbox" name="category" value="{{ category.slug }}"
+                                           class="le-catbox"
+                                           {% if category.slug in filters.categories %}checked{% endif %}>
+                                    <span class="le-chip">{{ category.emoji }} {{ category.name }}</span>
+                                </label>
+                            {% endfor %}
+                        </div>
+
+                        <div class="le-toggles">
+                            <label>
+                                <input type="checkbox" name="free" value="1" {% if filters.free_only %}checked{% endif %}> Free only
+                            </label>
+                            <label>
+                                <input type="checkbox" name="family" value="1" {% if filters.family_only %}checked{% endif %}> Family friendly
+                            </label>
+                            <label>
+                                <input type="checkbox" name="noncommercial" value="1" {% if filters.hide_commercial %}checked{% endif %}> Hide commercial
+                            </label>
+                            {% if filters.is_active %}
+                                <a href="{% url 'index' %}" style="margin-left:auto">Clear filters</a>
+                            {% endif %}
+                        </div>
+                    </div>
                 </div>
             </details>
         </div>
