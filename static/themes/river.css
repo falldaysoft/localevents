@@ -227,9 +227,13 @@
   box-shadow: inset 0 0 0 1.5px var(--sand-3);
 }
 
+/* Capped: `flex: 1` alone stretches the box to whatever is left over, so on a
+   wide window it becomes a search field the width of a paragraph beside two
+   small selects, which reads as a mistake rather than a hierarchy. */
 [data-theme="river"] .le-filters input[type="search"] {
-  flex: 1;
+  flex: 1 1 260px;
   min-width: 210px;
+  max-width: 460px;
 }
 
 [data-theme="river"] .le-filters input:focus,
@@ -281,29 +285,61 @@
    sized to its summary would clip the chips inside it. */
 [data-theme="river"] .le-more {
   flex: 1 0 100%;
+  margin-top: 4px;
 }
 
+/* Styled as a control, not a link. On its own line an underlined phrase reads
+   as a section heading, and nothing about it suggests there is anything to
+   open — the chevron and the pill are what make it look pressable. */
 [data-theme="river"] .le-more > summary {
   list-style: none;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: #fff;
+  box-shadow: inset 0 0 0 1.5px var(--sand-3);
+  border-radius: 999px;
+  padding: 10px 17px;
   font-family: var(--font-display);
   font-weight: 600;
   font-size: 14.5px;
+  line-height: 1;
   color: var(--deep);
-  text-decoration: underline;
-  text-underline-offset: 4px;
 }
 
 [data-theme="river"] .le-more > summary::-webkit-details-marker {
   display: none;
 }
 
+[data-theme="river"] .le-more > summary::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 0.16s ease;
+}
+
+[data-theme="river"] .le-more[open] > summary::after {
+  transform: translateY(1px) rotate(-135deg);
+}
+
+[data-theme="river"] .le-more > summary:hover {
+  background: var(--sand);
+}
+
+[data-theme="river"] .le-more > summary:focus-visible {
+  outline: 2px solid var(--river);
+  outline-offset: 2px;
+}
+
 [data-theme="river"] .le-more__panel {
-  flex: 1 0 100%;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  padding-top: 14px;
+  padding-top: 16px;
 }
 
 [data-theme="river"] .le-toggles {
@@ -311,8 +347,7 @@
   gap: 18px;
   flex-wrap: wrap;
   align-items: center;
-  flex: 1 0 100%;
-  padding-top: 4px;
+  padding-top: 14px;
   font-size: 14px;
   color: var(--ink-2);
 }

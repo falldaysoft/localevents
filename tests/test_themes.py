@@ -182,6 +182,46 @@ def test_secondary_filters_are_inside_the_disclosure(client, listings):
     ).count()
 
 
+def disclosure_is_open(body):
+    """Whether the filter <details> renders with the `open` attribute.
+
+    Reads the opening tag itself rather than searching the page, so the answer
+    cannot be changed by reindenting the template.
+    """
+    start = body.index('<details class="le-more"')
+    return "open" in body[start : body.index(">", start) + 1]
+
+
+def test_a_text_search_does_not_spring_the_filter_panel(client, listings):
+    """The query is already visible in the box; the chips are not an
+    explanation of it, and revealing eleven of them costs a screen of height.
+    """
+    set_theme("river")
+    body = client.get(reverse("index"), {"q": "quiz"}).content.decode()
+    assert not disclosure_is_open(body)
+
+
+def test_an_unfiltered_page_leaves_the_panel_closed(client, listings):
+    set_theme("river")
+    assert not disclosure_is_open(client.get(reverse("index")).content.decode())
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"category": "music"},
+        {"free": "1"},
+        {"family": "1"},
+        {"noncommercial": "1"},
+    ],
+)
+def test_a_filter_inside_the_panel_opens_it(client, listings, params):
+    """Otherwise a visitor sees a narrowed list with no visible cause."""
+    set_theme("river")
+    body = client.get(reverse("index"), params).content.decode()
+    assert disclosure_is_open(body)
+
+
 def test_event_detail_renders_under_a_theme(client, listings):
     set_theme("river")
     event = Event.objects.get(title="Open Mic Night")

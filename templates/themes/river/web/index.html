@@ -64,10 +64,14 @@
                 The panel has to live *inside* the <details>, or the disclosure
                 renders a summary that toggles nothing and the chips stay open
                 — which is the whole problem this was meant to solve. Opened by
-                default when a filter is already applied, so an arriving
-                visitor can see what is narrowing their results.
+                default only when one of the filters *inside it* is applied, so
+                an arriving visitor can see what is narrowing their results. A
+                plain text search deliberately does not spring it: the query is
+                already visible in the box above, and revealing eleven category
+                chips to explain it costs a screen of height on a phone.
             {% endcomment %}
-            <details class="le-more" {% if filters.is_active %}open{% endif %}>
+            <details class="le-more"
+                     {% if filters.categories or filters.free_only or filters.family_only or filters.hide_commercial %}open{% endif %}>
                 <summary>All filters</summary>
 
                 <div class="le-more__panel">
