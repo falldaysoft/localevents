@@ -18,11 +18,18 @@
   --deep: #123a4f;
   --deep-2: #0b2a3a;
   --river: #2e7fa8;
+  /* The end stop for anything that carries text. --river is too light to sit
+     under white at 15px — it measures 4.45 — and the gradients run text right
+     across their lightest end. This is the same hue, dark enough that white
+     reaches 8.1 and the pale blue 5.8. --river itself stays as it is for the
+     links and spines, which sit on sand rather than under type. */
+  --river-deep: #17566f;
   --shallow: #7cb6ce;
   --sand: #fdf9f3;
   --sand-2: #f5ebdd;
   --sand-3: #e3d3bf;
   --coral: #e2664a;
+  --coral-deep: #b23a22;
   --peach: #f2a65a;
   --moss: #3f7d5a;
   --ink: #17262e;
@@ -89,6 +96,9 @@
   line-height: 1;
   color: #fff;
   text-decoration: none;
+  /* A signed-in moderator adds two more links to this bar, which was enough
+     to break a two-word site name across two lines. */
+  white-space: nowrap;
 }
 
 [data-theme="river"] .le-nav__links {
@@ -98,12 +108,16 @@
   font-size: 14px;
 }
 
-[data-theme="river"] .le-nav__links a {
+/* :not(.le-btn) is load-bearing. `.le-nav__links a` is one specificity step
+   above `.le-btn`, so without it this pale blue wins over the button's own
+   dark text and the call to action renders at a contrast ratio of 1.16 —
+   effectively invisible. */
+[data-theme="river"] .le-nav__links a:not(.le-btn) {
   color: #a9c9d8;
   text-decoration: none;
 }
 
-[data-theme="river"] .le-nav__links a:hover {
+[data-theme="river"] .le-nav__links a:not(.le-btn):hover {
   color: #fff;
 }
 
@@ -153,7 +167,7 @@
 
 /* A gradient reading as water deepening, rather than a flat band. */
 [data-theme="river"] .le-hero {
-  background: linear-gradient(168deg, var(--deep) 0%, #164b63 52%, var(--river) 100%);
+  background: linear-gradient(168deg, var(--deep) 0%, #164b63 52%, var(--river-deep) 100%);
   color: #fff;
   padding: 12px 0 62px;
   position: relative;
@@ -590,7 +604,13 @@
 
 /* Tinted, not saturated — the colour whispers the category rather than
    competing with the title. A solid fallback precedes each color-mix so a
-   browser without it gets a plain pill rather than an unpainted one. */
+   browser without it gets a plain pill rather than an unpainted one.
+
+   The *text* is the hue mixed most of the way to ink, not the hue itself.
+   At 12.5px the raw category colours do not carry: measured against their own
+   13% tint, Family came out at 2.39, Food & Drink 3.64, Community 3.81 and
+   Sports 4.02, all short of the 4.5 that normal-size text needs. Mixing 55%
+   toward ink keeps the hue recognisable and puts every one of them above 5. */
 [data-theme="river"] .le-cat {
   font-family: var(--font-display);
   font-weight: 600;
@@ -598,7 +618,8 @@
   border-radius: 999px;
   padding: 4px 12px;
   line-height: 1.35;
-  color: var(--tint, var(--ink-2));
+  color: var(--ink);
+  color: color-mix(in srgb, var(--tint, var(--ink)) 55%, var(--ink));
   background: var(--sand-2);
   background: color-mix(in srgb, var(--tint, var(--ink-2)) 13%, #fff);
 }
@@ -636,8 +657,11 @@
   white-space: nowrap;
 }
 
+/* A deeper red than --coral. White on --coral measures 3.37, which is fine
+   for a large heading and not for a 12.5px badge; this reaches 5.9. --coral
+   itself stays as it is for the dot, which carries no text. */
 [data-theme="river"] .le-flag--now {
-  background: var(--coral);
+  background: var(--coral-deep);
   color: #fff;
   padding: 4px 12px;
   border-radius: 999px;
@@ -652,7 +676,7 @@
   overflow: hidden;
   margin-bottom: 11px;
   color: #fff;
-  background: linear-gradient(150deg, var(--deep) 0%, #1a5872 58%, var(--river) 100%);
+  background: linear-gradient(150deg, var(--deep) 0%, #164b63 58%, var(--river-deep) 100%);
   display: grid;
   grid-template-columns: 1fr 250px;
   box-shadow: 0 16px 38px -18px rgba(18, 58, 79, 0.72);
@@ -695,8 +719,12 @@
   inset: 0;
 }
 
+/* Cream, not --peach: peach on this gradient measures 2.20 at its light end
+   and 4.00 even after darkening it, which is short of the 4.5 a 16.5px line
+   needs. The kicker keeps peach because there it is a background with dark
+   text on it, not text on a background. */
 [data-theme="river"] .le-feature .le-when {
-  color: var(--peach);
+  color: #ffe0b5;
   font-size: 16.5px;
   margin-top: 0;
   margin-bottom: 10px;
