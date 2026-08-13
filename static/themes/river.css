@@ -562,7 +562,8 @@
 }
 
 [data-theme="river"] .le-row h3 a:hover {
-  color: var(--spine, var(--river));
+  color: var(--ink);
+  color: color-mix(in srgb, var(--spine, var(--river)) 55%, var(--ink));
 }
 
 [data-theme="river"] .le-row h3 a:focus-visible {
@@ -574,12 +575,16 @@
   outline-offset: 2px;
 }
 
+/* Mixed toward ink for the same reason as the pills: this is the category
+   hue on a white card, and the lighter categories do not survive it raw —
+   Family measured 2.69, and even the default --river only reaches 4.45. */
 [data-theme="river"] .le-when {
   margin-top: 3px;
   font-family: var(--font-display);
   font-weight: 600;
   font-size: 15px;
-  color: var(--spine, var(--river));
+  color: var(--ink);
+  color: color-mix(in srgb, var(--spine, var(--river)) 55%, var(--ink));
 }
 
 [data-theme="river"] .le-where {

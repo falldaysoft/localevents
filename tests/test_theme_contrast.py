@@ -110,6 +110,54 @@ def test_nav_links_do_not_capture_the_button():
     assert ".le-nav__links a:not(.le-btn)" in css
 
 
+def srgb_mix(a, b, weight):
+    """`color-mix(in srgb, a <weight>%, b)` — a plain per-channel blend."""
+    pa = [int(a.lstrip("#")[i : i + 2], 16) for i in (0, 2, 4)]
+    pb = [int(b.lstrip("#")[i : i + 2], 16) for i in (0, 2, 4)]
+    return "#" + "".join(
+        f"{round(weight * x + (1 - weight) * y):02x}" for x, y in zip(pa, pb)
+    )
+
+
+# The proportion the stylesheet mixes a category hue toward ink before using
+# it as text. Kept beside the CSS value it mirrors.
+CATEGORY_TEXT_MIX = 0.55
+CATEGORY_TINT_MIX = 0.13
+
+
+def category_tokens(tokens):
+    return {k: v for k, v in tokens.items() if k.startswith("--cat-")}
+
+
+def test_there_are_categories_to_check(tokens):
+    assert len(category_tokens(tokens)) >= 10
+
+
+def test_every_category_reads_on_a_card(tokens):
+    """The date line takes the category hue, on a white card.
+
+    Checked for *every* category rather than the ones a fixture happens to
+    contain: this shipped broken because the local database had Music and
+    Markets, which are dark enough to pass, while the live site had Family,
+    which measured 2.69.
+    """
+    ink = tokens["--ink"]
+    for name, hue in sorted(category_tokens(tokens).items()):
+        text = srgb_mix(hue, ink, CATEGORY_TEXT_MIX)
+        ratio = contrast(text, "#ffffff")
+        assert ratio >= AA_NORMAL, f"{name}: {text} on white is {ratio:.2f}:1"
+
+
+def test_every_category_reads_on_its_own_pill(tokens):
+    """The pill tints its background with the same hue it writes in."""
+    ink = tokens["--ink"]
+    for name, hue in sorted(category_tokens(tokens).items()):
+        text = srgb_mix(hue, ink, CATEGORY_TEXT_MIX)
+        tint = srgb_mix(hue, "#ffffff", CATEGORY_TINT_MIX)
+        ratio = contrast(text, tint)
+        assert ratio >= AA_NORMAL, f"{name}: {text} on {tint} is {ratio:.2f}:1"
+
+
 def test_every_declared_token_is_a_full_hex(tokens):
     """Shorthand hex would silently break the parsing above."""
     for name, value in tokens.items():
