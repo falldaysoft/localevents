@@ -703,6 +703,32 @@ def test_a_manual_submission_is_not_shown_as_untitled(signed_in, submitter):
 
 
 @pytest.mark.django_db
+def test_a_corrected_title_wins_over_the_extractors_first_reading(
+    signed_in, submitter
+):
+    """The draft is a snapshot, and nothing ever edits it.
+
+    So the moment a submitter fixes an extracted title at confirmation the two
+    disagree forever. Preferring the draft meant the queue, the moderation
+    screen and the approval mail all announced a name the listing does not
+    have — a moderator reading it reasonably concludes the record is wrong and
+    goes looking for a way to fix a title that was already right.
+    """
+    submission = Submission.objects.create(
+        submitted_by=submitter,
+        status=Submission.Status.AWAITING_SUBMITTER,
+        draft={"title": "Riverside Barbecue - Day 1"},
+    )
+    signed_in.post(
+        reverse("submission_detail", args=[submission.pk]),
+        _valid_form_data(title="Riverside Barbecue"),
+    )
+
+    submission.refresh_from_db()
+    assert submission.display_title == "Riverside Barbecue"
+
+
+@pytest.mark.django_db
 def test_confirming_writes_an_audit_record(signed_in, submitter):
     submission = Submission.objects.create(
         submitted_by=submitter, status=Submission.Status.AWAITING_SUBMITTER

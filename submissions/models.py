@@ -112,15 +112,23 @@ class Submission(models.Model):
     def display_title(self):
         """Best available name for this submission.
 
-        The draft is empty for anything entered by hand, so falling back to the
-        event is what stops a manual submission showing as "Untitled" in the
+        The event wins whenever there is one. The draft is the extractor's
+        first reading of the page and nothing edits it afterwards, so once a
+        submitter has corrected a title at confirmation the two disagree
+        forever — and preferring the draft meant the moderation screen, the
+        queue and the approval mail all announced a name the listing does not
+        have and never had.
+
+        The draft is empty for anything entered by hand, and the source URL is
+        all that is left before the event exists, so both stay as fallbacks:
+        that is what stops a manual submission showing as "Untitled" in the
         submitter's own list.
         """
+        if self.event_id and self.event:
+            return self.event.title
         draft_title = (self.draft or {}).get("title")
         if draft_title:
             return draft_title
-        if self.event_id and self.event:
-            return self.event.title
         return self.source_url or "Untitled submission"
 
     @property
