@@ -7,6 +7,7 @@ backlog should never have to open a second tab to find out what a page said.
 """
 
 from django.contrib import messages
+from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
@@ -221,17 +222,32 @@ def audit(request):
 
 @moderator_required
 def event_edit(request, pk):
-    """Fix a listing that is already live.
+    """Fix a listing — every part of it, on one screen.
 
-    Reached from the event page itself rather than from the queue, because
-    that is where the problem gets noticed — someone reads the page, spots the
-    wrong time, and the way to fix it should be on the screen showing the
-    mistake.
+    Reached from the event page itself and from the submission in the queue,
+    because those are where a problem gets noticed: someone reads the page,
+    spots the wrong time, and the way to fix it should be on the screen showing
+    the mistake.
 
     Any status is editable, not just published ones: an event pulled down for
     a correction has to be reachable to put back up.
+
+    The dates are here rather than two clicks away. They were split onto their
+    own screen on the reasoning that a wrong date sends someone to a locked
+    hall while a wrong summary is merely embarrassing — but the cost of that
+    split was that the screen went unfound, and a moderator who cannot find the
+    date editor does not make a careful decision about dates, they make none.
+    The protection that actually matters is `set_occurrences` writing only what
+    a row carries and the formset's own validation, and both are unchanged by
+    where the rows are rendered.
+
+    The event and its dates are validated as a pair and neither is written
+    unless both pass, so a rejected date can never be silently dropped while
+    the title save reports success.
     """
     from events.models import Event
+    from events.services import set_occurrences
+    from submissions.forms import formset_with_more_rows
 
     event = get_object_or_404(
         Event.objects.select_related("venue", "organizer").prefetch_related(
@@ -242,9 +258,20 @@ def event_edit(request, pk):
 
     if request.method == "POST":
         form = EventEditForm(request.POST, instance=event)
-        if form.is_valid():
+        dates = ModeratorOccurrenceFormSet(request.POST, prefix="dates")
+
+        if "add_dates" in request.POST:
+            # Another row, and nothing saved. The formset comes back unbound
+            # so asking for space does not answer with a page of red errors
+            # about the parts not filled in yet.
+            dates = formset_with_more_rows(request.POST, ModeratorOccurrenceFormSet)
+        elif form.is_valid() and dates.is_valid():
             changed = form.changed_data
-            event = form.save()
+            rows = dates.dates()
+
+            with transaction.atomic():
+                event = form.save()
+                set_occurrences(event, rows)
 
             # A save that changed nothing is not worth a line in the log; the
             # audit trail is read by someone looking for what happened.
@@ -255,9 +282,17 @@ def event_edit(request, pk):
                     event=event,
                     detail=", ".join(changed),
                 )
+            ModerationAction.record(
+                request.user,
+                "dates_edited",
+                event=event,
+                detail=f"{len(rows)} date{'' if len(rows) == 1 else 's'} — {event.title}",
+            )
+
+            if changed:
                 messages.success(request, f"“{event.title}” updated.")
             else:
-                messages.info(request, "Nothing changed.")
+                messages.info(request, "Dates saved. Nothing else changed.")
 
             # An unpublished event has no public page to go back to.
             if event.status == Event.Status.PUBLISHED:
@@ -265,63 +300,24 @@ def event_edit(request, pk):
             return redirect("mod_event_edit", pk=event.pk)
     else:
         form = EventEditForm(instance=event)
+        dates = ModeratorOccurrenceFormSet(prefix="dates", initial=_date_rows(event))
 
     return render(
         request,
         "moderation/event_edit.html",
-        _chrome(request, event=event, form=form),
+        _chrome(request, event=event, form=form, dates=dates),
     )
 
 
 @moderator_required
 def event_dates(request, pk):
-    """When a listing happens, on its own screen.
+    """The dates used to have their own screen; they are on the edit form now.
 
-    Split out from the edit form deliberately. Everything else there is text a
-    mistake in is embarrassing; a mistake here sends someone to a locked hall,
-    and burying the dates among twenty other fields is how one gets changed by
-    accident while somebody fixes a typo.
-
-    Until this existed the only way to add a second date to a published event
-    was the Django admin — which means a staff account, which is a far larger
-    grant than "may correct a listing". Events entered before an occurrence
-    could carry its own end time are the reason it was needed: they hold one
-    date where the source page always listed six.
+    Kept as a redirect rather than deleted because the link was handed out —
+    it is in the refresh screen's prose and in whatever anyone bookmarked —
+    and a 404 on a URL that used to work reads as the feature being withdrawn.
     """
-    from events.models import Event
-    from events.services import set_occurrences
-    from submissions.forms import formset_with_more_rows
-
-    event = get_object_or_404(Event, pk=pk)
-
-    if request.method == "POST":
-        dates = ModeratorOccurrenceFormSet(request.POST, prefix="dates")
-
-        if "add_dates" in request.POST:
-            dates = formset_with_more_rows(
-                request.POST, ModeratorOccurrenceFormSet
-            )
-        elif dates.is_valid():
-            rows = dates.dates()
-            set_occurrences(event, rows)
-            ModerationAction.record(
-                request.user,
-                "dates_edited",
-                event=event,
-                detail=f"{len(rows)} date{'' if len(rows) == 1 else 's'} — {event.title}",
-            )
-            messages.success(request, f"Dates updated for “{event.title}”.")
-            return redirect("mod_event_edit", pk=event.pk)
-    else:
-        dates = ModeratorOccurrenceFormSet(
-            prefix="dates", initial=_date_rows(event)
-        )
-
-    return render(
-        request,
-        "moderation/event_dates.html",
-        _chrome(request, event=event, dates=dates),
-    )
+    return redirect("mod_event_edit", pk=pk)
 
 
 def _date_rows(event):

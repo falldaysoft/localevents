@@ -211,24 +211,49 @@ bulk `EventAdmin` action for the backlog case, and its results queue under
 `/moderate/refreshes/` — the daily `AIConfig` spend cap is what stands between
 that action and a surprising bill.
 
-**Dates are edited on their own screen.** `/moderate/event/<pk>/dates/`, not the
-edit form: everything there is text a mistake in is embarrassing, and a mistake
-in a date sends someone to a locked hall. It shares the submitter's
-`OccurrenceFormSet` with two changes — a `Cancelled` box (keeps the date listed
-and struck through, which is what a reader who already has it in their calendar
-needs) and `reject_all_past = False`, because the wrong-year guard is aimed at
-an extraction a submitter is rubber-stamping and a moderator fixing the record
-of a past event is doing something ordinary. Before this screen the only way to
-add a second date to a published event was the Django admin, which means a staff
-account — a far larger grant than "may correct a listing".
+**Anything a submitter can enter, a moderator can correct — on one screen.**
+`/moderate/event/<pk>/edit/` carries the whole listing: the text, the dates,
+the venue and the organiser. It did not, and both gaps failed the same way.
+
+The dates were a screen of their own (`/moderate/event/<pk>/dates/`) on the
+reasoning that a mistake in a date sends someone to a locked hall while a
+mistake in a summary is merely embarrassing. What that bought was a screen
+nobody found — linked from the bottom of a long form, below "Links" — and a
+moderator who cannot find the date editor does not make a careful decision
+about dates, they make none. The rows are on the edit form now; what actually
+protects a date is the formset's validation and `set_occurrences` writing only
+the keys a row carries, and neither depends on where the rows render. The
+event and its dates are validated as a pair and neither is written unless both
+pass, so a rejected date can never be dropped while the title save reports
+success. The old URL redirects rather than 404s, because it was handed out.
+
+Venue and organiser were foreign-key dropdowns, which cannot express "the hall
+is right but its address is wrong" and cannot express a venue nobody has
+entered yet — so the correction a reader is most likely to report was the one
+thing only the Django admin could make. Both are the submitter's text fields
+now, from `events.forms.PlaceFieldsMixin`, which both forms share. The rule
+for turning text back into records is in `events.services.set_venue`: changing
+the **name** or town points the event at a different venue and leaves the old
+record alone (a rename must not rename a hall out from under twelve other
+listings — that is what the dropdown was protecting), while changing only the
+**address** writes through to the shared record and re-queues the geocode,
+because the stored coordinates are now for the wrong building. Hand-set
+coordinates survive, since `geocode_venue` returns early on `MANUAL`.
+
+The moderator's formset still differs from the submitter's in exactly two
+ways: a `Cancelled` box (keeps the date listed and struck through, which is
+what a reader who already has it in their calendar needs) and
+`reject_all_past = False`, because the wrong-year guard is aimed at an
+extraction a submitter is rubber-stamping and a moderator fixing the record of
+a past event is doing something ordinary.
 
 **`events/services.py` owns the writes more than one path makes.** `venue_for`,
-`organizer_for` and `set_occurrences` are shared by the submission confirmation,
-the dates screen and the refresh. When only the submission path had them, the
-map grew a second pin the moment another path created a venue the first would
-have reused. `set_occurrences` writes only the keys a row actually carries,
-which is what lets a refresh restate a page's dates without un-cancelling one a
-moderator cancelled.
+`set_venue`, `organizer_for` and `set_occurrences` are shared by the submission
+confirmation, the moderator's edit form and the refresh. When only the
+submission path had them, the map grew a second pin the moment another path
+created a venue the first would have reused. `set_occurrences` writes only the
+keys a row actually carries, which is what lets a refresh restate a page's
+dates without un-cancelling one a moderator cancelled.
 
 **The crowd nominates, a human decides.** The "Interested" count feeds a mod
 *Rising* queue and breaks ties within a prominence tier; it can never move an

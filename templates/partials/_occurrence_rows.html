@@ -1,0 +1,52 @@
+{% comment %}
+    The dates of an event, as edited by anyone allowed to edit them.
+
+    One row per date, each carrying its own hours. There is no privileged
+    first row holding the only end time — that asymmetry is what a market
+    open Fridays 9-2 and Saturdays 7-2 breaks, and every row being the same
+    shape is the whole point of the formset behind this.
+
+    Something running Friday evening to Sunday afternoon is one row whose end
+    lands on a later day, not three rows.
+
+    Shared by the submitter's confirmation page and the moderator's edit
+    screen. The moderator's formset adds an `is_cancelled` box per row and the
+    submitter's does not, so the row is rendered if the field is there — the
+    same test the DELETE box already used.
+{% endcomment %}
+
+{{ dates.management_form }}
+
+{% if dates.non_form_errors %}
+    <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+        {{ dates.non_form_errors.0 }}
+    </div>
+{% endif %}
+
+<ol class="space-y-4">
+    {% for date_form in dates %}
+        <li class="rounded-lg border border-slate-200 p-4">
+            <div class="grid gap-4 sm:grid-cols-2">
+                {% include "submissions/_field.html" with field=date_form.start %}
+                {% include "submissions/_field.html" with field=date_form.end %}
+            </div>
+            <div class="mt-4">
+                {% include "submissions/_field.html" with field=date_form.note %}
+            </div>
+            {% if date_form.is_cancelled or date_form.DELETE %}
+                <div class="mt-3 space-y-2">
+                    {% if date_form.is_cancelled %}
+                        {% include "submissions/_checkbox.html" with field=date_form.is_cancelled %}
+                    {% endif %}
+                    {% if date_form.DELETE %}
+                        {% include "submissions/_checkbox.html" with field=date_form.DELETE %}
+                    {% endif %}
+                </div>
+            {% endif %}
+        </li>
+    {% endfor %}
+</ol>
+
+<button type="submit" name="add_dates" value="1" class="btn-secondary">
+    Add more dates
+</button>

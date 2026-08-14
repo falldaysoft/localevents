@@ -1,12 +1,8 @@
 from django import forms
 from django.utils import timezone
 
+from events.forms import INPUT_CLASS, PlaceFieldsMixin
 from events.models import Category
-
-INPUT_CLASS = (
-    "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm "
-    "focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
-)
 
 # How many blank date rows to offer beyond the ones already filled in. Two is
 # enough to add a date without thinking about it; a submitter with more than
@@ -51,12 +47,16 @@ class StartSubmissionForm(forms.Form):
         return cleaned
 
 
-class EventDraftForm(forms.Form):
+class EventDraftForm(PlaceFieldsMixin, forms.Form):
     """Step two: the submitter checks what we found.
 
     Everything is editable. The extraction is a starting point, and the person
     who submitted the link is the one best placed to correct it — which is the
     reason this step exists at all.
+
+    The venue and organiser fields come from `PlaceFieldsMixin`, which the
+    moderator's edit form uses too — the two screens ask for a place in the
+    same words because they are asking for the same thing.
     """
 
     title = forms.CharField(
@@ -70,24 +70,6 @@ class EventDraftForm(forms.Form):
     description = forms.CharField(
         required=False,
         widget=forms.Textarea(attrs={"class": INPUT_CLASS, "rows": 6}),
-    )
-
-    venue_name = forms.CharField(
-        max_length=200, required=False,
-        widget=forms.TextInput(attrs={"class": INPUT_CLASS}),
-        help_text="Leave blank if the location isn't settled yet.",
-    )
-    venue_address = forms.CharField(
-        max_length=300, required=False,
-        widget=forms.TextInput(attrs={"class": INPUT_CLASS}),
-    )
-    venue_city = forms.CharField(
-        max_length=120, required=False,
-        widget=forms.TextInput(attrs={"class": INPUT_CLASS}),
-    )
-    organizer_name = forms.CharField(
-        max_length=200, required=False,
-        widget=forms.TextInput(attrs={"class": INPUT_CLASS}),
     )
 
     is_series = forms.BooleanField(

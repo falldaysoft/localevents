@@ -19,9 +19,8 @@
         <div class="card mt-6 text-sm text-slate-600">
             This listing has no source page. It was entered by hand, so there is
             nothing to read — edit it
-            <a href="{% url 'mod_event_edit' event.pk %}" class="underline">directly</a>
-            or change its
-            <a href="{% url 'mod_event_dates' event.pk %}" class="underline">dates</a>.
+            <a href="{% url 'mod_event_edit' event.pk %}" class="underline">directly</a>,
+            dates included.
         </div>
 
     {% elif refresh.is_running %}
@@ -140,7 +139,7 @@
                     <button type="submit" name="start" value="1" class="btn-primary">
                         Read the page now
                     </button>
-                    <a href="{% url 'mod_event_dates' event.pk %}" class="btn-secondary">Edit the dates by hand</a>
+                    <a href="{% url 'mod_event_edit' event.pk %}" class="btn-secondary">Edit the dates by hand</a>
                 </div>
                 <p class="break-all text-xs text-slate-400">{{ event.source_url }}</p>
             {% endif %}

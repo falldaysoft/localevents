@@ -8,17 +8,13 @@ having it emailed to a stranger is the kind of surprise worth designing out.
 from django import forms
 from django.db.models import Q
 
+from events.forms import INPUT_CLASS, PlaceFieldsMixin
 from events.models import Category, Event
 from submissions.forms import (
     EXTRA_OCCURRENCE_ROWS,
     MAX_OCCURRENCE_ROWS,
     BaseOccurrenceFormSet,
     OccurrenceForm,
-)
-
-INPUT_CLASS = (
-    "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm "
-    "focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
 )
 
 
@@ -74,7 +70,7 @@ class RequestInfoForm(forms.Form):
     )
 
 
-class EventEditForm(forms.ModelForm):
+class EventEditForm(PlaceFieldsMixin, forms.ModelForm):
     """A live listing, corrected in place.
 
     The moderation queue judges a submission once; this is the other half of
@@ -83,10 +79,13 @@ class EventEditForm(forms.ModelForm):
     Django admin for that would mean handing out staff accounts, which is a
     much larger grant than "may fix a listing".
 
-    Dates are deliberately absent. They live on `Occurrence`, and changing
-    *when* something happens is a different and riskier edit than fixing a
-    summary — it belongs on its own screen rather than buried in twenty other
-    fields where it can be changed by accident.
+    The rule this form is measured against: anything a submitter could enter,
+    a moderator can correct. It failed that on the venue and the organiser,
+    which were foreign-key dropdowns — so the one correction a reader is most
+    likely to report, a wrong address, was the one thing only the Django admin
+    could make. Both are now the same text fields the submitter fills in, and
+    both resolve through `events.services`, so neither path can invent a
+    second pin for a hall the other would have reused.
 
     Slug is absent for the same reason it is absent from the admin's editable
     set in spirit: it is the event's public URL, and quietly rewriting it
@@ -97,7 +96,7 @@ class EventEditForm(forms.ModelForm):
         model = Event
         fields = [
             "title", "summary", "description",
-            "venue", "organizer", "categories",
+            "categories",
             "listing_type", "prominence", "status",
             "is_free", "price_min", "price_max", "price_note",
             "age_min", "age_max", "is_family_friendly", "is_commercial",
@@ -121,6 +120,11 @@ class EventEditForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        # The place fields are not model fields, so a ModelForm will not fill
+        # them from the instance on its own.
+        for name, value in self.place_initial(self.instance).items():
+            self.fields[name].initial = value
 
         # Retired categories stay selectable *if this event already has one*.
         # Otherwise editing an unrelated field would silently strip a category
@@ -163,6 +167,17 @@ class EventEditForm(forms.ModelForm):
             )
 
         return cleaned
+
+    def save(self, commit=True):
+        event = super().save(commit=False)
+        # Venue and organizer are text here but records underneath, and the
+        # rules for turning one into the other are the submitter's rules —
+        # shared so that two paths cannot disagree about which hall is which.
+        self.apply_places(event)
+        if commit:
+            event.save()
+            self.save_m2m()
+        return event
 
 
 class ModeratorOccurrenceForm(OccurrenceForm):

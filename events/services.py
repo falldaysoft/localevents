@@ -39,6 +39,49 @@ def venue_for(name, address, city):
     return venue
 
 
+def set_venue(current, name, address, city):
+    """The venue an event should point at after someone edited its place fields.
+
+    `venue_for` is deliberately conservative: it will fill a blank address but
+    never overwrite one, because a submitter typing a half-remembered address
+    must not be able to rewrite a venue every other listing shares. That is the
+    right rule for a stranger and the wrong one for the person whose job is
+    fixing the record — a moderator who has just been told the address is wrong
+    needs the correction to take.
+
+    So the two edits are separated by what changed:
+
+    - The **name** changed, or the town did: that is choosing a *different*
+      venue, so the event repoints and the old record is left exactly as it
+      was. A rename here never renames a hall out from under twelve other
+      listings, which is the failure the old dropdown existed to prevent.
+    - Only the **address** changed: that is correcting the venue everyone
+      shares, so it is written through — and the coordinates it was geocoded
+      to are now for the wrong place, so it goes back in the geocode queue.
+      Coordinates set by hand survive; `geocode_venue` returns early on
+      `MANUAL` rather than overwriting someone's deliberate pin.
+    """
+    name, address, city = name.strip(), address.strip(), city.strip()
+
+    if not name:
+        return None
+
+    same_venue = (
+        current is not None
+        and current.name.casefold() == name.casefold()
+        and current.city.casefold() == city.casefold()
+    )
+    if same_venue:
+        if address != current.address:
+            current.address = address[:300]
+            current.geocode_status = Venue.GeocodeStatus.PENDING
+            current.save(update_fields=["address", "geocode_status"])
+            geocode_venue.enqueue(current.pk)
+        return current
+
+    return venue_for(name, address, city)
+
+
 def organizer_for(name):
     if not name.strip():
         return None

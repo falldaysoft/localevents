@@ -45,7 +45,15 @@
         <div class="space-y-6">
             {% if event %}
                 <section class="card space-y-3">
-                    <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">The listing</h2>
+                    {# An unapproved event has no public page, so the Edit link there #}
+                    {# cannot be reached yet — and the queue is exactly where a typo  #}
+                    {# gets noticed. Without this the only way to fix one was to      #}
+                    {# decline the submission or open the Django admin.               #}
+                    <div class="flex items-start justify-between gap-4">
+                        <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">The listing</h2>
+                        <a href="{% url 'mod_event_edit' event.pk %}"
+                           class="shrink-0 text-sm text-slate-500 underline hover:text-slate-900">Edit</a>
+                    </div>
                     <p class="text-lg font-medium">{{ event.title }}</p>
                     {% if event.summary %}<p class="text-slate-700">{{ event.summary }}</p>{% endif %}
                     {% if event.description %}
@@ -99,7 +107,11 @@
                 </section>
 
                 <section class="card">
-                    <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Dates</h2>
+                    <div class="flex items-start justify-between gap-4">
+                        <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Dates</h2>
+                        <a href="{% url 'mod_event_edit' event.pk %}"
+                           class="shrink-0 text-sm text-slate-500 underline hover:text-slate-900">Edit dates</a>
+                    </div>
                     <ul class="mt-3 space-y-1 text-sm">
                         {% for occurrence in occurrences %}
                             <li class="{% if occurrence.has_ended %}text-slate-400{% endif %}">

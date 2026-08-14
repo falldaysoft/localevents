@@ -75,3 +75,57 @@ def submitter(db, django_user_model):
     return django_user_model.objects.create_user(
         username="submitter", email="submitter@example.com", password="pw"
     )
+
+
+def edit_post(event, rows=None, initial=None, total=None, **overrides):
+    """A complete POST to the moderator's edit screen.
+
+    The listing's fields and its dates are one form on one screen, and a
+    ModelForm POST is all-or-nothing — a field left out of the data is a field
+    cleared. So every test that saves has to send the lot, and building that in
+    one place is what stops a new field breaking twenty tests at once.
+
+    Dates default to the event's current occurrences, restated: most tests are
+    changing something else and just need them to survive the round trip.
+
+    A plain function rather than a fixture because the tests that want it want
+    it inside an existing call, not as another argument on thirty signatures.
+    """
+    from django.utils import timezone
+
+    occurrences = list(event.occurrences.order_by("start"))
+    if rows is None:
+        rows = [
+            {"start": timezone.localtime(o.start).strftime("%Y-%m-%dT%H:%M")}
+            for o in occurrences
+        ]
+    if initial is None:
+        initial = len(occurrences)
+
+    venue, organizer = event.venue, event.organizer
+    data = {
+        "title": event.title,
+        "summary": event.summary,
+        "description": event.description,
+        "venue_name": venue.name if venue else "",
+        "venue_address": venue.address if venue else "",
+        "venue_city": venue.city if venue else "",
+        "organizer_name": organizer.name if organizer else "",
+        "listing_type": event.listing_type,
+        "prominence": event.prominence,
+        "status": event.status,
+        "price_note": event.price_note,
+        "accessibility_notes": event.accessibility_notes,
+        "source_url": event.source_url,
+        "ticket_url": event.ticket_url,
+        "image_url": event.image_url,
+        "dates-TOTAL_FORMS": str(total if total is not None else len(rows)),
+        "dates-INITIAL_FORMS": str(initial),
+        "dates-MIN_NUM_FORMS": "0",
+        "dates-MAX_NUM_FORMS": "60",
+    }
+    for index, row in enumerate(rows):
+        for field, value in row.items():
+            data[f"dates-{index}-{field}"] = value
+    data.update(overrides)
+    return data

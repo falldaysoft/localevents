@@ -378,6 +378,31 @@ def test_a_venue_outside_the_region_is_flagged_not_blocked(
     assert Event.objects.get().status == Event.Status.PUBLISHED
 
 
+@pytest.mark.django_db
+def test_a_pending_listing_can_be_corrected_from_the_queue(signed_in_mod, submitter):
+    """The typo is noticed here, so the way to fix it has to be here.
+
+    `mod_event_edit` was only ever linked from the event's public page — which
+    an unapproved event does not have. A moderator who spotted a wrong title in
+    the queue had no route to the form at all, and the alternatives were
+    declining a good submission or handing out a staff account for the admin.
+    """
+    submission = _pending(submitter, title="Spring Choir Concert - Day 1")
+    event = submission.event
+
+    body = signed_in_mod.get(
+        reverse("mod_submission", args=[submission.pk])
+    ).content.decode()
+    assert reverse("mod_event_edit", args=[event.pk]) in body
+
+    # And the screen it reaches is not a dead end: a save on an unpublished
+    # event lands straight back on it, so it has to offer the way back.
+    edit = signed_in_mod.get(
+        reverse("mod_event_edit", args=[event.pk])
+    ).content.decode()
+    assert reverse("mod_submission", args=[submission.pk]) in edit
+
+
 # --- Rising -----------------------------------------------------------------
 
 

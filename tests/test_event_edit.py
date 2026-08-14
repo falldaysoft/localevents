@@ -10,10 +10,11 @@ from datetime import timedelta
 from decimal import Decimal
 
 import pytest
+from tests.conftest import edit_post
 from django.urls import reverse
 from django.utils import timezone
 
-from events.models import Category, Event, Occurrence
+from events.models import Category, Event, Occurrence, Venue
 from submissions.models import ModerationAction
 
 
@@ -30,22 +31,12 @@ def event(db):
 
 
 def form_data(event, **overrides):
-    """Every field the form renders, since a ModelForm POST is all-or-nothing."""
-    data = {
-        "title": event.title,
-        "summary": event.summary,
-        "description": event.description,
-        "listing_type": event.listing_type,
-        "prominence": event.prominence,
-        "status": event.status,
-        "price_note": event.price_note,
-        "accessibility_notes": event.accessibility_notes,
-        "source_url": event.source_url,
-        "ticket_url": event.ticket_url,
-        "image_url": event.image_url,
-    }
-    data.update(overrides)
-    return data
+    """Every field the form renders, dates included.
+
+    They are the same form now: the date rows were a second screen, went
+    unfound, and moved onto this one.
+    """
+    return edit_post(event, **overrides)
 
 
 # --- who gets in -----------------------------------------------------------
@@ -274,3 +265,157 @@ def test_prices_round_trip(client, moderator, event):
     event.refresh_from_db()
     assert event.price_min == Decimal("5.50")
     assert event.price_max == Decimal("12.00")
+
+
+# --- the venue and the organiser -------------------------------------------
+#
+# The rule this section holds: anything a submitter can enter, a moderator can
+# correct. Both were foreign-key dropdowns here, so the correction a reader is
+# most likely to phone in — a wrong address — was the one thing only the Django
+# admin could make.
+
+
+def test_a_venue_can_be_named_that_did_not_exist(client, moderator, event):
+    client.force_login(moderator)
+    client.post(
+        reverse("mod_event_edit", args=[event.pk]),
+        form_data(
+            event,
+            venue_name="Riverside Hall",
+            venue_address="1 Mill Street",
+            venue_city="Springfield",
+        ),
+    )
+
+    event.refresh_from_db()
+    assert event.venue is not None
+    assert event.venue.name == "Riverside Hall"
+    assert event.venue.address == "1 Mill Street"
+
+
+def test_naming_a_venue_that_exists_reuses_it(client, moderator, event):
+    """Three events at the community hall share one pin and one geocode."""
+    existing = Venue.objects.create(name="Riverside Hall", city="Springfield")
+
+    client.force_login(moderator)
+    client.post(
+        reverse("mod_event_edit", args=[event.pk]),
+        form_data(event, venue_name="Riverside Hall", venue_city="Springfield"),
+    )
+
+    event.refresh_from_db()
+    assert event.venue == existing
+    assert Venue.objects.count() == 1
+
+
+def test_a_wrong_address_can_be_corrected(client, moderator, event):
+    """The report that arrives by email, and the reason this section exists.
+
+    `venue_for` will fill a blank address but never overwrite one, because a
+    submitter half-remembering an address must not rewrite a record every
+    other listing shares. A moderator is the person whose job that is.
+    """
+    venue = Venue.objects.create(
+        name="Riverside Hall", address="1 Mill Street", city="Springfield"
+    )
+    event.venue = venue
+    event.save()
+
+    client.force_login(moderator)
+    client.post(
+        reverse("mod_event_edit", args=[event.pk]),
+        form_data(
+            event,
+            venue_name="Riverside Hall",
+            venue_address="14 Mill Street",
+            venue_city="Springfield",
+        ),
+    )
+
+    venue.refresh_from_db()
+    assert venue.address == "14 Mill Street"
+    assert Venue.objects.count() == 1
+
+
+def test_a_corrected_address_goes_back_in_the_geocode_queue(
+    client, moderator, event
+):
+    """The old coordinates are for the wrong building."""
+    venue = Venue.objects.create(
+        name="Riverside Hall",
+        address="1 Mill Street",
+        city="Springfield",
+        latitude=1.0,
+        longitude=1.0,
+        geocode_status=Venue.GeocodeStatus.OK,
+    )
+    event.venue = venue
+    event.save()
+
+    client.force_login(moderator)
+    client.post(
+        reverse("mod_event_edit", args=[event.pk]),
+        form_data(
+            event,
+            venue_name="Riverside Hall",
+            venue_address="14 Mill Street",
+            venue_city="Springfield",
+        ),
+    )
+
+    venue.refresh_from_db()
+    assert venue.geocode_status != Venue.GeocodeStatus.OK
+
+
+def test_renaming_the_venue_repoints_rather_than_renaming(client, moderator, event):
+    """A hall is a shared record, and twelve other listings point at it.
+
+    Typing a different name is choosing a different venue, not renaming this
+    one out from under everybody — which is the failure the dropdown existed
+    to prevent, and the reason replacing it needed a rule rather than a
+    text box.
+    """
+    venue = Venue.objects.create(name="Riverside Hall", city="Springfield")
+    other = Event.objects.create(title="Something Else", venue=venue)
+    event.venue = venue
+    event.save()
+
+    client.force_login(moderator)
+    client.post(
+        reverse("mod_event_edit", args=[event.pk]),
+        form_data(event, venue_name="Old Mill Barn", venue_city="Springfield"),
+    )
+
+    event.refresh_from_db()
+    other.refresh_from_db()
+    venue.refresh_from_db()
+
+    assert event.venue.name == "Old Mill Barn"
+    assert other.venue == venue
+    assert venue.name == "Riverside Hall"
+
+
+def test_the_current_venue_is_filled_into_the_form(client, moderator, event):
+    """A form that opens blank invites someone to save the blank."""
+    event.venue = Venue.objects.create(
+        name="Riverside Hall", address="1 Mill Street", city="Springfield"
+    )
+    event.save()
+
+    client.force_login(moderator)
+    body = client.get(reverse("mod_event_edit", args=[event.pk])).content.decode()
+
+    assert "Riverside Hall" in body
+    assert "1 Mill Street" in body
+
+
+def test_an_organizer_can_be_named(client, moderator, event):
+    client.force_login(moderator)
+    client.post(
+        reverse("mod_event_edit", args=[event.pk]),
+        form_data(event, organizer_name="The Rotary Club"),
+    )
+
+    event.refresh_from_db()
+    assert event.organizer is not None
+    assert event.organizer.name == "The Rotary Club"

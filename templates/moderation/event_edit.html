@@ -13,6 +13,17 @@
             <a href="{% url 'event_detail' event.slug %}" class="text-sm text-slate-500 hover:text-slate-900">
                 View the public page
             </a>
+        {% else %}
+            {# Nowhere else to go: an unpublished event has no public page, and a #}
+            {# save leaves you right back here. Without this the way in from the  #}
+            {# queue is a dead end.                                              #}
+            {% with submission=event.submissions.first %}
+                {% if submission %}
+                    <a href="{% url 'mod_submission' submission.pk %}" class="text-sm text-slate-500 hover:text-slate-900">
+                        Back to the submission
+                    </a>
+                {% endif %}
+            {% endwith %}
         {% endif %}
     </div>
     <p class="mt-1 text-sm text-slate-500">
@@ -37,20 +48,33 @@
         </div>
 
         <div class="card space-y-4">
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">When</h2>
+            {% include "partials/_occurrence_rows.html" %}
+            <p class="text-sm text-slate-500">
+                <strong class="font-medium">Cancelled</strong> keeps a date on the
+                listing, struck through. <strong class="font-medium">Remove this
+                date</strong> takes it off entirely — right for a date that was
+                never real, wrong for one people may already have in their calendars.
+            </p>
+        </div>
+
+        <div class="card space-y-4">
             <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Where and who</h2>
-            {% include "submissions/_field.html" with field=form.venue %}
-            {% include "submissions/_field.html" with field=form.organizer %}
+            {% include "submissions/_field.html" with field=form.venue_name %}
+            {% include "submissions/_field.html" with field=form.venue_address %}
+            {% include "submissions/_field.html" with field=form.venue_city %}
+            {% include "submissions/_field.html" with field=form.organizer_name %}
             {% comment %}
                 Django's {# #} is single-line only, and this was two — so the
                 note to the next developer was rendering as body text on the
                 page. Reached the site because the raw-syntax guard in
                 tests/test_browse.py only covers the public pages.
-                Venues and organizers are shared records; renaming one here
-                would rename it on every other event that uses it.
             {% endcomment %}
             <p class="text-sm text-slate-500">
-                Editing a venue or organizer's own details is a separate job — this
-                only chooses which one this event points at.
+                Correcting the <em>address</em> corrects it for every listing at
+                this venue, and puts it back in the map queue. Changing the
+                <em>name</em> or town points this event at a different venue
+                instead, and leaves the old one alone.
             </p>
         </div>
 
@@ -136,31 +160,18 @@
             {% include "submissions/_field.html" with field=form.image_url %}
         </div>
 
-        {% comment %}
-            Dates are not on this form. They live on Occurrence, and changing
-            when something happens is a bigger decision than fixing a typo.
-        {% endcomment %}
-        <div class="card space-y-3 text-sm text-slate-600">
-            <p>
-                Dates are not edited here. This listing has
-                {{ event.occurrences.count }} date{{ event.occurrences.count|pluralize }} on record.
-            </p>
-            <div class="flex flex-wrap items-center gap-3">
-                <a href="{% url 'mod_event_dates' event.pk %}" class="btn-secondary">Edit the dates</a>
-                {% if event.source_url %}
-                    <a href="{% url 'mod_event_refresh' event.pk %}" class="btn-secondary">
-                        Read the source page again
-                    </a>
-                {% endif %}
-            </div>
-            {% if event.source_url %}
+        {% if event.source_url %}
+            <div class="card space-y-3 text-sm text-slate-600">
+                <a href="{% url 'mod_event_refresh' event.pk %}" class="btn-secondary">
+                    Read the source page again
+                </a>
                 <p class="text-slate-500">
                     Re-reading finds what the page has added since — including
                     dates a listing entered before this site recorded them
                     could not hold. Nothing is changed without your say-so.
                 </p>
-            {% endif %}
-        </div>
+            </div>
+        {% endif %}
 
         <div class="flex items-center gap-3">
             <button type="submit" class="btn-primary">Save changes</button>
