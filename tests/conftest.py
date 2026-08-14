@@ -27,6 +27,32 @@ def no_real_credentials(settings):
 
 
 @pytest.fixture(autouse=True)
+def no_real_geocoding(monkeypatch):
+    """Keep the test run off Nominatim.
+
+    Creating a venue enqueues `geocode_venue`, and tasks run on the immediate
+    backend here — so every test that submits an event, edits a venue or
+    imports a feed made a real request to a free service whose usage policy we
+    are documented as caring about. It went unnoticed because a machine with
+    no route to Nominatim fails the same way as one that never asked, which is
+    how a test asserting on the *result* of a geocode passed locally and
+    failed in CI.
+
+    Patched at the httpx layer rather than at `lookup`, so the per-test
+    `captured` fixture in test_geocoding.py — which patches the same attribute
+    to assert on the request we would have sent — still overrides it.
+    """
+    import httpx
+
+    from events import geocoding
+
+    def refuse(*args, **kwargs):
+        raise httpx.ConnectError("no network in tests")
+
+    monkeypatch.setattr(geocoding.httpx, "get", refuse)
+
+
+@pytest.fixture(autouse=True)
 def plain_static_storage(settings):
     """Don't require a collectstatic run to render a template.
 

@@ -338,9 +338,23 @@ def test_a_wrong_address_can_be_corrected(client, moderator, event):
 
 
 def test_a_corrected_address_goes_back_in_the_geocode_queue(
-    client, moderator, event
+    client, moderator, event, monkeypatch
 ):
-    """The old coordinates are for the wrong building."""
+    """The old coordinates are for the wrong building.
+
+    Asserting on the venue's *stored* status would be asserting on the result
+    of the geocode itself, which under the immediate task backend means a live
+    Nominatim call — it passed here and failed in CI for no better reason than
+    which machine had network. What this owns is the re-queueing, so that is
+    what it watches.
+    """
+    from events import services
+
+    queued = []
+    monkeypatch.setattr(
+        services, "geocode_venue", type("Q", (), {"enqueue": staticmethod(queued.append)})
+    )
+
     venue = Venue.objects.create(
         name="Riverside Hall",
         address="1 Mill Street",
@@ -364,7 +378,8 @@ def test_a_corrected_address_goes_back_in_the_geocode_queue(
     )
 
     venue.refresh_from_db()
-    assert venue.geocode_status != Venue.GeocodeStatus.OK
+    assert venue.geocode_status == Venue.GeocodeStatus.PENDING
+    assert queued == [venue.pk]
 
 
 def test_renaming_the_venue_repoints_rather_than_renaming(client, moderator, event):

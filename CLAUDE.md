@@ -405,7 +405,7 @@ overlay rather than in the product.
 ## Testing
 
 pytest with `pytest-django`, tests in top-level `tests/`, one file per concern,
-never `unittest`. Four autouse fixtures in `tests/conftest.py` exist for reasons
+never `unittest`. Five autouse fixtures in `tests/conftest.py` exist for reasons
 that will bite if they are removed:
 
 - Tasks run on the **immediate backend**, so no worker is needed and a test can
@@ -413,6 +413,15 @@ that will bite if they are removed:
 - `OPENROUTER_API_KEY` is **blanked**. `settings.py` loads `.env`, so a machine
   with a working key would otherwise make real, billable calls — presenting as a
   hang. A test asserts it stays blank.
+- **Nominatim is unreachable.** Creating a venue enqueues `geocode_venue`, and
+  with the immediate backend that meant every test touching a submission, a
+  venue edit or a feed import made a real request to a free service whose usage
+  policy this project is documented as caring about — and paid the throttle's
+  sleep for it, which was a third of the suite's runtime. It hid because a
+  machine with no route to Nominatim fails identically to one that never asked:
+  a test asserting on the *result* of a geocode passed locally and failed in
+  CI. Patched at the httpx layer, so `test_geocoding.py`'s own `captured`
+  fixture still overrides it to assert on the request that would have gone out.
 - Static storage is forced to plain, because pytest-django forces `DEBUG` off
   and the manifest backend would blow up on the first `{% static %}`.
 - The `/claim/` latch is reset, since it caches "a superuser exists" for the
