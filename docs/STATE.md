@@ -69,11 +69,16 @@ fingerprint dedup.
 
 ## Not verified
 
-- **No deploy has ever run.** The chart lints and renders and `scripts/deploy.sh`
-  fails fast if the IP allowlist blocks it, but first contact with the cluster
-  is still ahead. Namespace secrets do not exist yet.
+- **Deploys are real, by hand and from CI.** `make deploy` has run against a
+  live instance many times (helm revision 30 was one), and as of `68dd5cb` the
+  workflow deploys too: the push of that commit built the image and the
+  `deploy (brantevents)` job ran `scripts/deploy.sh` to helm revision 31, both
+  pods came up on the new SHA, and `/healthz` answered 200. The control
+  plane's IP allowlist, which used to make CI stop at the image push, was
+  turned off in September 2026. Verified, but only once, and only for one
+  instance on one cluster.
 
-  CI *is* proven as of `c5879ee`: the workflow runs green and
+  CI *was* first proven as of `c5879ee`: the workflow runs green and
   `ghcr.io/falldaysoft/localevents` now holds a `latest` and a per-SHA tag. The
   image was also run locally — migrations applied, `/healthz` 200, browse 200,
   `/moderate/` 302 to login, static files served by whitenoise.
