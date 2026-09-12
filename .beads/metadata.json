@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "localevents",
+  "project_id": "a4484214-4171-4896-bffa-d01d48bc3280"
+}

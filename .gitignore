@@ -31,3 +31,9 @@ venv/
 # product. Keep yours here locally, or in your own deployment repository.
 instances/*
 !instances/example.yaml
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/
