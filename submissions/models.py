@@ -260,6 +260,15 @@ class SubmissionQuota(models.Model):
     protect the moderators' attention, enrichments protect the API bill. A user
     who repeatedly re-reads pages without submitting anything costs money
     without ever reaching the queue.
+
+    Neither cap applies to a moderator. The submission cap protects the
+    moderators' attention, and a moderator filling the queue is spending their
+    own; the first real use of the site hit the cap while seeding it from the
+    municipal calendars. The enrichment cap protects the bill, but a moderator
+    already holds unmetered paid actions (the bulk refresh), and what actually
+    bounds the bill is `AIConfig`'s daily spend cap, which applies to everyone.
+    Ordinary users with a legitimately large load get a raised per-user limit
+    in the admin instead — that is what the editable fields are for.
     """
 
     DEFAULT_SUBMISSIONS_PER_DAY = 10
@@ -300,8 +309,12 @@ class SubmissionQuota(models.Model):
             created_at__gte=self._since_midnight(),
         ).count()
 
+    @property
+    def is_exempt(self):
+        return self.user.is_moderator
+
     def may_submit(self):
-        return self.submissions_today() < self.submissions_per_day
+        return self.is_exempt or self.submissions_today() < self.submissions_per_day
 
     def may_enrich(self):
-        return self.enrichments_today() < self.enrichments_per_day
+        return self.is_exempt or self.enrichments_today() < self.enrichments_per_day

@@ -779,6 +779,31 @@ def test_running_out_of_page_reads_still_allows_a_manual_submission(
     assert "yourself" in submission.enrichment_message
 
 
+@pytest.mark.django_db
+def test_moderators_are_not_capped(client, moderator):
+    """The cap protects moderators' attention, so it cannot apply to them.
+
+    Seeding a new site means one moderator entering dozens of listings from
+    the municipal calendars in a sitting, and the first live run stopped dead
+    at ten.
+    """
+    quota = SubmissionQuota.for_user(moderator)
+    quota.submissions_per_day = 1
+    quota.enrichments_per_day = 0
+    quota.save()
+    Submission.objects.create(submitted_by=moderator)
+
+    client.force_login(moderator)
+    response = client.get(reverse("submit"))
+    assert "today's limit" not in response.content.decode()
+
+    client.post(reverse("submit"), {"source_url": "https://example.org/e"})
+    # The read itself may fail (the fetch goes nowhere under test); what must
+    # not happen is the quota refusing to attempt it.
+    submission = Submission.objects.exclude(source_url="").get()
+    assert "automatic page reads" not in submission.enrichment_message
+
+
 # --- the polling page ------------------------------------------------------
 
 
