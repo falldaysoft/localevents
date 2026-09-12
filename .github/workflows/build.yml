@@ -1,32 +1,46 @@
-name: Build and Push
+name: Build and Deploy
 
-# Build only — this workflow deliberately does not deploy.
+# Build once, deploy to every instance that asks for it.
 #
-# The LKE API server sits behind an IP allowlist that GitHub-hosted runners
-# cannot satisfy (their egress ranges are large and rotate). Pushing an image
-# needs no cluster access, so CI stops there and deployment happens from an
-# allowlisted machine via `make deploy`.
+# The build job is the reusable product's CI: checks, tests, and an image
+# tagged with the full commit SHA. The deploy job is what runs `make deploy`
+# used to be run by hand for, and it knows nothing about any community: the
+# instances it deploys, and what each one looks like, are repository and
+# environment configuration rather than anything in this file.
 #
-# If push-to-deploy becomes worth it, the two real options are a self-hosted
-# runner inside the cluster, or a GitOps controller (Flux/Argo) that pulls from
-# ghcr — neither needs inbound access to the API server.
+#   - Repository variable DEPLOY_INSTANCES: a JSON list of instance names,
+#     e.g. ["mytown"]. Unset, and nothing deploys — a fork gets CI for free
+#     and opts in to deployment when it is ready.
+#   - One GitHub environment per instance, named after it, carrying:
+#       INSTANCE_VALUES  (variable) the contents of instances/<name>.yaml.
+#                        Those files are not committed, and this is where the
+#                        one for a deployed instance lives instead.
+#       LKE_CONTEXT      (secret) a base64-encoded kubeconfig for the cluster
+#                        the instance's `context:` names. Can be set at the
+#                        repository level instead when every instance shares
+#                        a cluster.
+#
+# Everything cluster-facing still goes through scripts/deploy.sh, so CI and a
+# person at a keyboard deploy the same way and refuse the same things — a
+# mutable tag, a short SHA, a missing pull secret.
 
 on:
   push:
     branches:
       - main
-  # Lets you re-run a build without an empty commit, which is worth having the
-  # first few times a deploy is being shaken out.
+  # Lets you rebuild and redeploy HEAD without an empty commit.
   workflow_dispatch:
-
-# Superseded runs are useless — only the newest image gets deployed.
-concurrency:
-  group: build-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    # Superseded builds are useless — only the newest image gets deployed. This
+    # sits on the job rather than the workflow so that cancelling a stale build
+    # never cancels a deploy that is already talking to the cluster.
+    concurrency:
+      group: build-${{ github.ref }}
+      cancel-in-progress: true
 
     # GITHUB_TOKEN defaults to read-only, and the resulting ghcr push fails with
     # a 403 that reads like an authentication problem rather than a permissions
@@ -90,8 +104,68 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Deployment reminder
+  deploy:
+    needs: build
+    # No instances configured means a fork that has not opted in, not an error.
+    if: vars.DEPLOY_INSTANCES != ''
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        instance: ${{ fromJSON(vars.DEPLOY_INSTANCES || '[]') }}
+
+    environment:
+      name: ${{ matrix.instance }}
+
+    # One deploy per instance at a time, and never cancelled: a helm upgrade
+    # killed halfway leaves a release that the next run has to untangle first.
+    # A newer commit queues behind the running one and deploys after it.
+    concurrency:
+      group: deploy-${{ matrix.instance }}
+      cancel-in-progress: false
+
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      # deploy.sh reads instances/<name>.yaml, which is deliberately not in
+      # the repository. The environment supplies it.
+      - name: Write the instance overlay
         run: |
-          echo "Image pushed: ghcr.io/${{ github.repository }}:${{ github.sha }}"
-          echo "Deploy from an allowlisted machine:"
-          echo "  make deploy INSTANCE=<name> TAG=${{ github.sha }}"
+          if [[ -z "$INSTANCE_VALUES" ]]; then
+            echo "::error::environment '${{ matrix.instance }}' has no INSTANCE_VALUES variable (the contents of instances/${{ matrix.instance }}.yaml)"
+            exit 1
+          fi
+          printf '%s\n' "$INSTANCE_VALUES" > "instances/${{ matrix.instance }}.yaml"
+        env:
+          INSTANCE_VALUES: ${{ vars.INSTANCE_VALUES }}
+
+      - name: Write the kubeconfig
+        run: |
+          if [[ -z "$LKE_CONTEXT" ]]; then
+            echo "::error::no LKE_CONTEXT secret (base64-encoded kubeconfig) for '${{ matrix.instance }}'"
+            exit 1
+          fi
+          mkdir -p ~/.kube
+          printf '%s' "$LKE_CONTEXT" | base64 --decode > ~/.kube/config
+          chmod 600 ~/.kube/config
+        env:
+          LKE_CONTEXT: ${{ secrets.LKE_CONTEXT }}
+
+      # The package is private, and deploy.sh asks the registry whether the
+      # tag exists before it touches the cluster. Logged out, it cannot tell
+      # and carries on; logged in, a missing image is a clear early failure.
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Deploy
+        run: ./scripts/deploy.sh "${{ matrix.instance }}" "${{ github.sha }}"

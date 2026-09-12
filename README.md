@@ -106,24 +106,33 @@ gradual erosion, and it only works if it knows what to look for.
 
 ## Deployment
 
-The container image is built by CI on every push to `main` and pushed to
-`ghcr.io/falldaysoft/localevents`. **CI does not deploy.** The Kubernetes API
-sits behind an IP allowlist that GitHub-hosted runners cannot satisfy, so
-deployment runs from a machine whose IP is allowlisted:
+Every push to `main` builds the container image, pushes it to
+`ghcr.io/falldaysoft/localevents` tagged with the commit SHA, and deploys it
+to each instance you have told the workflow about. Deployment is configured
+in GitHub, not in this repository, because the repository is the reusable
+product and an instance is a particular community:
+
+1. Create a GitHub **environment** named after the instance (say `mytown`).
+2. Give it a variable `INSTANCE_VALUES` holding the contents of your
+   `instances/mytown.yaml` — the host, namespace, cluster context and regional
+   settings. Copy `instances/example.yaml` to get started. These files are
+   deliberately not committed, and the environment is where the real one
+   lives.
+3. Give it (or the repository) a secret `LKE_CONTEXT`: a base64-encoded
+   kubeconfig for the cluster the overlay's `context:` names.
+4. Set the repository variable `DEPLOY_INSTANCES` to a JSON list of the
+   environments to deploy, e.g. `["mytown"]`. Until it is set, CI builds and
+   stops.
+
+The workflow runs `scripts/deploy.sh`, which is also what `make deploy` runs,
+so a deploy by hand takes the same route — useful for a rollback:
 
 ```bash
-make deploy INSTANCE=<name> TAG=<git-sha>
+make deploy INSTANCE=<name> TAG=<full-git-sha>
 ```
 
-`INSTANCE` names a values file at `instances/<name>.yaml` holding the host,
-namespace, and regional settings. Those files are not committed — they describe
-a particular community, and this repository is the reusable product. Copy
-`instances/example.yaml` to get started, and keep your real one either locally
-or in your own deployment repository.
-
-If push-to-deploy becomes worth having, the two real options are a self-hosted
-runner inside the cluster, or a GitOps controller (Flux/Argo) pulling from
-ghcr. Neither needs inbound access to the API server.
+The script refuses mutable tags and short SHAs, and checks the namespace's
+secrets exist before touching anything.
 
 ### First deploy of a new instance
 

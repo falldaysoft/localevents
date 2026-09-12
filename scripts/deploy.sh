@@ -2,8 +2,11 @@
 #
 # Deploy a localevents instance to LKE.
 #
-# Run this from a machine whose IP is on the Linode API allowlist — CI cannot
-# reach the cluster, so it builds and pushes the image and stops there.
+# CI runs this after every image it pushes, once per instance listed in the
+# DEPLOY_INSTANCES repository variable (see .github/workflows/build.yml). It
+# is also what `make deploy` runs by hand, for a rollback or a redeploy that
+# should not wait for a commit — both paths take the same route and refuse
+# the same things.
 #
 #   ./scripts/deploy.sh <instance> [image-tag]
 #
@@ -188,11 +191,12 @@ case "$image_status" in
     *) echo "    can't tell (not logged in to ghcr, or docker missing) — continuing." ;;
 esac
 
-# Fail early with a clear message rather than a kubectl timeout if the ACL is
-# blocking us — that is the single most likely reason this script fails.
+# Fail early with a clear message rather than a kubectl timeout. The API
+# server used to sit behind an IP allowlist, and if one ever comes back this
+# is where it shows up — so the IP is worth printing.
 if ! kubectl cluster-info --request-timeout=10s >/dev/null 2>&1; then
     echo "error: cannot reach the cluster API." >&2
-    echo "Is this machine's current IP on the Linode API allowlist?" >&2
+    echo "Is the kubeconfig current, and does the control plane allow this IP?" >&2
     echo "Current IP: $(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || echo 'unknown')" >&2
     exit 1
 fi

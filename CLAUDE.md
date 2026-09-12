@@ -30,7 +30,7 @@ make check        # system checks + missing-migration check
 make migrate
 make superuser
 
-make deploy INSTANCE=<name>                 # from an IP-allowlisted machine; deploys HEAD
+make deploy INSTANCE=<name>                 # by hand (rollback, redeploy); deploys HEAD
 make deploy INSTANCE=<name> TAG=<full-sha>  # CI tags with the *full* 40-char SHA
 ```
 
@@ -388,10 +388,17 @@ non-HTML responses for exactly this reason, and `tests/test_smoke.py` asserts
 zero queries — not merely the absence of the `db` fixture, which the
 middleware's blanket `except Exception` used to swallow.
 
-**CI builds, it does not deploy.** The LKE API server is behind an IP allowlist
-that GitHub-hosted runners cannot satisfy. CI runs the checks, the
-missing-migration check and the tests, then pushes the image; `make deploy` runs
-from an allowlisted machine. Images are linux/amd64 only.
+**CI deploys, through the same script a person would run.** Every push to
+`main` runs the checks, the missing-migration check and the tests, pushes the
+image, then runs `scripts/deploy.sh` once per instance named in the
+`DEPLOY_INSTANCES` repository variable. Each instance is a GitHub environment
+of the same name carrying `INSTANCE_VALUES` (the untracked
+`instances/<name>.yaml`, as a variable) and `LKE_CONTEXT` (a base64 kubeconfig,
+as a secret, the same convention as every other falldaysoft repo). A fork with
+no `DEPLOY_INSTANCES` gets CI and no deploy. `make deploy` still works from any
+machine with a kubeconfig, and is the rollback path. The cluster's API server
+was behind an IP allowlist until September 2026, which is why the docs used to
+say CI could not deploy. Images are linux/amd64 only.
 
 **A deploy names an immutable tag, and `scripts/deploy.sh` refuses `latest`.**
 A mutable tag does not deploy: helm writes the same image string into the pod
