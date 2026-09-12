@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
+from .geocoding import geocode_venue
 from .models import (
     Category,
     Event,
@@ -36,9 +37,16 @@ class VenueAdmin(admin.ModelAdmin):
 
     @admin.action(description="Queue selected venues for geocoding again")
     def mark_for_regeocoding(self, request, queryset):
+        # Enqueue each one here rather than only marking it pending: this used
+        # to set the status and stop, and nothing swept pending venues, so the
+        # one remedy a moderator had for a wrong marker did nothing at all.
+        # Marking pending first means a venue set by hand is asked again, which
+        # is the point of choosing it.
         updated = queryset.update(
             geocode_status=Venue.GeocodeStatus.PENDING, geocode_error=""
         )
+        for pk in queryset.values_list("pk", flat=True):
+            geocode_venue.enqueue(pk)
         self.message_user(request, f"{updated} venue(s) queued.")
 
 

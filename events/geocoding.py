@@ -30,6 +30,24 @@ class GeocodeError(Exception):
     pass
 
 
+WHOLE_WORLD = (-90.0, -180.0, 90.0, 180.0)
+
+
+def region_params():
+    """The instance's bounds as a Nominatim `viewbox` — a preference, not a fence.
+
+    Without `bounded=1` the box only ranks results inside it above results
+    outside, which is what a local site wants: "Paris" should mean the one
+    down the road, while a hall just over the county line must still resolve
+    so a moderator can decide whether it belongs. The default whole-world box
+    says nothing, so it is not sent. Nominatim wants the corners as lng,lat.
+    """
+    min_lat, min_lng, max_lat, max_lng = settings.MAP_BBOX
+    if (min_lat, min_lng, max_lat, max_lng) == WHOLE_WORLD:
+        return {}
+    return {"viewbox": f"{min_lng},{min_lat},{max_lng},{max_lat}"}
+
+
 def lookup(query, *, throttle=True):
     """Ask Nominatim for coordinates. Returns (lat, lng) or None.
 
@@ -42,7 +60,7 @@ def lookup(query, *, throttle=True):
     try:
         response = httpx.get(
             NOMINATIM_URL,
-            params={"q": query, "format": "jsonv2", "limit": 1},
+            params={"q": query, "format": "jsonv2", "limit": 1, **region_params()},
             headers={"User-Agent": settings.USER_AGENT},
             timeout=REQUEST_TIMEOUT,
             follow_redirects=True,
@@ -92,13 +110,22 @@ def geocode_venue(venue_id):
 
     venue.geocode_attempted_at = timezone.now()
 
-    # Walk down to less specific queries until one matches. Each rung costs a
-    # throttled second, but only on a miss, and a venue geocodes once and
-    # caches forever — so the cost lands on the rare failure, not the norm.
+    # Walk down to less specific queries until one lands inside the region.
+    # A rung that matches somewhere else entirely does not end the walk: the
+    # address-only rung for "84 Highland Drive, Paris" found a street of that
+    # name in Paris, Michigan, and the name-only rung below it — which resolves
+    # to the right pond in the right Paris — never ran, so the event was
+    # published with a marker two provinces away. An out-of-region hit is
+    # remembered and kept only if no lower rung does better; it is a flag for
+    # a moderator, not a wrong answer, because plenty of communities care
+    # about something just over the county line. Each extra rung costs a
+    # throttled second, but only on a miss or a doubtful hit, and a venue
+    # geocodes once and caches forever.
     result = None
+    out_of_region = None
     for attempt, query in enumerate(queries):
         try:
-            result = lookup(query)
+            found = lookup(query)
         except GeocodeError as exc:
             logger.warning("geocode failed for venue %s: %s", venue_id, exc)
             venue.geocode_status = Venue.GeocodeStatus.FAILED
@@ -110,14 +137,19 @@ def geocode_venue(venue_id):
             )
             return
 
-        if result is not None:
+        if found is None:
+            continue
+        if Venue.coordinates_in_region(*found):
+            result = found
             if attempt:
                 logger.info(
                     "geocoded venue %s with a fallback query: %r", venue_id, query
                 )
             break
+        if out_of_region is None:
+            out_of_region = found
 
-    if result is None:
+    if result is None and out_of_region is None:
         venue.geocode_status = Venue.GeocodeStatus.FAILED
         # Name the queries that missed. "No match found" sent one investigation
         # looking at the network and the User-Agent when the answer was that
@@ -130,17 +162,14 @@ def geocode_venue(venue_id):
         )
         return
 
-    latitude, longitude = result
-    venue.latitude = latitude
-    venue.longitude = longitude
-    venue.geocode_error = ""
-
-    # Outside the configured bounds is a flag, not a failure — a moderator
-    # decides whether somewhere just over the line still belongs.
-    if Venue.coordinates_in_region(latitude, longitude):
+    if result is not None:
         venue.geocode_status = Venue.GeocodeStatus.OK
     else:
+        result = out_of_region
         venue.geocode_status = Venue.GeocodeStatus.OUT_OF_REGION
+
+    venue.latitude, venue.longitude = result
+    venue.geocode_error = ""
 
     venue.save(
         update_fields=[

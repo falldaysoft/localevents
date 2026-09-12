@@ -120,6 +120,20 @@ stresses this is a bulk import introducing many new venues at once. The
 contactable UA. Note `select_for_update()` is a **no-op on SQLite**, so local
 development cannot prove this one.
 
+**The region is a preference to the geocoder, never a fence.** Two live
+misplacements on one instance: an address-only rung matched a street of the
+same name in another country and the ladder stopped there, though the
+name-only rung below it resolved to the right place; and a village name that
+is also a neighbourhood of a big city came back as the city's railway station.
+So `MAP_BBOX` goes to Nominatim as a `viewbox` (which ranks results inside it
+first) and an out-of-region hit does not end the ladder — it is kept only if
+no lower rung lands inside. It is deliberately *not* `bounded=1`, because a
+hall just over the county line must still resolve so a moderator can decide
+whether it belongs; that is what `OUT_OF_REGION` is for. The admin's "queue
+for geocoding again" action enqueues directly, and housekeeping sweeps
+pending venues, because for a while the action only set a status that nothing
+read.
+
 **A site with no superuser is unclaimed.** `/claim/` creates the first
 administrator from the browser and marks the address verified as it goes,
 because the person who configures SMTP cannot be gated on SMTP working. It is

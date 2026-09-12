@@ -26,6 +26,10 @@ EXCLUDED_DIRS = {
     ".pytest_cache",
     "staticfiles",
     "node_modules",
+    # Claude Code keeps scratch worktrees here — whole second checkouts of
+    # this repo, on other branches, whose copy of this file names the banned
+    # word. Tooling state is not the product.
+    ".claude",
     "instances",  # instance overlays are *supposed* to name a place
 }
 

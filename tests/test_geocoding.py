@@ -322,3 +322,151 @@ def test_every_rung_missing_records_what_was_tried(monkeypatch):
     venue.refresh_from_db()
     assert venue.geocode_status == Venue.GeocodeStatus.FAILED
     assert "139 Silver Street, Paris, ON" in venue.geocode_error
+
+
+# --- the region as a preference ---------------------------------------------
+#
+# Two live cases, both on one instance in the same week. "84 Highland Drive,
+# Paris" resolved to a street of that name in Paris, Michigan, because the
+# address-only rung matched there and the ladder stopped; "Watts Pond, Paris",
+# the rung below, resolves to the right pond in the right Paris. And "Mount
+# Pleasant, ON" resolved to a railway station in a city an hour away, with the
+# village of that name inside the region third on the list. The region is what tells those apart, so it is
+# sent as a Nominatim viewbox and an out-of-region hit keeps the ladder walking.
+
+
+@pytest.mark.django_db
+def test_lookup_sends_the_region_as_a_preference_not_a_fence(captured, settings):
+    """`viewbox` ranks results inside the box first; `bounded` would drop the
+    ones outside, and a hall just over the county line must still resolve."""
+    settings.MAP_BBOX = [43.0, -80.5, 43.3, -80.0]
+    geocoding.lookup("Mount Pleasant, ON", throttle=False)
+
+    params = captured[0]["params"]
+    assert params["viewbox"] == "-80.5,43.0,-80.0,43.3"  # lng,lat corners
+    assert "bounded" not in params
+
+
+@pytest.mark.django_db
+def test_lookup_sends_no_viewbox_for_the_whole_world(captured, settings):
+    settings.MAP_BBOX = [-90.0, -180.0, 90.0, 180.0]
+    geocoding.lookup("Community Hall", throttle=False)
+
+    assert "viewbox" not in captured[0]["params"]
+
+
+MICHIGAN = {"lat": "43.7693829", "lon": "-85.5018784"}
+IN_REGION = {"lat": "43.2173648", "lon": "-80.4044196"}
+
+
+@pytest.mark.django_db
+def test_an_out_of_region_match_does_not_end_the_ladder(monkeypatch, settings):
+    """The Watts Pond case, end to end."""
+    settings.MAP_BBOX = [42.95, -80.60, 43.35, -79.95]
+    asked = []
+
+    def fake_get(url, **kwargs):
+        query = kwargs["params"]["q"]
+        asked.append(query)
+        return FakeResponse(
+            {
+                "Watts Pond, 84 Highland Drive, Paris": [],
+                "84 Highland Drive, Paris": [MICHIGAN],
+                "Watts Pond, Paris": [IN_REGION],
+            }[query]
+        )
+
+    monkeypatch.setattr(geocoding.httpx, "get", fake_get)
+    monkeypatch.setattr(GeocodeThrottle, "acquire", classmethod(lambda cls, **kw: None))
+
+    venue = Venue.objects.create(
+        name="Watts Pond", address="84 Highland Drive", city="Paris"
+    )
+    geocoding.geocode_venue.call(venue.pk)
+
+    venue.refresh_from_db()
+    assert venue.geocode_status == Venue.GeocodeStatus.OK
+    assert (venue.latitude, venue.longitude) == (43.2173648, -80.4044196)
+    assert len(asked) == 3
+
+
+@pytest.mark.django_db
+def test_an_out_of_region_match_is_kept_when_nothing_lower_lands_inside(
+    monkeypatch, settings
+):
+    """Still a flag rather than a failure: the moderator sees *where* it landed."""
+    settings.MAP_BBOX = [42.95, -80.60, 43.35, -79.95]
+
+    def fake_get(url, **kwargs):
+        query = kwargs["params"]["q"]
+        return FakeResponse([MICHIGAN] if query == "84 Highland Drive, Paris" else [])
+
+    monkeypatch.setattr(geocoding.httpx, "get", fake_get)
+    monkeypatch.setattr(GeocodeThrottle, "acquire", classmethod(lambda cls, **kw: None))
+
+    venue = Venue.objects.create(
+        name="Watts Pond", address="84 Highland Drive", city="Paris"
+    )
+    geocoding.geocode_venue.call(venue.pk)
+
+    venue.refresh_from_db()
+    assert venue.geocode_status == Venue.GeocodeStatus.OUT_OF_REGION
+    assert (venue.latitude, venue.longitude) == (43.7693829, -85.5018784)
+    assert venue.geocode_error == ""
+
+
+# --- asking again -------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_the_admin_action_actually_enqueues(monkeypatch, rf):
+    """It used to set the status to pending and stop, and nothing swept pending
+    venues — so the one remedy for a wrong marker did nothing at all."""
+    from django.contrib.admin.sites import AdminSite
+
+    from events import admin as events_admin
+
+    enqueued = []
+
+    class StubTask:
+        @staticmethod
+        def enqueue(pk):
+            enqueued.append(pk)
+
+    monkeypatch.setattr(events_admin, "geocode_venue", StubTask)
+    venue = Venue.objects.create(
+        name="Watts Pond",
+        city="Paris",
+        latitude=43.7693829,
+        longitude=-85.5018784,
+        geocode_status=Venue.GeocodeStatus.OUT_OF_REGION,
+    )
+    model_admin = events_admin.VenueAdmin(Venue, AdminSite())
+    monkeypatch.setattr(model_admin, "message_user", lambda *a, **kw: None)
+
+    model_admin.mark_for_regeocoding(rf.post("/"), Venue.objects.filter(pk=venue.pk))
+
+    venue.refresh_from_db()
+    assert venue.geocode_status == Venue.GeocodeStatus.PENDING
+    assert enqueued == [venue.pk]
+
+
+@pytest.mark.django_db
+def test_housekeeping_sweeps_pending_venues(monkeypatch):
+    from django.core.management import call_command
+
+    enqueued = []
+
+    class StubTask:
+        @staticmethod
+        def enqueue(pk):
+            enqueued.append(pk)
+
+    monkeypatch.setattr(geocoding, "geocode_venue", StubTask)
+    venue = Venue.objects.create(name="Community Hall", city="Anytown")
+    venue.geocode_status = Venue.GeocodeStatus.PENDING
+    venue.save(update_fields=["geocode_status"])
+
+    call_command("run_housekeeping")
+
+    assert venue.pk in enqueued

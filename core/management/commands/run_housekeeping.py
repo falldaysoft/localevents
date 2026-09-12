@@ -18,6 +18,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         steps = [
             ("recover stranded submissions", self.recover_stranded_submissions),
+            ("geocode pending venues", self.geocode_pending_venues),
             ("poll import sources", self.poll_import_sources),
             ("expire stale series", self.expire_series),
             ("send renewal reminders", self.send_renewal_reminders),
@@ -56,6 +57,17 @@ class Command(BaseCommand):
         if stranded:
             logger.info("recovered %s stranded submission(s)", len(stranded))
             self.stdout.write(f"  recovered {len(stranded)} stranded submission(s)")
+
+    def geocode_pending_venues(self):
+        """Pick up venues whose geocode never ran or was asked for again.
+
+        A venue is enqueued when it is created, but a task lost to a worker
+        restart, or a venue marked pending in the admin, otherwise sits with no
+        marker forever. The sweep is bounded inside the task.
+        """
+        from events.geocoding import geocode_pending_venues
+
+        geocode_pending_venues.enqueue()
 
     def poll_import_sources(self):
         return
