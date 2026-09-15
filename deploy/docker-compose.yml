@@ -48,10 +48,16 @@ services:
   web:
     <<: *app
     container_name: ${INSTANCE}-web
-    command: >
-      sh -c "python manage.py migrate --noinput &&
-             exec gunicorn localevents.wsgi:application
-               --bind 0.0.0.0:8080 --worker-class gthread --workers 2 --threads 4"
+    # List form, not a folded `>` string: YAML keeps a line break before any
+    # continuation line indented deeper than the first, and a newline inside
+    # `sh -c` ends the command — gunicorn once started with no arguments at
+    # all, on port 8000 with a sync worker, and the healthcheck could not
+    # reach it. Threads because this workload waits on the database and on
+    # outbound HTTP far more than it computes; see the Dockerfile.
+    command:
+      - sh
+      - -c
+      - python manage.py migrate --noinput && exec gunicorn localevents.wsgi:application --bind 0.0.0.0:8080 --worker-class gthread --workers 2 --threads 4
     # The Host header matters: /healthz is behind ALLOWED_HOSTS like every
     # other route, and a probe without it gets a 400 that reads like the app
     # is broken.
