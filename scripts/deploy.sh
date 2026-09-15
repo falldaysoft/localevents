@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 #
-# Deploy a localevents instance to LKE.
+# Deploy a localevents instance to its VM, by hand.
 #
-# CI runs this after every image it pushes, once per instance listed in the
-# DEPLOY_INSTANCES repository variable (see .github/workflows/build.yml). It
-# is also what `make deploy` runs by hand, for a rollback or a redeploy that
-# should not wait for a commit — both paths take the same route and refuse
-# the same things.
+# CI does this after every image it pushes, through a restricted deploy key
+# (see .github/workflows/build.yml). This is the same deploy from a keyboard,
+# for a rollback or a redeploy that should not wait for a commit — both paths
+# run the same script on the VM and refuse the same things.
 #
 #   ./scripts/deploy.sh <instance> [image-tag]
 #
-# <instance> names a values file at instances/<instance>.yaml, which supplies
-# the host, namespace, and regional settings. Those files are not part of the
-# reusable product and are not committed; see instances/example.yaml.
+# <instance> names instances/<instance>.env, your local copy of the overlay
+# that lives at ~/apps/<instance>/.env on the VM. Only DEPLOY_HOST is read
+# from it here; everything else is the VM's business. Those files are not
+# part of the reusable product and are not committed; see instances/example.env.
 #
 # The tag defaults to the full SHA of HEAD, because that is what CI publishes
 # and because "deploy what I have checked out" is what anyone running this
@@ -28,14 +28,14 @@ if [[ -z "$INSTANCE" ]]; then
     echo "usage: $0 <instance> [image-tag]" >&2
     echo "" >&2
     echo "available instances:" >&2
-    ls instances/*.yaml 2>/dev/null | sed 's|instances/|  |; s|\.yaml$||' >&2 || echo "  (none)" >&2
+    ls instances/*.env 2>/dev/null | grep -v example | sed 's|instances/|  |; s|\.env$||' >&2 || echo "  (none)" >&2
     exit 1
 fi
 
-VALUES_FILE="instances/${INSTANCE}.yaml"
-if [[ ! -f "$VALUES_FILE" ]]; then
-    echo "error: $VALUES_FILE not found" >&2
-    echo "copy instances/example.yaml and fill it in." >&2
+ENV_FILE="instances/${INSTANCE}.env"
+if [[ ! -f "$ENV_FILE" ]]; then
+    echo "error: $ENV_FILE not found" >&2
+    echo "copy instances/example.env (or the VM's ~/apps/$INSTANCE/.env) and fill it in." >&2
     exit 1
 fi
 
@@ -44,11 +44,8 @@ fi
 #
 # CI tags every image with `github.sha` — the full 40-character SHA — and with
 # `latest`. A short SHA therefore names an image that does not exist, and the
-# failure is not a message but a wait: the migrate hook sits in
-# ImagePullBackOff until `helm --wait` gives up five minutes later, and the
-# only thing helm says is "context canceled". That has now cost more time than
-# every other failure of this script combined, so it is worth three lines to
-# rule out.
+# failure is a `pull` error on the VM after the connection is already made.
+# Cheap to rule out here.
 # ---------------------------------------------------------------------------
 
 if [[ -z "$TAG" ]]; then
@@ -60,25 +57,16 @@ if [[ -z "$TAG" ]]; then
     fi
     echo "==> no tag given, using HEAD"
 elif [[ "$TAG" == "latest" || "$TAG" == "main" ]]; then
-    # A mutable tag does not deploy. Helm writes the same image string into the
-    # pod spec as last time, Kubernetes correctly sees no change, and no pod is
-    # ever replaced — while `helm upgrade` and `rollout status` both report
-    # success, because from their point of view nothing failed.
-    #
-    # What makes this worse than a no-op is the migrate hook. That is a Job, so
-    # it gets a *fresh* pod every deploy and does pull the new image — so the
-    # database moves forward while the application serving traffic stays where
-    # it was. An additive migration hides that until someone notices the new
-    # feature is missing; a migration that drops or renames a column takes the
-    # site down, and the deploy log still says "successfully rolled out".
-    #
-    # Observed exactly once, on brantevents, and the pods' 16-hour age was the
-    # only evidence anything was wrong.
+    # A mutable tag does not deploy. The VM's deploy.sh records the tag it
+    # ran in .env so a rollback has something to name; `latest` records
+    # nothing, and `pull` may or may not fetch anything new. Under Kubernetes
+    # this was worse — the pod spec did not change, so nothing rolled while
+    # the migrate job ran anyway and left the database ahead of the code.
+    # Compose has no such split, but the rule is kept because it is cheap and
+    # the habit is worth having.
     echo "error: refusing to deploy the mutable tag '$TAG'." >&2
     echo "" >&2
-    echo "It would leave the pod spec unchanged, so nothing would roll — and" >&2
-    echo "the migrate job would still run, putting the database ahead of the" >&2
-    echo "code. Deploy an immutable tag instead:" >&2
+    echo "Deploy an immutable tag instead:" >&2
     echo "" >&2
     echo "  make deploy INSTANCE=$INSTANCE                       # HEAD" >&2
     echo "  make deploy INSTANCE=$INSTANCE TAG=\$(git rev-parse HEAD)" >&2
@@ -98,7 +86,6 @@ fi
 
 # A commit that never reached the remote was never built, so the image cannot
 # exist. Advisory only — the check depends on how recently anyone fetched.
-# No `latest` special case needed any more: mutable tags are refused above.
 if git cat-file -e "${TAG}^{commit}" 2>/dev/null; then
     if ! git branch -r --contains "$TAG" 2>/dev/null | grep -q .; then
         echo "warning: $TAG is on no known remote branch — did CI ever build it?" >&2
@@ -107,57 +94,19 @@ fi
 
 # ---------------------------------------------------------------------------
 
-echo "==> instance:  $INSTANCE"
-echo "==> namespace: (reading $VALUES_FILE)"
-echo "==> image:     ${IMAGE_REPO}:${TAG}"
-echo
-
-# The namespace is declared in the instance file rather than passed separately,
-# so there is one source of truth for where this deploys.
-NAMESPACE=$(grep -E '^namespace:' "$VALUES_FILE" | head -1 | awk '{print $2}' | tr -d '"')
-if [[ -z "$NAMESPACE" ]]; then
-    echo "error: $VALUES_FILE does not set 'namespace:'" >&2
+# Where the instance lives is a fact about the instance, so it is read from
+# the overlay rather than assumed. A machine that also administers other
+# hosts has nothing to get wrong this way.
+DEPLOY_HOST=$(grep -E '^DEPLOY_HOST=' "$ENV_FILE" | head -1 | cut -d= -f2- | tr -d '"'"'")
+if [[ -z "$DEPLOY_HOST" ]]; then
+    echo "error: $ENV_FILE does not set DEPLOY_HOST (user@host of the VM)" >&2
     exit 1
 fi
-echo "==> namespace: $NAMESPACE"
 
-# ---------------------------------------------------------------------------
-# Which cluster
-#
-# Everything below runs against whatever context kubectl happens to be on, and
-# nothing in a values file used to say which that should be. A machine that
-# also administers other clusters therefore deploys wherever it was last
-# pointed — and the failure is silent, because this script's next complaint is
-# "secret 'ghcr-secret' missing", which reads like an ordinary first deploy
-# rather than like being on someone else's cluster. It got as far as creating
-# a namespace on an unrelated production cluster before stopping.
-#
-# `context:` is declared in the instance file for the same reason `namespace:`
-# is: which cluster a community's site lives on is a fact about that instance,
-# not about the product. It stays optional — a single-cluster machine has
-# nothing to disambiguate — but when it is set it is enforced rather than
-# assumed.
-# ---------------------------------------------------------------------------
-
-CONTEXT=$(grep -E '^context:' "$VALUES_FILE" | head -1 | awk '{print $2}' | tr -d '"')
-CURRENT=$(kubectl config current-context 2>/dev/null || true)
-
-if [[ -n "$CONTEXT" ]]; then
-    if [[ "$CONTEXT" != "$CURRENT" ]]; then
-        echo "==> context:   $CURRENT -> $CONTEXT"
-        if ! kubectl config use-context "$CONTEXT" >/dev/null 2>&1; then
-            echo "error: no kubectl context named '$CONTEXT'." >&2
-            echo "$VALUES_FILE names it; 'kubectl config get-contexts' lists" >&2
-            echo "what this machine has." >&2
-            exit 1
-        fi
-    else
-        echo "==> context:   $CONTEXT"
-    fi
-else
-    # Say it out loud rather than deploying silently into the dark.
-    echo "==> context:   ${CURRENT:-<none>} (no 'context:' in $VALUES_FILE)"
-fi
+echo "==> instance:  $INSTANCE"
+echo "==> host:      $DEPLOY_HOST"
+echo "==> image:     ${IMAGE_REPO}:${TAG}"
+echo
 
 # Ask the registry whether the tag is really there. Three answers, not two: the
 # image is private, so a machine that is not logged in to ghcr cannot tell us
@@ -185,63 +134,15 @@ case "$image_status" in
     1)
         echo "error: ${IMAGE_REPO}:${TAG} is not in the registry." >&2
         echo "CI tags images with the full 40-character SHA; check the run for" >&2
-        echo "this commit finished, or deploy 'latest'." >&2
+        echo "this commit finished." >&2
         exit 1
         ;;
     *) echo "    can't tell (not logged in to ghcr, or docker missing) — continuing." ;;
 esac
 
-# Fail early with a clear message rather than a kubectl timeout. The API
-# server used to sit behind an IP allowlist, and if one ever comes back this
-# is where it shows up — so the IP is worth printing.
-if ! kubectl cluster-info --request-timeout=10s >/dev/null 2>&1; then
-    echo "error: cannot reach the cluster API." >&2
-    echo "Is the kubeconfig current, and does the control plane allow this IP?" >&2
-    echo "Current IP: $(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || echo 'unknown')" >&2
-    exit 1
-fi
-
-echo "==> ensuring namespace"
-kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
-
-echo "==> checking prerequisites"
-for secret in ghcr-secret postgres-secret; do
-    if ! kubectl get secret "$secret" -n "$NAMESPACE" >/dev/null 2>&1; then
-        echo "error: secret '$secret' missing in namespace '$NAMESPACE'." >&2
-        echo "See README.md, 'First deploy of a new instance'." >&2
-        exit 1
-    fi
-done
-
-# When the pre-upgrade migrate hook fails, helm says "context canceled" or
-# "timed out waiting for the condition" and stops. Neither names the cause,
-# which is in the hook pod — a tag that will not pull, or a migration the
-# database refused. Print it rather than making the next person go looking.
-explain_failure() {
-    local pod
-    pod=$(kubectl get pods -n "$NAMESPACE" --sort-by=.metadata.creationTimestamp -o name 2>/dev/null \
-          | grep -- '-migrate-' | tail -1 || true)
-    [[ -n "$pod" ]] || return 0
-
-    echo
-    echo "==> the migrate hook is where this usually dies. $pod:"
-    kubectl describe "$pod" -n "$NAMESPACE" 2>/dev/null | sed -n '/^Events:/,$p' | head -20
-    echo
-    echo "==> its logs, if it got far enough to produce any:"
-    kubectl logs "$pod" -n "$NAMESPACE" --tail=30 2>/dev/null || echo "    (none — it never started)"
-}
-
-echo "==> helm upgrade --install"
-if ! helm upgrade --install \
-    --namespace "$NAMESPACE" \
-    --values "$VALUES_FILE" \
-    --set image="${IMAGE_REPO}:${TAG}" \
-    --wait --timeout 5m \
-    "$INSTANCE" helm/localevents/; then
-    explain_failure
-    exit 1
-fi
-
-echo
-echo "==> deployed. rollout status:"
-kubectl rollout status deployment -n "$NAMESPACE" --timeout=60s || true
+# The VM's script does the rest: writes the tag into .env, pulls, and brings
+# the containers up. Run through the user's own key, not the CI one — the CI
+# key is bound to a forced command and would work too, but this is the
+# machine's own identity doing something on purpose.
+echo "==> running ~/apps/$INSTANCE/deploy.sh $TAG on $DEPLOY_HOST"
+exec ssh "$DEPLOY_HOST" "~/apps/$INSTANCE/deploy.sh $TAG"

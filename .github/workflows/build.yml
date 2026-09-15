@@ -3,26 +3,25 @@ name: Build and Deploy
 # Build once, deploy to every instance that asks for it.
 #
 # The build job is the reusable product's CI: checks, tests, and an image
-# tagged with the full commit SHA. The deploy job is what runs `make deploy`
-# used to be run by hand for, and it knows nothing about any community: the
-# instances it deploys, and what each one looks like, are repository and
-# environment configuration rather than anything in this file.
+# tagged with the full commit SHA. The deploy job knows nothing about any
+# community: the instances it deploys, and where each one lives, are
+# repository and environment configuration rather than anything in this file.
 #
 #   - Repository variable DEPLOY_INSTANCES: a JSON list of instance names,
 #     e.g. ["mytown"]. Unset, and nothing deploys — a fork gets CI for free
 #     and opts in to deployment when it is ready.
 #   - One GitHub environment per instance, named after it, carrying:
-#       INSTANCE_VALUES  (variable) the contents of instances/<name>.yaml.
-#                        Those files are not committed, and this is where the
-#                        one for a deployed instance lives instead.
-#       LKE_CONTEXT      (secret) a base64-encoded kubeconfig for the cluster
-#                        the instance's `context:` names. Can be set at the
-#                        repository level instead when every instance shares
-#                        a cluster.
+#       DEPLOY_HOST      (variable) user@host of the VM, e.g. ubuntu@vm.example.org
+#       DEPLOY_HOST_KEY  (variable) the VM's public host key, as a known_hosts
+#                        line (`ssh-keyscan -t ed25519 <host>`), so the deploy
+#                        verifies who it is talking to instead of trusting the
+#                        first answer.
+#       DEPLOY_KEY       (secret) a private key whose public half sits in the
+#                        VM's authorized_keys with a forced command of
+#                        ~/apps/<instance>/deploy.sh. The key can run that
+#                        script and nothing else; the tag is the SSH command.
 #
-# Everything cluster-facing still goes through scripts/deploy.sh, so CI and a
-# person at a keyboard deploy the same way and refuse the same things — a
-# mutable tag, a short SHA, a missing pull secret.
+# Nothing else about the instance reaches CI. Its `.env` lives on the VM.
 
 on:
   push:
@@ -37,7 +36,7 @@ jobs:
 
     # Superseded builds are useless — only the newest image gets deployed. This
     # sits on the job rather than the workflow so that cancelling a stale build
-    # never cancels a deploy that is already talking to the cluster.
+    # never cancels a deploy that is already talking to the VM.
     concurrency:
       group: build-${{ github.ref }}
       cancel-in-progress: true
@@ -63,9 +62,9 @@ jobs:
         run: pip install -r requirements.txt
 
       # Mirrors `make check`. The missing-migration check earns its place here:
-      # a model change without its migration passes every test and then fails at
-      # deploy time inside the migrate hook, which is a far more expensive place
-      # to work it out.
+      # a model change without its migration passes every test and then fails
+      # on the VM when the container migrates at start, which is a far more
+      # expensive place to work it out.
       - name: System checks and missing migrations
         run: |
           python manage.py check
@@ -85,19 +84,28 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v4
 
+      # arm64 because that is what the VM is; amd64 kept so the image still
+      # runs on an ordinary laptop or cloud box. An amd64-only image on an
+      # arm64 host fails at `docker compose up` with an exec format error,
+      # which is at least loud.
       - name: Build and push Docker image
         uses: docker/build-push-action@v7
         with:
           context: .
+          platforms: linux/amd64,linux/arm64
           push: true
           # Derived from the repository rather than hardcoded so that a
           # community forking this pushes to *their* namespace and it simply
           # works — GITHUB_TOKEN only ever has rights to packages under the
           # repo's own owner. Here it resolves to
-          # ghcr.io/falldaysoft/localevents, which is what the chart expects.
+          # ghcr.io/falldaysoft/localevents, which is what the compose file
+          # expects.
           tags: |
             ghcr.io/${{ github.repository }}:latest
             ghcr.io/${{ github.repository }}:${{ github.sha }}
@@ -118,8 +126,8 @@ jobs:
     environment:
       name: ${{ matrix.instance }}
 
-    # One deploy per instance at a time, and never cancelled: a helm upgrade
-    # killed halfway leaves a release that the next run has to untangle first.
+    # One deploy per instance at a time, and never cancelled: a `compose up`
+    # killed halfway leaves containers the next run has to untangle first.
     # A newer commit queues behind the running one and deploys after it.
     concurrency:
       group: deploy-${{ matrix.instance }}
@@ -127,45 +135,24 @@ jobs:
 
     permissions:
       contents: read
-      packages: read
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
-
-      # deploy.sh reads instances/<name>.yaml, which is deliberately not in
-      # the repository. The environment supplies it.
-      - name: Write the instance overlay
-        run: |
-          if [[ -z "$INSTANCE_VALUES" ]]; then
-            echo "::error::environment '${{ matrix.instance }}' has no INSTANCE_VALUES variable (the contents of instances/${{ matrix.instance }}.yaml)"
-            exit 1
-          fi
-          printf '%s\n' "$INSTANCE_VALUES" > "instances/${{ matrix.instance }}.yaml"
+      - name: Deploy to the instance's VM
         env:
-          INSTANCE_VALUES: ${{ vars.INSTANCE_VALUES }}
-
-      - name: Write the kubeconfig
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_HOST_KEY: ${{ vars.DEPLOY_HOST_KEY }}
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
         run: |
-          if [[ -z "$LKE_CONTEXT" ]]; then
-            echo "::error::no LKE_CONTEXT secret (base64-encoded kubeconfig) for '${{ matrix.instance }}'"
-            exit 1
-          fi
-          mkdir -p ~/.kube
-          printf '%s' "$LKE_CONTEXT" | base64 --decode > ~/.kube/config
-          chmod 600 ~/.kube/config
-        env:
-          LKE_CONTEXT: ${{ secrets.LKE_CONTEXT }}
-
-      # The package is private, and deploy.sh asks the registry whether the
-      # tag exists before it touches the cluster. Logged out, it cannot tell
-      # and carries on; logged in, a missing image is a clear early failure.
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Deploy
-        run: ./scripts/deploy.sh "${{ matrix.instance }}" "${{ github.sha }}"
+          for v in DEPLOY_HOST DEPLOY_HOST_KEY DEPLOY_KEY; do
+            if [[ -z "${!v}" ]]; then
+              echo "::error::environment '${{ matrix.instance }}' has no $v (see the comment at the top of this workflow)"
+              exit 1
+            fi
+          done
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_HOST_KEY" >> ~/.ssh/known_hosts
+          # The forced command on the VM ignores what we ask to run and reads
+          # the tag from SSH_ORIGINAL_COMMAND instead.
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$DEPLOY_HOST" "${{ github.sha }}"

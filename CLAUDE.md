@@ -90,7 +90,7 @@ Seven apps, split by who acts rather than by data:
 - **`accounts`** — custom `User` (email is the credential, username is only a
   display name), `/claim/`, profile.
 - **`core`** — the `SiteConfig` and `AIConfig` singletons, the CSP middleware,
-  the housekeeping command run by the Helm CronJob.
+  the housekeeping command run hourly from the VM's crontab.
 
 ## Architecture notes
 
@@ -138,7 +138,7 @@ read.
 administrator from the browser and marks the address verified as it goes,
 because the person who configures SMTP cannot be gated on SMTP working. It is
 first-come-first-served by choice: every gate worth having needs a secret
-delivered by `kubectl exec`, which is the thing the page exists to remove. The
+delivered by `docker exec`, which is the thing the page exists to remove. The
 page 404s once any superuser exists, and `accounts.claim` latches that answer
 per process — so it fails closed, and a site that loses its last superuser
 stays closed until a restart.
@@ -382,46 +382,49 @@ caps the download at 2 MB. Do not add a code path that fetches a user-supplied
 URL without going through `enrichment.fetcher` — that includes feed importers.
 
 **`/healthz` must not touch the database.** A database that hangs rather than
-refusing would otherwise block the liveness probe, and Kubernetes would restart
-a container whose only problem was upstream. `SiteHeadCSPMiddleware` skips
-non-HTML responses for exactly this reason, and `tests/test_smoke.py` asserts
-zero queries — not merely the absence of the `db` fixture, which the
-middleware's blanket `except Exception` used to swallow.
+refusing would otherwise fail the container healthcheck, and Docker would
+restart a container whose only problem was upstream — and take the worker
+down with it, since the worker waits on the web container's health.
+`SiteHeadCSPMiddleware` skips non-HTML responses for exactly this reason, and
+`tests/test_smoke.py` asserts zero queries — not merely the absence of the
+`db` fixture, which the middleware's blanket `except Exception` used to
+swallow.
 
-**CI deploys, through the same script a person would run.** Every push to
-`main` runs the checks, the missing-migration check and the tests, pushes the
-image, then runs `scripts/deploy.sh` once per instance named in the
-`DEPLOY_INSTANCES` repository variable. Each instance is a GitHub environment
-of the same name carrying `INSTANCE_VALUES` (the untracked
-`instances/<name>.yaml`, as a variable) and `LKE_CONTEXT` (a base64 kubeconfig,
-as a secret, the same convention as every other falldaysoft repo). A fork with
-no `DEPLOY_INSTANCES` gets CI and no deploy. `make deploy` still works from any
-machine with a kubeconfig, and is the rollback path. The cluster's API server
-was behind an IP allowlist until September 2026, which is why the docs used to
-say CI could not deploy. Images are linux/amd64 only.
+**An instance is a directory on a VM, and CI deploys by ssh.** Every push to
+`main` runs the checks, the missing-migration check and the tests, pushes a
+multi-arch image (the VM is arm64; amd64 is kept for laptops and other
+boxes), then deploys once per instance named in the `DEPLOY_INSTANCES`
+repository variable. Each instance is a GitHub environment of the same name
+carrying `DEPLOY_HOST` and `DEPLOY_HOST_KEY` (variables) and `DEPLOY_KEY` (a
+secret): a private key whose public half sits in the VM's `authorized_keys`
+with a forced command of `~/apps/<instance>/deploy.sh`, so the key can run
+that script and nothing else, and the image tag is the ssh command. A fork
+with no `DEPLOY_INSTANCES` gets CI and no deploy. `make deploy` runs the same
+VM script through your own key, and is the rollback path.
 
-**A deploy names an immutable tag, and `scripts/deploy.sh` refuses `latest`.**
-A mutable tag does not deploy: helm writes the same image string into the pod
-spec, Kubernetes correctly sees no change, and no pod is replaced — while both
-`helm upgrade` and `rollout status` report success, because nothing failed. The
-migrate hook is a Job, so it gets a fresh pod and *does* pull the new image,
-which leaves the database ahead of the code with a green deploy log. An
-additive migration hides that until someone notices the feature is missing; a
-migration that drops a column takes the site down. This happened once on a real
-instance — the Makefile defaulted `TAG` to `latest`, silently overriding the
-script's own "default to HEAD", and the pods' age was the only evidence.
-`TAG` is now empty in the Makefile so one place decides, and `latest` and
-`main` are rejected before anything touches the cluster.
+On the VM, `~/apps/<instance>/` holds `deploy/docker-compose.yml`,
+`deploy/deploy.sh` and a `.env` that is the instance overlay — the only place
+a community's name, coordinates or credentials exist. Compose reads it twice:
+to interpolate its own `${...}` references and, through `env_file:`, to hand
+the whole file to the containers, where `settings.py` reads the same names.
+Three services share the image: `web` migrates then serves, `worker` runs
+`db_worker --no-reload` and waits for `web` to be healthy, and `housekeeping`
+sits under a compose profile so `up -d` never starts it — crontab runs it
+hourly with `compose run --rm`. Traefik terminates TLS from labels on `web`
+and redirects `www.` to the bare host, keeping the path. Postgres is the VM's
+shared container; the role and database are both named after the instance,
+and the nightly dump there is the whole backup, because uploaded images are
+rows.
 
-**A deploy names its cluster.** `instances/<name>.yaml` carries an optional
-`context:` beside `namespace:`, and `scripts/deploy.sh` switches to it before
-touching anything. Without it the deploy goes wherever kubectl was last
-pointed, which on a machine that administers other clusters is not a
-hypothetical: one ran far enough to create a namespace on an unrelated
-production cluster, and the only symptom was a complaint about a missing
-`ghcr-secret` — indistinguishable from an ordinary first deploy. Which cluster
-a community's site lives on is a fact about that instance, so it belongs in the
-overlay rather than in the product.
+**A deploy names an immutable tag, and both deploy scripts refuse `latest`.**
+The VM script writes the tag it ran into `.env`, which is what a rollback
+names; `latest` would record nothing and `pull` might or might not fetch
+anything new. Under Kubernetes this was worse — the pod spec did not change
+so nothing rolled, while the migrate hook ran anyway and left the database
+ahead of the code with a green deploy log, which happened once on a real
+instance. Compose has no such split, but the refusal is cheap and the habit
+is worth keeping. Short SHAs are expanded if git knows them and refused
+otherwise, because CI publishes full ones and a short one names nothing.
 
 ## Testing
 

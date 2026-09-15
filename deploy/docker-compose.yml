@@ -1,0 +1,105 @@
+# One localevents instance on a VM, behind Traefik on `infra-network`.
+#
+# This file is the source of truth; copy it to ~/apps/<instance>/ on the VM
+# when it changes. It names no community: everything that does — the host,
+# the site identity, the map, the SMTP account — comes from `.env` in the
+# same directory, which is the instance overlay (see instances/example.env)
+# and is never committed. Compose reads that file twice: once to interpolate
+# the ${...} references below, and once more via `env_file:` to hand the
+# whole thing to the containers, where settings.py reads the same names.
+#
+# Three services share one image and one `.env`:
+#
+#   web           migrates, then serves. Migrating here is what the Helm
+#                 pre-upgrade hook used to do; the worker waits for it.
+#   worker        the queue — enrichment, geocoding, feed polling, mail.
+#                 Without it the site looks fine and silently does none of
+#                 that, exactly as in development.
+#   housekeeping  a one-shot under the `cron` profile so `up -d` leaves it
+#                 alone; crontab runs `docker compose run --rm housekeeping`
+#                 hourly, which is what the Kubernetes CronJob did.
+#
+# Postgres is the VM's shared `postgres` container on infra-network; the
+# role and database are both named after the instance. Uploaded images are
+# database rows, so there is nothing to mount — the database backup is the
+# whole backup.
+#
+# Usage on the VM:
+#   docker compose pull && docker compose up -d
+
+x-app: &app
+  image: ghcr.io/falldaysoft/localevents:${IMAGE_TAG:-latest}
+  restart: unless-stopped
+  env_file: .env
+  environment:
+    DEBUG: "false"
+    DATABASE_URL: postgres://${INSTANCE}:${DB_PASSWORD}@postgres:5432/${INSTANCE}
+    ALLOWED_HOSTS: ${HOST},www.${HOST}
+    CSRF_TRUSTED_ORIGINS: https://${HOST},https://www.${HOST}
+    # Links in outbound mail. Derived from the host rather than given its own
+    # value, because a background task has no request to fall back on and a
+    # stale value fails silently: every link points somewhere wrong.
+    SITE_BASE_URL: https://${HOST}
+    EMAIL_BACKEND: django.core.mail.backends.smtp.EmailBackend
+  networks:
+    - infra-network
+
+services:
+  web:
+    <<: *app
+    container_name: ${INSTANCE}-web
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             exec gunicorn localevents.wsgi:application
+               --bind 0.0.0.0:8080 --worker-class gthread --workers 2 --threads 4"
+    # The Host header matters: /healthz is behind ALLOWED_HOSTS like every
+    # other route, and a probe without it gets a 400 that reads like the app
+    # is broken.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,urllib.request; urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:8080/healthz', headers={'Host': os.environ['HOST']}), timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.${INSTANCE}.rule=Host(`${HOST}`)"
+      - "traefik.http.routers.${INSTANCE}.entrypoints=websecure"
+      - "traefik.http.routers.${INSTANCE}.tls=true"
+      - "traefik.http.routers.${INSTANCE}.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.${INSTANCE}.middlewares=compress@file"
+      - "traefik.http.services.${INSTANCE}.loadbalancer.server.port=8080"
+      # www: get a cert and permanently redirect to the bare domain, keeping
+      # the path — event links are the ones people actually share. The regex
+      # is deliberately host-agnostic; the router rule already pins it to
+      # www.${HOST}, and a dot in an interpolated hostname is not escaped.
+      - "traefik.http.routers.${INSTANCE}-www.rule=Host(`www.${HOST}`)"
+      - "traefik.http.routers.${INSTANCE}-www.entrypoints=websecure"
+      - "traefik.http.routers.${INSTANCE}-www.tls=true"
+      - "traefik.http.routers.${INSTANCE}-www.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.${INSTANCE}-www.middlewares=${INSTANCE}-strip-www"
+      - "traefik.http.routers.${INSTANCE}-www.service=${INSTANCE}"
+      - "traefik.http.middlewares.${INSTANCE}-strip-www.redirectregex.regex=^https?://www\\.[^/]+/(.*)"
+      - "traefik.http.middlewares.${INSTANCE}-strip-www.redirectregex.replacement=https://${HOST}/$${1}"
+      - "traefik.http.middlewares.${INSTANCE}-strip-www.redirectregex.permanent=true"
+
+  worker:
+    <<: *app
+    container_name: ${INSTANCE}-worker
+    # --no-reload: the autoreloader exists for development, where it kills a
+    # task mid-flight when a file changes. Nothing changes in a container.
+    command: ["python", "manage.py", "db_worker", "--no-reload"]
+    depends_on:
+      web:
+        condition: service_healthy
+
+  housekeeping:
+    <<: *app
+    container_name: ${INSTANCE}-housekeeping
+    restart: "no"
+    profiles: ["cron"]
+    command: ["python", "manage.py", "run_housekeeping"]
+
+networks:
+  infra-network:
+    external: true

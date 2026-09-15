@@ -81,7 +81,7 @@ make check      # system checks + missing-migration check
 Nothing about a specific community is compiled in. To stand up your own
 instance you change configuration, never code:
 
-**Deploy-time settings** (environment variables, set from the Helm values file)
+**Deploy-time settings** (environment variables, set in the instance's `.env`)
 cover the identity that has to be known before the database is reachable:
 `SITE_NAME`, `SITE_TAGLINE`, `CONTACT_EMAIL`, `SITE_TIMEZONE`, the map centre
 and zoom, `MAP_BBOX`, and the tile server. See `.env.example` for the full list
@@ -106,63 +106,70 @@ gradual erosion, and it only works if it knows what to look for.
 
 ## Deployment
 
-Every push to `main` builds the container image, pushes it to
-`ghcr.io/falldaysoft/localevents` tagged with the commit SHA, and deploys it
-to each instance you have told the workflow about. Deployment is configured
-in GitHub, not in this repository, because the repository is the reusable
-product and an instance is a particular community:
+An instance is a directory on a VM: `~/apps/<instance>/` holding
+`deploy/docker-compose.yml`, `deploy/deploy.sh`, and a `.env` that names the
+community. Three containers share one image — the web server (which migrates
+on start), the task worker, and an hourly housekeeping one-shot run from
+crontab — behind a Traefik that terminates TLS, on a shared Postgres. Uploaded
+images are database rows, so the database backup is the whole backup.
+
+Every push to `main` builds the container image for amd64 and arm64, pushes
+it to `ghcr.io/falldaysoft/localevents` tagged with the commit SHA, and
+deploys it to each instance you have told the workflow about. Deployment is
+configured in GitHub, not in this repository, because the repository is the
+reusable product and an instance is a particular community:
 
 1. Create a GitHub **environment** named after the instance (say `mytown`).
-2. Give it a variable `INSTANCE_VALUES` holding the contents of your
-   `instances/mytown.yaml` — the host, namespace, cluster context and regional
-   settings. Copy `instances/example.yaml` to get started. These files are
-   deliberately not committed, and the environment is where the real one
-   lives.
-3. Give it (or the repository) a secret `LKE_CONTEXT`: a base64-encoded
-   kubeconfig for the cluster the overlay's `context:` names.
+2. Give it variables `DEPLOY_HOST` (`user@host` of the VM) and
+   `DEPLOY_HOST_KEY` (the VM's host key as a `known_hosts` line, from
+   `ssh-keyscan -t ed25519 <host>`).
+3. Give it a secret `DEPLOY_KEY`: a private key whose public half is in the
+   VM's `authorized_keys` with a forced command of `~/apps/mytown/deploy.sh`
+   (see below). The key can run that script and nothing else.
 4. Set the repository variable `DEPLOY_INSTANCES` to a JSON list of the
    environments to deploy, e.g. `["mytown"]`. Until it is set, CI builds and
    stops.
 
-The workflow runs `scripts/deploy.sh`, which is also what `make deploy` runs,
-so a deploy by hand takes the same route — useful for a rollback:
+A deploy by hand takes the same route, through your own key — useful for a
+rollback:
 
 ```bash
 make deploy INSTANCE=<name> TAG=<full-git-sha>
 ```
 
-The script refuses mutable tags and short SHAs, and checks the namespace's
-secrets exist before touching anything.
+Both refuse mutable tags and short SHAs.
 
 ### First deploy of a new instance
 
-The chart assumes two secrets already exist in the target namespace. Create
-them once:
+On the VM, with Docker, a Traefik on `infra-network` and a `postgres`
+container already there:
 
 ```bash
-NS=<namespace>
-kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
+I=mytown
+mkdir -p ~/apps/$I ~/backups/$I
 
-# Image pull secret, copied from an existing namespace
-kubectl get secret ghcr-secret -n bigreminders -o yaml \
-  | sed "s/namespace: bigreminders/namespace: $NS/" \
-  | kubectl apply -f -
+# The overlay. Everything that names the community goes here and nowhere
+# else; see instances/example.env for what each line means.
+cp instances/example.env ~/apps/$I/.env && chmod 600 ~/apps/$I/.env && $EDITOR ~/apps/$I/.env
 
-# Database. Create the role and database on the shared Postgres first.
-kubectl create secret generic postgres-secret --namespace "$NS" \
-  --from-literal=DATABASE_URL="postgres://USER:PASSWORD@postgres-postgres.postgres.svc.cluster.local:5432/DBNAME" \
-  --dry-run=client -o yaml | kubectl apply -f -
+cp deploy/docker-compose.yml deploy/deploy.sh deploy/restore-from-dump.sh ~/apps/$I/
 
-# Application secrets. Only secret-key is required.
-kubectl create secret generic localevents-secrets --namespace "$NS" \
-  --from-literal=secret-key="$(python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())')" \
-  --from-literal=email-host-user="..." \
-  --from-literal=email-host-password="..." \
-  --from-literal=openrouter-api-key="..." \
-  --dry-run=client -o yaml | kubectl apply -f -
+# Database: a role and a database, both named after the instance.
+docker exec postgres psql -U postgres -c "create role $I login password '<DB_PASSWORD from .env>'"
+docker exec postgres psql -U postgres -c "create database $I owner $I"
+
+# The CI deploy key, bound to the deploy script and nothing else.
+ssh-keygen -t ed25519 -N "" -f $I-deploy   # private half -> the DEPLOY_KEY secret
+echo "command=\"/home/$USER/apps/$I/deploy.sh\",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty,restrict $(cat $I-deploy.pub)" >> ~/.ssh/authorized_keys
+
+# Housekeeping, hourly. `run` rather than `up`: the service is under a
+# profile precisely so that `up -d` never starts it.
+(crontab -l; echo "17 * * * * cd ~/apps/$I && docker compose run --rm housekeeping >> ~/apps/$I/housekeeping.log 2>&1") | crontab -
 ```
 
-Migrations run automatically as a Helm pre-upgrade hook.
+Then push to `main`, or `make deploy INSTANCE=$I` from a checkout that has
+`instances/$I.env`. Migrations run when the web container starts; the worker
+waits for it to be healthy.
 
 Then **open `https://<host>/claim/` and claim the site**. Every page of a
 freshly deployed instance carries a banner saying it has no administrator, and
@@ -170,26 +177,35 @@ that page hands the first person to fill it in a superuser account that can
 sign in immediately. It stops existing as soon as someone does.
 
 Do it now rather than later. Claiming is first-come-first-served — there is no
-token, because delivering one would mean the `kubectl exec` round-trip this
-replaces — so between `make deploy` and your claim, the site belongs to
-whoever loads it. That window is yours to keep short. If you lose the race,
-delete the intruder's account and reclaim:
+token, because delivering one would mean the `docker exec` round-trip this
+replaces — so between the deploy and your claim, the site belongs to whoever
+loads it. That window is yours to keep short. If you lose the race, delete the
+intruder's account and reclaim:
 
 ```bash
-kubectl exec -n "$NS" deploy/site -- python manage.py shell -c \
+docker exec $I-web python manage.py shell -c \
   "from django.contrib.auth import get_user_model; get_user_model().objects.all().delete()"
-kubectl rollout restart deployment -n "$NS"   # the unclaimed check is latched per process
+docker compose -f ~/apps/$I/docker-compose.yml restart   # the unclaimed check is latched per process
 ```
 
 The shell route still works if you would rather not race at all — create the
 account before the DNS record points anywhere:
 
 ```bash
-kubectl exec -it -n "$NS" deploy/site -- python manage.py createsuperuser
-kubectl exec -n "$NS" deploy/site -- python manage.py verify_email you@example.com
+docker exec -it $I-web python manage.py createsuperuser
+docker exec $I-web python manage.py verify_email you@example.com
 ```
 
 (`-it` matters: `createsuperuser` prompts, and without a TTY it skips itself.)
+
+### Moving an instance, or restoring a backup
+
+The nightly `pg_dump` on the VM covers everything. To move an instance from
+elsewhere, dump there with `pg_dump -Fc --no-owner --no-acl`, copy the file to
+`~/backups/<instance>/`, and run `~/apps/<instance>/restore-from-dump.sh
+<file>` — it stops the app, restores with `--clean`, and starts it again.
+Carry `SECRET_KEY` over in `.env` so sessions and password-reset links survive
+the move.
 
 ## Reading event pages
 

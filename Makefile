@@ -22,7 +22,7 @@ help:
 	@echo "  make superuser   create an admin user"
 	@echo ""
 	@echo "  make deploy INSTANCE=<name> [TAG=<sha>]"
-	@echo "                   deploy from this machine (must be IP-allowlisted)"
+	@echo "                   deploy from this machine over ssh (rollback, redeploy)"
 
 install:
 	python3.14 -m venv .venv

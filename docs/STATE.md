@@ -69,29 +69,27 @@ fingerprint dedup.
 
 ## Not verified
 
-- **Deploys are real, by hand and from CI.** `make deploy` has run against a
-  live instance many times (helm revision 30 was one), and as of `68dd5cb` the
-  workflow deploys too: the push of that commit built the image and the
-  `deploy (brantevents)` job ran `scripts/deploy.sh` to helm revision 31, both
-  pods came up on the new SHA, and `/healthz` answered 200. The control
-  plane's IP allowlist, which used to make CI stop at the image push, was
-  turned off in September 2026. Verified, but only once, and only for one
-  instance on one cluster.
+- **Deploys are real, by hand and from CI, to a VM.** Until September 2026
+  the instance ran on LKE under a Helm chart, and `make deploy` had run against
+  it many times (helm revision 33 was the last). It now runs on the Oracle VM
+  at `~/apps/brantevents/` behind Traefik, on the shared Postgres there, the
+  same way the other falldaysoft sites were moved: the database was dumped
+  from the cluster and restored with row counts matching, `SECRET_KEY` and
+  the SMTP credentials carried over in `.env`, and the CI deploy key installed
+  with its forced command and proven to refuse both a mutable tag and an
+  arbitrary command. The Helm chart is gone from the tree. Verified for one
+  instance on one VM.
 
-  CI *was* first proven as of `c5879ee`: the workflow runs green and
-  `ghcr.io/falldaysoft/localevents` now holds a `latest` and a per-SHA tag. The
-  image was also run locally — migrations applied, `/healthz` 200, browse 200,
-  `/moderate/` 302 to login, static files served by whitenoise.
+  **The image is multi-arch.** CI builds linux/amd64 and linux/arm64 because
+  the VM is arm64 — an amd64-only image fails there at `compose up` with an
+  exec format error. It also means the image runs natively on an Apple
+  Silicon machine now.
 
   **The ghcr package is private.** A workflow-created package does not inherit
-  the repository's public visibility. That is fine — every workload in the
-  chart already references a `ghcr-secret` pull secret and `deploy.sh` refuses
-  to run without it — but it is the first thing that will bite if that secret
-  is missing or copied from the wrong namespace. Making the package public in
-  the repo's package settings is the other option.
+  the repository's public visibility. The VM is logged in to ghcr, and that
+  login is the first thing to check if a deploy fails at `pull`. Making the
+  package public in the repo's package settings is the other option.
 
-  CI builds **linux/amd64 only**, which is right for LKE and means the image
-  cannot run on an Apple Silicon machine without `--platform linux/amd64`.
 - **No real email has been sent.** Console backend throughout — the moderation
   mail is proven to *render and dispatch*, not to arrive. SES credentials and
   DKIM are unproven, and `SITE_BASE_URL` (new, in settings) must be set per
