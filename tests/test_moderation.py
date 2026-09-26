@@ -214,6 +214,22 @@ def test_approving_writes_an_audit_row_and_emails_the_submitter(
 
 
 @pytest.mark.django_db
+def test_a_moderator_approving_their_own_listing_is_not_emailed(decide, moderator):
+    submission = _pending(moderator)
+
+    decide(
+        "mod_approve",
+        submission,
+        {"prominence": Event.Prominence.LISTED, "listing_type": "one_off"},
+    )
+
+    submission.event.refresh_from_db()
+    assert submission.event.status == Event.Status.PUBLISHED
+    assert ModerationAction.objects.filter(action="approved").exists()
+    assert mail.outbox == []
+
+
+@pytest.mark.django_db
 def test_a_submission_with_no_event_cannot_be_approved(decide, submitter):
     """Someone who started a submission and never finished it has nothing to
     publish. Approving that is a mistake, not a decision."""

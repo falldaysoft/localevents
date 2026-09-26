@@ -84,7 +84,10 @@ def approve(submission, moderator, *, prominence, listing_type, categories=None,
         event=event,
         detail=f"{event.get_prominence_display()} — {event.title}",
     )
-    _notify(submission, "approved")
+    # A moderator approving their own listing needs no mail announcing what
+    # they just did. The audit row above is still written.
+    if submission.submitted_by_id != moderator.pk:
+        _notify(submission, "approved")
     return event
 
 
