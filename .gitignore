@@ -37,3 +37,5 @@ instances/*
 *.db
 .beads-credential-key
 .beads/proxieddb/
+.beads/interactions.jsonl
+.beads/issues.jsonl
