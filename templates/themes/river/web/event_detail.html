@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load event_dates %}
+{% load event_dates event_links %}
 
 {% block title %}{{ event.title }} — {{ SITE_NAME }}{% endblock %}
 {% block description %}{{ event.summary|default:event.title }}{% endblock %}
@@ -113,7 +113,10 @@
                     <a href="{{ event.ticket_url }}" class="le-btn" style="justify-content:center" rel="nofollow noopener">Tickets</a>
                 {% endif %}
                 {% if event.source_url %}
-                    <a href="{{ event.source_url }}" class="le-btn le-btn--quiet" style="justify-content:center" rel="nofollow noopener">More information</a>
+                    <a href="{{ event.source_url }}" class="le-btn le-source-link{% if event.ticket_url %} le-btn--quiet{% endif %}" rel="nofollow noopener">
+                        <span>Event website <span aria-hidden="true">↗</span></span>
+                        {% with host=event.source_url|hostname %}{% if host %}<span class="le-source-link__host">{{ host }}</span>{% endif %}{% endwith %}
+                    </a>
                 {% endif %}
             </div>
         </aside>

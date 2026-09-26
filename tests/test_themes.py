@@ -268,3 +268,41 @@ def test_themes_carry_no_instance_identity():
         assert theme.description
         if theme.stylesheet:
             assert theme.stylesheet.startswith("themes/")
+
+
+@pytest.mark.parametrize("theme", ["classic", "river"])
+def test_source_link_names_its_destination(client, listings, theme):
+    """The source page is the organiser's own listing; the button says so."""
+    set_theme(theme)
+    event = Event.objects.get(title="Open Mic Night")
+    event.source_url = "https://www.example.org/whats-on/open-mic"
+    event.save()
+    body = client.get(reverse("event_detail", args=[event.slug])).content.decode()
+    assert "Event website" in body
+    assert "example.org" in body
+    assert "www.example.org<" not in body
+    assert "More information" not in body
+
+
+@pytest.mark.parametrize(
+    "theme,primary,secondary",
+    [("classic", "btn-primary", "btn-secondary"), ("river", "le-source-link\"", "le-btn--quiet")],
+)
+def test_source_link_is_primary_unless_tickets_take_that_place(
+    client, listings, theme, primary, secondary
+):
+    set_theme(theme)
+    event = Event.objects.get(title="Open Mic Night")
+    event.source_url = "https://example.org/e"
+    event.save()
+    url = reverse("event_detail", args=[event.slug])
+
+    body = client.get(url).content.decode()
+    link = body[body.index('href="https://example.org/e"') :].split(">", 1)[0]
+    assert primary in link and secondary not in link
+
+    event.ticket_url = "https://tickets.example.org/e"
+    event.save()
+    body = client.get(url).content.decode()
+    link = body[body.index('href="https://example.org/e"') :].split(">", 1)[0]
+    assert secondary in link

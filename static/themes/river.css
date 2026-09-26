@@ -163,6 +163,25 @@
   background: #fff;
 }
 
+/* The source page is where the organiser's own details live, so it reads as
+   a destination: the label and, beneath it, the domain it leads to. */
+[data-theme="river"] .le-source-link {
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  text-align: center;
+}
+
+[data-theme="river"] .le-source-link__host {
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 12px;
+  opacity: 0.75;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ── Hero ──────────────────────────────────────────────────────────────── */
 
 /* A gradient reading as water deepening, rather than a flat band. */
