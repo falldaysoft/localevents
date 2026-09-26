@@ -41,6 +41,28 @@
         </div>
     {% endif %}
 
+    {% if duplicates %}
+        <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <strong class="font-medium">This may already be listed.</strong>
+            Check before approving — two copies of one event both get published otherwise.
+            <ul class="mt-2 space-y-1">
+                {% for match in duplicates %}
+                    <li>
+                        <a href="{% url 'mod_event_edit' match.event.pk %}" class="font-medium underline">{{ match.event.title }}</a>
+                        <span class="text-amber-800">
+                            &middot; {{ match.event.get_status_display }}
+                            {% if match.event.venue %}&middot; {{ match.event.venue.name }}{% endif %}
+                            &middot; {{ match.reason }}
+                        </span>
+                        {% if match.event.status == "published" %}
+                            <a href="{% url 'event_detail' match.event.slug %}" class="ml-1 underline">view</a>
+                        {% endif %}
+                    </li>
+                {% endfor %}
+            </ul>
+        </div>
+    {% endif %}
+
     <div class="mt-6 grid gap-6 lg:grid-cols-[1fr_20rem]">
         <div class="space-y-6">
             {% if event %}

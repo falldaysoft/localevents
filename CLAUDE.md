@@ -172,6 +172,16 @@ mail to the submitter — and a view that did three of the four would look fine 
 review and leave someone waiting forever. That mail is queued with
 `transaction.on_commit`, so a decision that rolls back never mails anyone.
 
+**A likely duplicate is shown to the moderator, never blocked.** Two
+copies of one fair, submitted from two different pages, were both published
+because each looked fine alone. `events.duplicates.possible_duplicates`
+matches a similar title on dates within a day of each other, or the same
+source page, against published *and pending* events — two copies waiting in
+the queue at once is how both get approved. Venue is not required to match,
+since the copy that got through had none. The review screen lists the twins
+and the queue marks the row; approval stays available, because two open mics
+on one night at different halls are two events.
+
 **`submissions.services.save_event_from_draft` creates *or updates*.** When a
 moderator asks a question, the submission goes back to its owner with the event
 already created, and a second confirmation has to update that event. An earlier

@@ -13,6 +13,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from core.models import SiteConfig
+from events.duplicates import possible_duplicates
 from submissions.models import ModerationAction, Submission
 
 from . import services
@@ -50,9 +51,28 @@ def queue(request):
             view=view,
             view_label=services.QUEUE_VIEWS[view],
             views=services.QUEUE_VIEWS,
-            submissions=services.queue_for(view, request.user)[:200],
+            submissions=_with_duplicate_counts(
+                services.queue_for(view, request.user)[:200]
+            ),
         ),
     )
+
+
+def _with_duplicate_counts(submissions):
+    """Mark the ones awaiting a decision that look like something listed.
+
+    Only those: a decided submission's twin is history, and the check costs a
+    couple of queries per row.
+    """
+    submissions = list(submissions)
+    for submission in submissions:
+        submission.duplicate_count = (
+            len(possible_duplicates(submission.event))
+            if submission.event
+            and submission.status == Submission.Status.PENDING_REVIEW
+            else 0
+        )
+    return submissions
 
 
 @moderator_required
@@ -83,6 +103,7 @@ def submission_detail(request, pk):
             # Not a blocker — plenty of communities care about something just
             # over the county line — but a moderator should be told.
             out_of_region=bool(event and event.needs_region_review()),
+            duplicates=possible_duplicates(event) if event else [],
             approve_form=ApproveForm(
                 initial={
                     "prominence": event.prominence if event else None,
