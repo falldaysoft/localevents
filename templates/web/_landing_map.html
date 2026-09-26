@@ -1,0 +1,15 @@
+{% if map_config %}
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    {{ map_config|json_script:"landing-map-config" }}
+    <script nonce="{{ csp_nonce }}">
+        (function () {
+            var el = document.getElementById('landing-map');
+            var cfgEl = document.getElementById('landing-map-config');
+            if (!el || !cfgEl) return;
+            var cfg = JSON.parse(cfgEl.textContent);
+            var map = L.map(el).setView([cfg.lat, cfg.lng], 15);
+            L.tileLayer(cfg.tileUrl, { attribution: cfg.attribution, maxZoom: 19 }).addTo(map);
+            L.marker([cfg.lat, cfg.lng]).addTo(map);
+        })();
+    </script>
+{% endif %}

@@ -31,7 +31,7 @@
                 {% endif %}
 
                 {% if event.venue %}
-                    <span class="truncate">{{ event.venue.name }}</span>
+                    <a href="{% url 'venue_detail' event.venue.slug %}" class="truncate hover:underline">{{ event.venue.name }}</a>
                 {% endif %}
             </p>
         </div>
@@ -58,7 +58,7 @@
     {% if event.categories.all and not compact %}
         <div class="mt-3 flex flex-wrap gap-1.5">
             {% for category in event.categories.all %}
-                <span class="chip">{{ category.emoji }} {{ category.name }}</span>
+                <a href="{% url 'category_detail' category.slug %}" class="chip hover:bg-slate-200">{{ category.emoji }} {{ category.name }}</a>
             {% endfor %}
         </div>
     {% endif %}

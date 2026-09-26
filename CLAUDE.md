@@ -381,6 +381,20 @@ metadata) and reserved ranges before any request. It also honours robots.txt and
 caps the download at 2 MB. Do not add a code path that fetches a user-supplied
 URL without going through `enrichment.fetcher` — that includes feed importers.
 
+**Venues and categories have their own pages because query strings are not
+pages.** `/?venue=…` and `/?category=…` are near-copies of `/` to a crawler,
+so robots.txt disallows `/?` and `/venues/<slug>/` and `/categories/<slug>/`
+are the indexable form of the same views, built on the same
+`web.views._listing` as the front page so collapsing and tier-splitting
+cannot drift. A venue page 404s unless the venue has hosted at least one
+*published* event: venues are created at submission, before review, and a
+page for one would publish a rejected submitter's address. A venue or
+category with nothing upcoming still renders — links outlive a season — but
+carries `noindex`. The sitemap builds absolute URLs from `SITE_BASE_URL`,
+not the Sites table, whose unedited row says example.com. River's cards
+deliberately have no venue or category links inside them: the whole card is
+one stretched-link target, and a link beneath that overlay cannot be tapped.
+
 **`/healthz` must not touch the database.** A database that hangs rather than
 refusing would otherwise fail the container healthcheck, and Docker would
 restart a container whose only problem was upstream — and take the worker

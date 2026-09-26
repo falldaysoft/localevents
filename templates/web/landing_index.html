@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}{{ heading }} — {{ SITE_NAME }}{% endblock %}
+{% block description %}{{ lede }}{% endblock %}
+
+{% block head %}
+    <link rel="canonical" href="{{ SITE_BASE_URL }}{{ request.path }}">
+{% endblock %}
+
+{% block content %}
+    <nav class="mb-4 text-sm text-slate-500">
+        <a href="{% url 'index' %}" class="hover:underline">What's on</a>
+        <span class="mx-1">/</span>
+        <span>{{ heading }}</span>
+    </nav>
+
+    <header class="mb-6">
+        <h1 class="text-3xl font-semibold tracking-tight">{{ heading }}</h1>
+        <p class="mt-1 text-slate-600">{{ lede }}</p>
+    </header>
+
+    {% if items %}
+        <ul class="space-y-2">
+            {% for item in items %}
+                <li class="card flex items-baseline justify-between gap-4 py-3">
+                    <div class="min-w-0">
+                        <a href="{{ item.url }}" class="font-semibold hover:underline">{{ item.name }}</a>
+                        {% if item.detail %}<p class="text-sm text-slate-500">{{ item.detail }}</p>{% endif %}
+                    </div>
+                    {% if item.count is not None %}
+                        <span class="shrink-0 text-sm text-slate-500">{{ item.count }} event{{ item.count|pluralize }}</span>
+                    {% endif %}
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <div class="card text-center text-slate-600">
+            <p class="font-medium">Nothing here yet.</p>
+        </div>
+    {% endif %}
+{% endblock %}

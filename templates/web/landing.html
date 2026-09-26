@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% load themes %}
+
+{% block title %}{{ page_title }} — {{ SITE_NAME }}{% endblock %}
+{% block description %}{% if lede %}{{ lede }}{% else %}{{ page_title }}: what's on, from {{ SITE_NAME }}.{% endif %}{% endblock %}
+
+{% block head %}
+    {% include "web/_landing_head.html" %}
+{% endblock %}
+
+{% block content %}
+    <nav class="mb-4 text-sm text-slate-500">
+        <a href="{% url 'index' %}" class="hover:underline">What's on</a>
+        <span class="mx-1">/</span>
+        <a href="{{ crumb_url }}" class="hover:underline">{{ crumb_label }}</a>
+    </nav>
+
+    <header class="mb-6">
+        <h1 class="text-3xl font-semibold tracking-tight">{{ heading }}</h1>
+        {% if lede %}<p class="mt-1 text-slate-600">{{ lede }}</p>{% endif %}
+        {% if venue.website %}
+            <p class="mt-2 text-sm"><a href="{{ venue.website }}" class="underline hover:text-slate-900" rel="nofollow noopener">Venue website</a></p>
+        {% endif %}
+    </header>
+
+    {% if map_config %}
+        <div id="landing-map" class="mb-6 h-64 w-full rounded-xl border border-slate-200"></div>
+    {% endif %}
+
+    <p class="mb-4 text-sm text-slate-500">
+        {{ result_count }} event{{ result_count|pluralize }}
+        {% if program_count %}
+            &middot; <a href="#programs" class="underline hover:text-slate-700">{{ program_count }} regular program{{ program_count|pluralize }}</a>
+        {% endif %}
+    </p>
+
+    {% theme_include "web/_listing.html" %}
+{% endblock %}
+
+{% block scripts %}
+    {% include "web/_landing_map.html" %}
+{% endblock %}

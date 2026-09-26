@@ -43,7 +43,7 @@
             <div class="le-cats" style="margin-top:16px">
                 {% for category in event.categories.all %}
                     <a class="le-cat" style="--tint: var(--cat-{{ category.slug }}, var(--ink-2))"
-                       href="{% url 'index' %}?category={{ category.slug }}">{{ category.name }}</a>
+                       href="{% url 'category_detail' category.slug %}">{{ category.name }}</a>
                 {% endfor %}
                 {% if event.is_free %}<span class="le-cat" style="--tint: var(--moss)">Free</span>{% endif %}
                 {% if event.is_family_friendly %}<span class="le-cat">Family friendly</span>{% endif %}
@@ -85,7 +85,7 @@
                 {% if event.venue %}
                     <p style="font-weight:600">{{ event.venue.name }}</p>
                     {% if event.venue.full_address %}<p class="le-where">{{ event.venue.full_address }}</p>{% endif %}
-                    <p style="margin-top:8px"><a href="{% url 'index' %}?venue={{ event.venue.slug }}">Everything at this venue</a></p>
+                    <p style="margin-top:8px"><a href="{% url 'venue_detail' event.venue.slug %}">Everything at this venue</a></p>
                 {% else %}
                     <p class="le-where">Location to be confirmed.</p>
                 {% endif %}

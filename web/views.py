@@ -3,11 +3,12 @@ import json
 from django.conf import settings
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, render
+from django.urls import reverse
 from django.utils import timezone
 
 from core.models import SiteConfig
 from core.themes import template_name, theme_for
-from events.models import Category, Event
+from events.models import Category, Event, Venue
 
 from .filters import WHEN_CHOICES, EventFilter, active_venues
 
@@ -40,10 +41,13 @@ def _group_by_day(events, now):
     return groups
 
 
-def _browse_context(request):
-    filters = EventFilter.from_request(request)
-    now = timezone.now()
+def _listing(filters, now):
+    """The listing half of a browse page, for any set of filters.
 
+    Shared by the front page and the venue and category pages, so a landing
+    page collapses series and splits tiers exactly as the front page does
+    rather than growing a second, drifting query.
+    """
     main_feed = list(filters.main_feed(now)[:120])
     programs = list(filters.programs(now)[:120])
 
@@ -54,16 +58,23 @@ def _browse_context(request):
     listed = [e for e in main_feed if e.prominence != Event.Prominence.FEATURED]
 
     return {
-        "filters": filters,
         "events": main_feed,
         "featured": featured,
         "days": _group_by_day(listed, now),
         "programs": programs,
         "program_count": len(programs),
+        "result_count": len(main_feed),
+    }
+
+
+def _browse_context(request):
+    filters = EventFilter.from_request(request)
+    return {
+        **_listing(filters, timezone.now()),
+        "filters": filters,
         "categories": Category.objects.filter(is_active=True),
         "venues": active_venues(),
         "when_choices": WHEN_CHOICES,
-        "result_count": len(main_feed),
         "site_config": SiteConfig.load(),
     }
 
@@ -229,6 +240,161 @@ def events_geojson(request):
         )
 
     return JsonResponse({"type": "FeatureCollection", "features": features})
+
+
+def _map_config(venue):
+    return {
+        "lat": venue.latitude,
+        "lng": venue.longitude,
+        "tileUrl": settings.TILE_URL,
+        "attribution": settings.TILE_ATTRIBUTION,
+    }
+
+
+def venue_list(request):
+    """Every venue with something on, for crawlers as much as for people.
+
+    Only venues with an upcoming published event: a list of halls with nothing
+    in them is not worth a click.
+    """
+    return render(
+        request,
+        template_name(theme_for(request), "web/landing_index.html"),
+        {
+            "kind": "venues",
+            "heading": "Venues",
+            "lede": "Places with something coming up.",
+            "items": [
+                {
+                    "url": reverse("venue_detail", args=[venue.slug]),
+                    "name": venue.name,
+                    "detail": venue.full_address,
+                }
+                for venue in active_venues()
+            ],
+            "site_config": SiteConfig.load(),
+        },
+    )
+
+
+def venue_detail(request, slug):
+    """Everything on at one place.
+
+    A venue is created the moment someone submits an event, before anyone has
+    looked at it, so a venue that has never hosted a published event 404s —
+    otherwise a rejected submission would publish its address anyway. One
+    with nothing *upcoming* still renders, because links to it outlive a
+    season, but asks not to be indexed until it has something on.
+    """
+    venue = get_object_or_404(
+        Venue.objects.filter(events__status=Event.Status.PUBLISHED).distinct(),
+        slug=slug,
+    )
+    context = _listing(EventFilter(venue=venue.slug), timezone.now())
+    context.update(
+        {
+            "venue": venue,
+            "heading": venue.name,
+            "page_title": f"Events at {venue.name}",
+            "lede": venue.full_address,
+            "crumb_url": reverse("venue_list"),
+            "crumb_label": "Venues",
+            "canonical": reverse("venue_detail", args=[venue.slug]),
+            "map_config": _map_config(venue) if venue.has_coordinates else None,
+            "schema_json": json.dumps(_venue_schema(venue), ensure_ascii=False),
+            "empty_title": "Nothing scheduled here right now.",
+            "site_config": SiteConfig.load(),
+        }
+    )
+    return render(
+        request, template_name(theme_for(request), "web/landing.html"), context
+    )
+
+
+def _venue_schema(venue):
+    data = {"@context": "https://schema.org", "@type": "Place", "name": venue.name}
+    if venue.full_address:
+        data["address"] = venue.full_address
+    if venue.has_coordinates:
+        data["geo"] = {
+            "@type": "GeoCoordinates",
+            "latitude": venue.latitude,
+            "longitude": venue.longitude,
+        }
+    if venue.website:
+        data["url"] = venue.website
+    return data
+
+
+def category_list(request):
+    now = timezone.now()
+    items = []
+    for category in Category.objects.filter(is_active=True):
+        count = EventFilter(categories=[category.slug]).main_feed(now).count()
+        items.append(
+            {
+                "url": reverse("category_detail", args=[category.slug]),
+                "name": f"{category.emoji} {category.name}".strip(),
+                "detail": category.description,
+                "count": count,
+            }
+        )
+    return render(
+        request,
+        template_name(theme_for(request), "web/landing_index.html"),
+        {
+            "kind": "categories",
+            "heading": "Categories",
+            "lede": "Browse by what kind of thing it is.",
+            "items": items,
+            "site_config": SiteConfig.load(),
+        },
+    )
+
+
+def category_detail(request, slug):
+    category = get_object_or_404(Category, slug=slug, is_active=True)
+    context = _listing(EventFilter(categories=[category.slug]), timezone.now())
+    context.update(
+        {
+            "category": category,
+            "heading": f"{category.emoji} {category.name}".strip(),
+            "page_title": f"{category.name} events",
+            "lede": category.description,
+            "crumb_url": reverse("category_list"),
+            "crumb_label": "Categories",
+            "canonical": reverse("category_detail", args=[category.slug]),
+            "empty_title": "Nothing in this category coming up.",
+            "site_config": SiteConfig.load(),
+        }
+    )
+    return render(
+        request, template_name(theme_for(request), "web/landing.html"), context
+    )
+
+
+def robots_txt(request):
+    """Keep crawlers on the listings.
+
+    The filtered front page (`/?when=…&category=…`) is disallowed because its
+    parameter combinations are an unbounded crawl of near-duplicates of `/`;
+    the venue and category pages are the indexable form of the same views.
+    Like /healthz, this touches no database.
+    """
+    lines = [
+        "User-agent: *",
+        "Disallow: /admin/",
+        "Disallow: /moderate/",
+        "Disallow: /accounts/",
+        "Disallow: /claim/",
+        "Disallow: /profile/",
+        "Disallow: /submit/",
+        "Disallow: /events.geojson",
+        "Disallow: /?",
+        "",
+        f"Sitemap: {settings.SITE_BASE_URL.rstrip('/')}{reverse('sitemap')}",
+    ]
+    return HttpResponse("\n".join(lines) + "\n", content_type="text/plain")
 
 
 def healthz(request):

@@ -20,12 +20,13 @@ Last updated after the multi-day work that followed Phase 4.
 | multi-day events | done | this commit |
 | refresh from source, editable dates | done | this commit |
 | pages and media (small CMS) | done | this commit |
+| search indexing: robots, sitemap, venue/category pages | done | this commit |
 | 5 — feed importers | **next** | |
 | 6 — outbound feeds (ICS/RSS/JSON) | not started | |
 | 7 — interest button (Rising itself is done) | not started | |
 | 8 — series lifecycle, reusability docs | not started | |
 
-373 tests passing. `make check` clean.
+462 tests passing. `make check` clean.
 
 Phase 7 shrank: the `Interest` model, the Rising ranking and the promotion
 action all landed with Phase 4, because the mod queue is where they are read.
@@ -97,6 +98,14 @@ fingerprint dedup.
 - **Postgres is unproven.** Everything so far is SQLite. Watch for anything
   relying on SQLite's laxness — the `select_for_update()` in `GeocodeThrottle`
   is a no-op on SQLite and only does its job on Postgres.
+
+- **Search indexing is unproven with a real crawler.** `/robots.txt`,
+  `/sitemap.xml`, `/venues/…` and `/categories/…` were checked in a browser
+  under both themes against local data, not against Google. After the first
+  deploy: fetch `/robots.txt` on the live host and confirm the `Sitemap:`
+  line says `https://` and the real domain — it is built from
+  `SITE_BASE_URL`, so a missing value there publishes `localhost` — then
+  submit the sitemap in Search Console.
 
 ## Known gaps
 

@@ -80,6 +80,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django.contrib.sites",
+    "django.contrib.sitemaps",
     "django.contrib.humanize",
     # Background tasks: Django 6 provides the `django.tasks` API, this package
     # provides the DatabaseBackend and the `db_worker` command.

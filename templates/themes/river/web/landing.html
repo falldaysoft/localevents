@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% load themes %}
+
+{% block title %}{{ page_title }} — {{ SITE_NAME }}{% endblock %}
+{% block description %}{% if lede %}{{ lede }}{% else %}{{ page_title }}: what's on, from {{ SITE_NAME }}.{% endif %}{% endblock %}
+
+{% block main_class %}le-main{% endblock %}
+
+{% block head %}
+    {% include "web/_landing_head.html" %}
+{% endblock %}
+
+{% block content %}
+    <nav class="le-crumbs">
+        <a href="{% url 'index' %}">What&rsquo;s on</a>
+        <span>/</span>
+        <a href="{{ crumb_url }}">{{ crumb_label }}</a>
+    </nav>
+
+    <header class="le-landing">
+        <h1>{{ heading }}</h1>
+        {% if lede %}<p class="le-detail__lede">{{ lede }}</p>{% endif %}
+        {% if venue.website %}
+            <p style="margin-top:8px"><a href="{{ venue.website }}" rel="nofollow noopener">Venue website</a></p>
+        {% endif %}
+    </header>
+
+    {% if map_config %}
+        <div id="landing-map" class="le-map" style="margin-top:20px"></div>
+    {% endif %}
+
+    <p style="padding-top:20px;font-size:13.5px;color:var(--ink-2)">
+        {{ result_count }} event{{ result_count|pluralize }}
+        {% if program_count %}
+            &middot; <a href="#programs">{{ program_count }} regular program{{ program_count|pluralize }}</a>
+        {% endif %}
+    </p>
+
+    {% theme_include "web/_listing.html" %}
+{% endblock %}
+
+{% block scripts %}
+    {% include "web/_landing_map.html" %}
+{% endblock %}

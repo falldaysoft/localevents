@@ -1,0 +1,7 @@
+{# Shared by every theme's landing page: none of it is visible. #}
+<link rel="canonical" href="{{ SITE_BASE_URL }}{{ canonical }}">
+{# A venue or category with nothing coming up is a thin page; keep it out  #}
+{# of the index until it has something on, but let links to it still work. #}
+{% if not events and not programs %}<meta name="robots" content="noindex">{% endif %}
+{% if schema_json %}<script type="application/ld+json" nonce="{{ csp_nonce }}">{{ schema_json|safe }}</script>{% endif %}
+{% if map_config %}<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">{% endif %}

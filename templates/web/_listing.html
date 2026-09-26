@@ -1,0 +1,29 @@
+{# The listings under a browse page: the front page, a venue, a category.  #}
+{# `empty_title` lets each say what "nothing here" means for it.           #}
+{% if events %}
+    <ul class="space-y-3">
+        {% for event in events %}
+            {% include "web/_event_card.html" with event=event %}
+        {% endfor %}
+    </ul>
+{% else %}
+    <div class="card text-center text-slate-600">
+        <p class="font-medium">{{ empty_title|default:"Nothing matches that yet." }}</p>
+        {% if not empty_title %}<p class="mt-1 text-sm">Try a wider date range, or clear a filter or two.</p>{% endif %}
+    </div>
+{% endif %}
+
+{% if programs %}
+    <section id="programs" class="mt-12">
+        <h2 class="text-xl font-semibold tracking-tight">Regular programs</h2>
+        <p class="mb-4 mt-1 text-sm text-slate-600">
+            Classes, clubs, and other things that run every week. Kept
+            separate so they don't crowd out one-off events.
+        </p>
+        <ul class="space-y-3">
+            {% for event in programs %}
+                {% include "web/_event_card.html" with event=event compact=True %}
+            {% endfor %}
+        </ul>
+    </section>
+{% endif %}

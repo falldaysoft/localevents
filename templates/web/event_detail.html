@@ -42,7 +42,7 @@
 
             <div class="mt-4 flex flex-wrap gap-1.5">
                 {% for category in event.categories.all %}
-                    <a href="{% url 'index' %}?category={{ category.slug }}" class="chip hover:bg-slate-200">
+                    <a href="{% url 'category_detail' category.slug %}" class="chip hover:bg-slate-200">
                         {{ category.emoji }} {{ category.name }}
                     </a>
                 {% endfor %}
@@ -98,7 +98,7 @@
                     {% if event.venue.full_address %}
                         <p class="text-sm text-slate-600">{{ event.venue.full_address }}</p>
                     {% endif %}
-                    <a href="{% url 'index' %}?venue={{ event.venue.slug }}" class="mt-2 inline-block text-sm underline hover:text-slate-900">
+                    <a href="{% url 'venue_detail' event.venue.slug %}" class="mt-2 inline-block text-sm underline hover:text-slate-900">
                         Everything at this venue
                     </a>
                 {% else %}

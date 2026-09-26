@@ -917,6 +917,15 @@
   letter-spacing: -0.04em;
 }
 
+/* A venue or category page: the event page's heading, without its grid. */
+[data-theme="river"] .le-landing h1 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(30px, 4.4vw, 42px);
+  line-height: 1.08;
+  letter-spacing: -0.04em;
+}
+
 [data-theme="river"] .le-detail__lede {
   margin-top: 10px;
   font-size: 17px;

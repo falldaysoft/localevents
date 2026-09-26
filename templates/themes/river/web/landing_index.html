@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}{{ heading }} — {{ SITE_NAME }}{% endblock %}
+{% block description %}{{ lede }}{% endblock %}
+
+{% block main_class %}le-main{% endblock %}
+
+{% block head %}
+    <link rel="canonical" href="{{ SITE_BASE_URL }}{{ request.path }}">
+{% endblock %}
+
+{% block content %}
+    <nav class="le-crumbs">
+        <a href="{% url 'index' %}">What&rsquo;s on</a>
+        <span>/</span>
+        <span>{{ heading }}</span>
+    </nav>
+
+    <header class="le-landing">
+        <h1>{{ heading }}</h1>
+        <p class="le-detail__lede">{{ lede }}</p>
+    </header>
+
+    <div style="margin-top:20px">
+        {% for item in items %}
+            <div class="le-prog">
+                <h3><a href="{{ item.url }}">{{ item.name }}</a></h3>
+                {% if item.detail %}<span class="le-where">{{ item.detail }}</span>{% endif %}
+                {% if item.count is not None %}
+                    <span class="le-prog__cadence">{{ item.count }} event{{ item.count|pluralize }}</span>
+                {% endif %}
+            </div>
+        {% empty %}
+            <div class="le-empty"><strong>Nothing here yet.</strong></div>
+        {% endfor %}
+    </div>
+{% endblock %}
