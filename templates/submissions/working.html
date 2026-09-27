@@ -13,7 +13,9 @@
 
             <div class="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-slate-800"></div>
 
-            <h1 class="mt-6 text-xl font-semibold">Reading the page…</h1>
+            <h1 class="mt-6 text-xl font-semibold">
+                {% if submission.pasted_text %}Reading your text…{% else %}Reading the page…{% endif %}
+            </h1>
             {% comment %}
                 Be honest about the wait. Pages publishing their own event data
                 come back in seconds, but a model call measured 116s once and
@@ -21,8 +23,8 @@
                 people assume the site is broken and leave.
             {% endcomment %}
             <p class="mt-2 text-sm text-slate-600">
-                We're pulling out the date, venue and description. Some pages
-                come back in seconds; a busy one can take several minutes.
+                We're pulling out the date, venue and description. Some come
+                back in seconds; a long one can take several minutes.
             </p>
             <p class="mt-2 text-sm text-slate-500">
                 You can leave this page — we'll keep your progress, and it'll be

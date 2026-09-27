@@ -66,6 +66,11 @@ class Submission(models.Model):
         related_name="submissions",
     )
     source_url = models.URLField(blank=True)
+    # The event's own words, copied by the submitter from a page we cannot
+    # fetch — a Facebook event is the usual case, since it serves a login wall
+    # to anything that is not a signed-in browser. Read in place of the page,
+    # and kept so a moderator can check the listing against what it came from.
+    pasted_text = models.TextField(blank=True)
     status = models.CharField(
         max_length=20, choices=Status.choices, default=Status.NEW
     )
@@ -166,11 +171,22 @@ class Submission(models.Model):
             "We couldn't finish reading that page. Please fill in the details "
             "below yourself — everything you enter is kept."
         )
+        self.draft = self.fallback_draft()
         self.save(
             update_fields=[
-                "status", "enrichment_failed", "enrichment_message", "updated_at",
+                "status", "enrichment_failed", "enrichment_message", "draft",
+                "updated_at",
             ]
         )
+
+    def fallback_draft(self):
+        """What the form starts from when nothing could be extracted.
+
+        Pasted text goes into the description rather than being dropped: the
+        submitter copied it to avoid typing, and handing back an empty form
+        after a failed read would make them do both.
+        """
+        return {"description": self.pasted_text} if self.pasted_text else {}
 
     def mark_decided(self, user, status, note=""):
         self.status = status

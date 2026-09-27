@@ -17,7 +17,7 @@ MAX_OCCURRENCE_ROWS = 60
 
 
 class StartSubmissionForm(forms.Form):
-    """Step one: a link, or a decision to type it in by hand.
+    """Step one: a link, some pasted text, or a decision to type it in by hand.
 
     A URL is not required. Plenty of community events exist only as a poster in
     a window, and refusing those would quietly exclude exactly the small,
@@ -36,13 +36,30 @@ class StartSubmissionForm(forms.Form):
         ),
         help_text="We'll read the page and fill in what we can.",
     )
+    # For the pages we cannot read. Capped well above any real event post and
+    # below the model's page budget, so the whole of it is what gets read.
+    pasted_text = forms.CharField(
+        required=False,
+        max_length=10_000,
+        strip=True,
+        label="Or paste the event's description",
+        widget=forms.Textarea(attrs={"class": INPUT_CLASS, "rows": 6}),
+        help_text="For Facebook events and other pages we can't open: copy "
+        "the event's text — name, date, place, details — and paste it here. "
+        "Add the link above too if there is one.",
+    )
     manual = forms.BooleanField(required=False, widget=forms.HiddenInput)
 
     def clean(self):
         cleaned = super().clean()
-        if not cleaned.get("source_url") and not cleaned.get("manual"):
+        if not (
+            cleaned.get("source_url")
+            or cleaned.get("pasted_text")
+            or cleaned.get("manual")
+        ):
             raise forms.ValidationError(
-                "Paste a link, or choose to enter the details yourself."
+                "Paste a link or the event's description, or choose to enter "
+                "the details yourself."
             )
         return cleaned
 

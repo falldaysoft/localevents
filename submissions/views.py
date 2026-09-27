@@ -23,7 +23,7 @@ from .tasks import enrich_submission
 
 @login_required
 def start(request):
-    """Paste a link — or say you haven't got one."""
+    """Paste a link or the event's text — or say you haven't got either."""
     quota = SubmissionQuota.for_user(request.user)
 
     if not quota.may_submit():
@@ -37,11 +37,13 @@ def start(request):
         form = StartSubmissionForm(request.POST)
         if form.is_valid():
             url = form.cleaned_data.get("source_url", "")
-            manual = form.cleaned_data.get("manual") or not url
+            text = form.cleaned_data.get("pasted_text", "")
+            manual = form.cleaned_data.get("manual") or not (url or text)
 
             submission = Submission.objects.create(
                 submitted_by=request.user,
                 source_url=url,
+                pasted_text="" if manual else text,
                 source_advice=advice_for(url),
                 status=(
                     Submission.Status.AWAITING_SUBMITTER
@@ -65,6 +67,7 @@ def start(request):
                     "You've used today's automatic page reads. You can still "
                     "enter the details yourself."
                 )
+                submission.draft = submission.fallback_draft()
                 submission.save()
             else:
                 enrich_submission.enqueue(submission.pk)

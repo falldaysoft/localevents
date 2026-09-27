@@ -20,6 +20,7 @@ import logging
 import re
 
 from django.conf import settings
+from django.utils import timezone
 from pydantic import ValidationError
 
 from .schemas import EventDraft
@@ -41,8 +42,8 @@ class LLMError(Exception):
 
 
 SYSTEM_PROMPT = """\
-You read a web page and extract the single event it is advertising, for a \
-community events listing.
+You read a web page — or text a person copied from one — and extract the \
+single event it is advertising, for a community events listing.
 
 Rules:
 - Report only what the page states. Never infer a date, price, or venue that \
@@ -71,11 +72,16 @@ submitted the link.
 """
 
 
-def _user_prompt(text, source_url, category_slugs):
+def _user_prompt(text, source_url, category_slugs, pasted=False):
+    # Today's date is what makes "the next occurrence in the future" answerable
+    # at all. Pasted social media text leans on it hardest — "Sat, Oct 4" and
+    # "this Friday" rarely carry a year.
+    label = "Text pasted by the submitter" if pasted else "Page content"
     return (
-        f"Source URL: {source_url}\n"
+        f"Today's date: {timezone.localdate().isoformat()}\n"
+        f"Source URL: {source_url or '(none given)'}\n"
         f"Available category slugs: {', '.join(category_slugs)}\n\n"
-        f"Page content:\n{text[:MAX_PAGE_CHARS]}"
+        f"{label}:\n{text[:MAX_PAGE_CHARS]}"
     )
 
 
@@ -142,7 +148,7 @@ def _usage(response):
     }
 
 
-def extract(config, text, source_url, category_slugs):
+def extract(config, text, source_url, category_slugs, pasted=False):
     """Extract an EventDraft from page text. Returns (draft, usage_dict)."""
     if not config.resolved_api_key():
         raise LLMError(
@@ -169,7 +175,7 @@ def extract(config, text, source_url, category_slugs):
         {"role": "system", "content": SYSTEM_PROMPT},
         {
             "role": "user",
-            "content": _user_prompt(text, source_url, category_slugs)
+            "content": _user_prompt(text, source_url, category_slugs, pasted)
             + "\n\nReply with a single JSON object matching this schema. "
             "No prose, no code fences.\n\n"
             + json.dumps(schema),

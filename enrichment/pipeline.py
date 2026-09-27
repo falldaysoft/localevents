@@ -107,76 +107,105 @@ def enrich_url(url, submission=None, event=None):
             message="We read the event details straight from the page.",
         )
 
-    # --- paid path: a language model ---------------------------------------
+    return _read_with_llm(
+        page_text(html), final_url, submission, event, started,
+        failure_messages=PAGE_FAILURES,
+        success_message="We've filled in what we could from the page. Please "
+        "check it over — especially the dates.",
+    )
+
+
+# What the submitter is told when the model cannot run, keyed by the reason.
+# A page gets the first read free through its structured data, so "switched
+# off" there means the page simply had none; pasted text has no free path.
+PAGE_FAILURES = {
+    "disabled": "That page doesn't publish event data, so please fill in the "
+    "details below yourself.",
+    "budget": "We've hit today's limit for reading pages automatically. Please "
+    "fill in the details below yourself.",
+    "error": "We couldn't read that page automatically. Please fill in the "
+    "details below yourself.",
+}
+PASTED_FAILURES = {
+    "disabled": "We've put your text in the description. Please fill in the "
+    "date, venue and the rest below.",
+    "budget": "We've hit today's limit for reading text automatically, so "
+    "we've put yours in the description. Please fill in the rest below.",
+    "error": "We couldn't make sense of that text automatically, so we've put "
+    "it in the description. Please fill in the rest below.",
+}
+
+
+def enrich_text(text, source_url="", submission=None):
+    """Read text the submitter pasted into an EventDraft.
+
+    For pages the fetcher cannot reach — a Facebook event answers anything but
+    a signed-in browser with a login wall. There is no markup, so no free
+    structured path: it is the model or nothing. `source_url` is only context
+    for the model and the cost record; it is never fetched.
+    """
+    return _read_with_llm(
+        text, source_url, submission, None, time.monotonic(),
+        failure_messages=PASTED_FAILURES,
+        success_message="We've filled in what we could from your text. Please "
+        "check it over — especially the dates.",
+        pasted=True,
+    )
+
+
+def _read_with_llm(
+    text, source_url, submission, event, started, *,
+    failure_messages, success_message, pasted=False,
+):
+    """The paid path, shared by fetched pages and pasted text."""
     config = AIConfig.load()
 
-    if not config.enabled:
+    def record(status, **fields):
         EnrichmentRun.objects.create(
-            submission=submission, event=event, source_url=final_url,
-            method=EnrichmentRun.Method.LLM,
-            status=EnrichmentRun.Status.SKIPPED,
-            error="AI enrichment is switched off.",
+            submission=submission, event=event, source_url=source_url,
+            method=EnrichmentRun.Method.LLM, status=status,
             duration_ms=int((time.monotonic() - started) * 1000),
-        )
-        return EnrichmentResult(
-            message="That page doesn't publish event data, so please fill in "
-            "the details below yourself.",
-            failed=True,
+            **fields,
         )
 
+    if not config.enabled:
+        record(EnrichmentRun.Status.SKIPPED, error="AI enrichment is switched off.")
+        return EnrichmentResult(message=failure_messages["disabled"], failed=True)
+
     if not config.is_within_budget():
-        logger.warning("daily enrichment spend cap reached; skipping %s", url)
-        EnrichmentRun.objects.create(
-            submission=submission, event=event, source_url=final_url,
-            method=EnrichmentRun.Method.LLM,
-            status=EnrichmentRun.Status.SKIPPED,
-            error="Daily spend cap reached.",
-            duration_ms=int((time.monotonic() - started) * 1000),
+        logger.warning(
+            "daily enrichment spend cap reached; skipping %s", source_url or "text"
         )
-        return EnrichmentResult(
-            message="We've hit today's limit for reading pages automatically. "
-            "Please fill in the details below yourself.",
-            failed=True,
-        )
+        record(EnrichmentRun.Status.SKIPPED, error="Daily spend cap reached.")
+        return EnrichmentResult(message=failure_messages["budget"], failed=True)
 
     slugs = list(
         Category.objects.filter(is_active=True).values_list("slug", flat=True)
     )
 
     try:
-        draft, usage = llm.extract(config, page_text(html), final_url, slugs)
+        draft, usage = llm.extract(config, text, source_url, slugs, pasted=pasted)
     except llm.LLMError as exc:
-        logger.warning("llm extraction failed for %s: %s", url, exc)
-        EnrichmentRun.objects.create(
-            submission=submission, event=event, source_url=final_url,
-            method=EnrichmentRun.Method.LLM,
-            status=EnrichmentRun.Status.FAILED,
+        logger.warning(
+            "llm extraction failed for %s: %s", source_url or "pasted text", exc
+        )
+        record(
+            EnrichmentRun.Status.FAILED,
             endpoint=_endpoint_of(config), model=config.model,
             error=str(exc)[:2000],
-            duration_ms=int((time.monotonic() - started) * 1000),
         )
-        return EnrichmentResult(
-            message="We couldn't read that page automatically. Please fill in "
-            "the details below yourself.",
-            failed=True,
-        )
+        return EnrichmentResult(message=failure_messages["error"], failed=True)
 
     input_tokens = usage.get("input_tokens", 0)
     output_tokens = usage.get("output_tokens", 0)
 
-    EnrichmentRun.objects.create(
-        submission=submission, event=event, source_url=final_url,
-        method=EnrichmentRun.Method.LLM,
-        status=EnrichmentRun.Status.OK,
+    record(
+        EnrichmentRun.Status.OK,
         endpoint=_endpoint_of(config), model=config.model,
         input_tokens=input_tokens, output_tokens=output_tokens,
         estimated_cost_usd=config.estimate_cost(input_tokens, output_tokens),
-        duration_ms=int((time.monotonic() - started) * 1000),
     )
 
     return EnrichmentResult(
-        draft=draft,
-        method=EnrichmentRun.Method.LLM,
-        message="We've filled in what we could from the page. Please check it "
-        "over — especially the dates.",
+        draft=draft, method=EnrichmentRun.Method.LLM, message=success_message
     )

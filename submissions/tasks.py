@@ -9,7 +9,7 @@ import logging
 
 from django.tasks import task
 
-from enrichment.pipeline import enrich_url
+from enrichment.pipeline import enrich_text, enrich_url
 
 from .models import Submission
 
@@ -36,12 +36,21 @@ def enrich_submission(submission_id):
     submission.save(update_fields=["status", "updated_at"])
 
     try:
-        result = enrich_url(submission.source_url, submission=submission)
+        if submission.pasted_text:
+            # Pasted text wins over the link. The submitter pasted it because
+            # the link cannot be read, and fetching it anyway would only spend
+            # a request on the login wall that sent them here.
+            result = enrich_text(
+                submission.pasted_text, submission.source_url,
+                submission=submission,
+            )
+        else:
+            result = enrich_url(submission.source_url, submission=submission)
     except Exception:
         # Belt and braces: the pipeline is written not to raise, but a crash
         # here would strand the submission in "reading the page" forever.
         logger.exception("enrichment crashed for submission %s", submission_id)
-        submission.draft = {}
+        submission.draft = submission.fallback_draft()
         submission.enrichment_failed = True
         submission.enrichment_message = (
             "Something went wrong reading that page. Please fill in the "
@@ -51,7 +60,11 @@ def enrich_submission(submission_id):
         submission.save()
         return
 
-    submission.draft = result.draft.model_dump(mode="json") if result.draft else {}
+    submission.draft = (
+        result.draft.model_dump(mode="json")
+        if result.draft
+        else submission.fallback_draft()
+    )
     submission.enrichment_failed = result.failed
     submission.enrichment_message = result.message[:300]
     submission.status = Submission.Status.AWAITING_SUBMITTER

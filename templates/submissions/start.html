@@ -6,8 +6,9 @@
     <div class="mx-auto max-w-xl">
         <h1 class="text-3xl font-semibold tracking-tight">Add an event</h1>
         <p class="mt-2 text-slate-600">
-            Paste a link and we'll read the page for you. You'll get a chance to
-            check everything before it goes to a moderator.
+            Paste a link, or the event's description, and we'll fill in the
+            details for you. You'll get a chance to check everything before it
+            goes to a moderator.
         </p>
 
         {% if site_config.submission_guidelines %}
@@ -41,7 +42,18 @@
                 {% endif %}
             </div>
 
-            <button type="submit" class="btn-primary w-full">Read the page</button>
+            <div>
+                <label for="{{ form.pasted_text.id_for_label }}" class="block text-sm font-medium">
+                    {{ form.pasted_text.label }}
+                </label>
+                <div class="mt-1">{{ form.pasted_text }}</div>
+                <p class="mt-1 text-sm text-slate-500">{{ form.pasted_text.help_text }}</p>
+                {% if form.pasted_text.errors %}
+                    <p class="mt-1 text-sm text-red-700">{{ form.pasted_text.errors.0 }}</p>
+                {% endif %}
+            </div>
+
+            <button type="submit" class="btn-primary w-full">Fill it in for me</button>
         </form>
 
         {% comment %}

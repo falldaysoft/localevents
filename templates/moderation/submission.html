@@ -189,8 +189,21 @@
                         <a href="{{ submission.source_url }}" rel="noopener nofollow" target="_blank"
                            class="underline hover:text-slate-900">{{ submission.source_url }}</a>
                     </p>
-                {% else %}
+                {% elif not submission.pasted_text %}
                     <p class="text-slate-500">Entered by hand — no link.</p>
+                {% endif %}
+
+                {% comment %}
+                    Pasted text is usually from a page nobody can open without
+                    an account, so it is the only source a moderator can check
+                    the listing against. Collapsed because a long post would
+                    otherwise push everything else in this column off screen.
+                {% endcomment %}
+                {% if submission.pasted_text %}
+                    <details>
+                        <summary class="cursor-pointer text-slate-700">Text the submitter pasted</summary>
+                        <p class="mt-2 whitespace-pre-line rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-700">{{ submission.pasted_text }}</p>
+                    </details>
                 {% endif %}
 
                 {% if submission.source_advice %}
