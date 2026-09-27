@@ -36,6 +36,29 @@ def test_login_with_email_succeeds(client, confirmed_user):
 
 
 @pytest.mark.django_db
+def test_a_sign_in_lasts_a_year_not_a_browser_session(client, confirmed_user):
+    """No "Remember me" box, and no browser-session cookie behind its back.
+
+    Unticked, allauth's box meant a cookie that dies with the browser session,
+    which mobile Safari ends whenever it evicts a tab — people were signed out
+    several times a week. An allauth upgrade or a settings tidy-up restoring
+    either default would look like nothing at all until the complaints came.
+    """
+    page = client.get(reverse("account_login"))
+    assert b'name="remember"' not in page.content
+
+    response = client.post(
+        reverse("account_login"),
+        {"login": "resident@example.com", "password": "pw-12345678"},
+    )
+    assert response.wsgi_request.user.is_authenticated
+    session = response.wsgi_request.session
+    assert not session.get_expire_at_browser_close()
+    assert session.get_expiry_age() >= 60 * 60 * 24 * 365
+    assert response.cookies["sessionid"]["max-age"] >= 60 * 60 * 24 * 365
+
+
+@pytest.mark.django_db
 def test_login_with_username_is_rejected(client, confirmed_user):
     """Username is a display name, not a credential.
 

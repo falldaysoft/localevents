@@ -250,6 +250,15 @@ ACCOUNT_UNIQUE_EMAIL = True
 # will password reset, which the same setting governs.
 ACCOUNT_PREVENT_ENUMERATION = False
 ACCOUNT_EMAIL_SUBJECT_PREFIX = f"[{SITE_NAME}] "
+# Always remember, and for a year. allauth's default is an unticked "Remember
+# me" box, and unticked means a browser-session cookie — which mobile Safari
+# discards whenever it evicts the tab, so people were signed out several times
+# a week. Django's own default age is two weeks from sign-in. Neither is a
+# trade worth making on a site where the worst an account can do is list an
+# event. The expiry is relative, so it slides forward whenever the session is
+# written.
+ACCOUNT_SESSION_REMEMBER = True
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 365
 ACCOUNT_RATE_LIMITS = {
     "login_failed": "5/5m",
     "signup": "10/h",
