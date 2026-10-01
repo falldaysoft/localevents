@@ -42,6 +42,9 @@
                             {% if submission.duplicate_count %}
                                 <span class="chip bg-amber-100 text-amber-900">Possible duplicate</span>
                             {% endif %}
+                            {% if submission.api_token_id %}
+                                <span class="chip" title="{{ submission.api_token.name }}">Sent by an agent</span>
+                            {% endif %}
                             <span class="chip">{{ submission.get_status_display }}</span>
                             {% if submission.assigned_to %}
                                 <span class="text-xs text-slate-500">

@@ -389,6 +389,7 @@ def robots_txt(request):
         "Disallow: /claim/",
         "Disallow: /profile/",
         "Disallow: /submit/",
+        "Disallow: /api/",
         "Disallow: /events.geojson",
         "Disallow: /?",
         "",

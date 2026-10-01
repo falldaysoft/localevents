@@ -21,12 +21,13 @@ Last updated after the multi-day work that followed Phase 4.
 | refresh from source, editable dates | done | this commit |
 | pages and media (small CMS) | done | this commit |
 | search indexing: robots, sitemap, venue/category pages | done | this commit |
+| agent submission API (`/api/`, moderator tokens) | done | this commit |
 | 5 — feed importers | **next** | |
 | 6 — outbound feeds (ICS/RSS/JSON) | not started | |
 | 7 — interest button (Rising itself is done) | not started | |
 | 8 — series lifecycle, reusability docs | not started | |
 
-462 tests passing. `make check` clean.
+515 tests passing. `make check` clean.
 
 Phase 7 shrank: the `Interest` model, the Rising ranking and the promotion
 action all landed with Phase 4, because the mod queue is where they are read.
@@ -69,6 +70,13 @@ fingerprint dedup.
   header, so it actually runs where Alpine could not.
 
 ## Not verified
+
+- **The agent API has only been exercised locally.** Token → curl → categories,
+  a dry run and a 401 against a local runserver, plus 26 tests. Not yet used
+  by a real scouting session against a deployed instance. Once deployed, the
+  scouting routine should switch from driving `/submit/` in a browser to
+  `POST /api/submissions/` (guide in `docs/API.md`), using `dry_run` for the
+  "is it already listed?" check.
 
 - **Deploys are real, by hand and from CI, to a VM.** Until September 2026
   the instance ran on LKE under a Helm chart, and `make deploy` had run against

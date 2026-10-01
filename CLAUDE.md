@@ -76,7 +76,8 @@ Seven apps, split by who acts rather than by data:
 - **`events`** — the domain: `Venue`, `Organizer`, `Category`, `Event`,
   `Occurrence`, `Interest`, plus `GeocodeThrottle` and the geocoding tasks.
 - **`submissions`** — the submitter's path: `Submission`, `SubmissionMessage`,
-  `ModerationAction`, the enrichment task, and `services.save_event_from_draft`.
+  `ModerationAction`, the enrichment task, and `services.save_event_from_draft`,
+  plus `api.py`, the same path as bearer-token JSON for moderators' agents.
 - **`moderation`** — **no models.** It reads `submissions`' models. Every view
   sits behind one `moderator_required` decorator, and a whole app under one rule
   is far easier to audit than a mixed one.
@@ -88,7 +89,7 @@ Seven apps, split by who acts rather than by data:
   and the access rule line up exactly.
 - **`web`** — public browse, filters, map geojson, `/healthz`.
 - **`accounts`** — custom `User` (email is the credential, username is only a
-  display name), `/claim/`, profile.
+  display name), `/claim/`, profile, and `ApiToken` (made there, moderators only).
 - **`core`** — the `SiteConfig` and `AIConfig` singletons, the CSP middleware,
   the housekeeping command run hourly from the VM's crontab.
 
@@ -327,6 +328,25 @@ each row: both live misextractions were wrong uniformly, while a series sent
 back with a moderator's question has legitimately lost a date or two by the
 time its owner replies. Rejecting past rows one at a time would block that
 resubmission to catch a mistake the set-level test already catches.
+
+**The API is the one exception to that, and it is fenced accordingly.**
+`/api/` (`submissions/api.py`) takes a listing as JSON from an agent that has
+already read the page — the scouting that used to drive `/submit/` through a
+browser by element position. There is no confirmation step, so an agent's
+work reaches a moderator unconfirmed by any person. Three things make that
+acceptable: only a **moderator** can hold a token (checked when it is made
+*and* on every request, so a demoted moderator's keys die with the role);
+every submission records `api_token` and the queue and review screen say
+"sent by an agent" with the key's name; and the payload is translated into a
+form POST and run through the confirmation page's own `EventDraftForm` and
+`OccurrenceFormSet`, so the wrong-year guard and every other rule apply
+unchanged. Tokens are read by a decorator on the API views and never by an
+authentication backend, so a token opens `/api/` and nothing else — and
+because those views are `csrf_exempt`, a session cookie gets a 401 there.
+`dry_run` answers "is this already listed?" through
+`events.duplicates.find_duplicates`, which takes parts rather than an Event
+because saving a draft to ask would create a venue and queue its geocode.
+The agent-facing guide is `docs/API.md`.
 
 **A theme is a look; an instance is a community. They are not the same axis.**
 `SiteConfig.theme` picks from `core/themes.py`, and a theme is a stylesheet

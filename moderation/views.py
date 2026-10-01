@@ -80,7 +80,7 @@ def submission_detail(request, pk):
     """Everything needed to decide, on one screen."""
     submission = get_object_or_404(
         Submission.objects.select_related(
-            "submitted_by", "assigned_to", "decided_by", "event", "event__venue",
+            "submitted_by", "assigned_to", "decided_by", "api_token", "event", "event__venue",
             "event__organizer",
         ).prefetch_related(
             "messages__author", "actions__actor", "enrichment_runs",

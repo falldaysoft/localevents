@@ -4,15 +4,19 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.http import Http404
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
+from django.views.decorators.http import require_POST
 
 from core.models import SiteConfig
 
 from .claim import site_is_claimed
 from .forms import ClaimForm, ProfileForm
+from .models import ApiToken
 
 
 @login_required
@@ -44,9 +48,48 @@ def profile(request):
             "passkey_count": Authenticator.objects.filter(
                 user=request.user, type=Authenticator.Type.WEBAUTHN
             ).count(),
+            "api_tokens": (
+                request.user.api_tokens.active() if request.user.is_moderator else []
+            ),
+            "api_url": f"{settings.SITE_BASE_URL.rstrip('/')}{reverse('api_index')}",
+            # Popped, not read: the key exists nowhere else, and it should be
+            # on screen exactly once.
+            "new_api_key": request.session.pop("new_api_key", None),
         },
         status=status,
     )
+
+
+@login_required
+@require_POST
+def create_api_token(request):
+    """Issue a key for an agent to submit events with.
+
+    The key goes through the session and a redirect rather than straight into
+    this response, so reloading the page that shows it does not post again
+    and mint a second one.
+
+    Moderators only. An agent can submit far faster than a person, and the
+    queue it fills is the moderators' own time — so a key is something the
+    people who pay that cost hand themselves, not something any account can
+    mint. The API checks again on every request (see submissions.api), so a
+    token stops working the moment its owner stops being a moderator.
+    """
+    if not request.user.is_moderator:
+        raise PermissionDenied("Only moderators can make API tokens.")
+    _, key = ApiToken.issue(request.user, request.POST.get("name", ""))
+    request.session["new_api_key"] = key
+    return redirect(f"{reverse('profile')}#api")
+
+
+@login_required
+@require_POST
+def revoke_api_token(request, pk):
+    token = get_object_or_404(request.user.api_tokens.active(), pk=pk)
+    token.revoked_at = timezone.now()
+    token.save(update_fields=["revoked_at"])
+    messages.success(request, f"“{token.name}” can no longer submit events.")
+    return redirect(f"{reverse('profile')}#api")
 
 
 def claim(request):

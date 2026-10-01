@@ -261,7 +261,7 @@ QUEUE_VIEWS = {
 def queue_for(view, moderator):
     """The submissions behind one tab of the queue."""
     base = Submission.objects.select_related(
-        "submitted_by", "assigned_to", "event", "event__venue"
+        "submitted_by", "assigned_to", "api_token", "event", "event__venue"
     )
 
     if view == "mine":

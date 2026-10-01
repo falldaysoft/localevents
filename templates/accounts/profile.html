@@ -63,6 +63,52 @@
         </ul>
     </div>
 
+    {% if user.is_moderator %}
+    <div id="api" class="mt-4 card">
+        <h2 class="font-semibold">API tokens</h2>
+        <p class="mt-1 text-sm text-slate-500">
+            Let an agent or script submit events as you, without the web form. Only moderators can make one.
+            Its listings go to the moderators like any other, marked with the token's name.
+            Give it the token and the address <code class="text-xs">{{ api_url }}</code>, which describes the rest.
+        </p>
+
+        {% if new_api_key %}
+            <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <p class="font-medium">Copy this token now — it won't be shown again.</p>
+                <p class="mt-2 break-all rounded bg-white px-2 py-1 font-mono text-xs text-slate-900">{{ new_api_key }}</p>
+            </div>
+        {% endif %}
+
+        {% if api_tokens %}
+            <ul class="mt-4 divide-y divide-slate-100 text-sm">
+                {% for token in api_tokens %}
+                    <li class="flex items-center justify-between gap-4 py-3">
+                        <div>
+                            <p class="font-medium">{{ token.name }}</p>
+                            <p class="mt-0.5 text-slate-500">
+                                <span class="font-mono text-xs">{{ token.hint }}…</span>
+                                &middot; made {{ token.created_at|date:"j M Y" }}
+                                &middot; {% if token.last_used_at %}last used {{ token.last_used_at|date:"j M Y, H:i" }}{% else %}never used{% endif %}
+                            </p>
+                        </div>
+                        <form method="post" action="{% url 'api_token_revoke' token.pk %}">
+                            {% csrf_token %}
+                            <button type="submit" class="btn-secondary shrink-0">Revoke</button>
+                        </form>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+
+        <form method="post" action="{% url 'api_token_create' %}" class="mt-4 flex gap-2">
+            {% csrf_token %}
+            <input type="text" name="name" required maxlength="80" placeholder="What will use it, e.g. “Calendar scout”"
+                   class="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500">
+            <button type="submit" class="btn-secondary shrink-0">Make a token</button>
+        </form>
+    </div>
+    {% endif %}
+
     <div class="mt-4 card">
         <h2 class="font-semibold">Your activity</h2>
         <ul class="mt-4 divide-y divide-slate-100 text-sm">

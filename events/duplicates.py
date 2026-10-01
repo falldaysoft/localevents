@@ -71,25 +71,37 @@ def _normal_url(url):
 
 def possible_duplicates(event, limit=5):
     """Other live events that look like this one, with the reason for each."""
-    occurrences = list(event.occurrences.all()[:60])
+    spans = [(o.start, o.end) for o in event.occurrences.all()[:60]]
+    return find_duplicates(
+        event.title, event.source_url, spans, exclude_pk=event.pk, limit=limit
+    )
 
+
+def find_duplicates(title, source_url, spans, exclude_pk=None, limit=5):
+    """The same check for a listing that need not exist yet.
+
+    Takes the parts rather than an Event so the API can answer "is this
+    already on the site?" before anything is written — saving a draft to ask
+    would create its venue and queue a geocode for a listing that may never be
+    submitted. `spans` is a list of (start, end-or-None) pairs.
+    """
     windows = Q()
-    for occurrence in occurrences:
+    for start, end in spans:
         windows |= occurrence_overlaps(
-            occurrence.start - DATE_SLACK,
-            (occurrence.end or occurrence.start) + DATE_SLACK,
-            prefix="occurrences",
+            start - DATE_SLACK, (end or start) + DATE_SLACK, prefix="occurrences"
         )
 
-    candidates = Event.objects.filter(status__in=LIVE_STATUSES).exclude(pk=event.pk)
+    candidates = Event.objects.filter(status__in=LIVE_STATUSES)
+    if exclude_pk:
+        candidates = candidates.exclude(pk=exclude_pk)
 
     found = {}
-    if occurrences:
+    if spans:
         for other in candidates.filter(windows).distinct().select_related("venue")[:200]:
-            if titles_match(event.title, other.title):
+            if titles_match(title, other.title):
                 found[other.pk] = (other, "Similar title on the same dates")
 
-    source = _normal_url(event.source_url)
+    source = _normal_url(source_url)
     if source:
         host = source.split("/", 1)[0]
         for other in candidates.filter(source_url__icontains=host).select_related("venue")[:200]:

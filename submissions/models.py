@@ -74,6 +74,13 @@ class Submission(models.Model):
     status = models.CharField(
         max_length=20, choices=Status.choices, default=Status.NEW
     )
+    # Set when an agent submitted this through the API rather than a person
+    # through the form. Nobody confirmed an API submission on the site, so the
+    # moderator is told which key sent it — see submissions.api.
+    api_token = models.ForeignKey(
+        "accounts.ApiToken", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="submissions",
+    )
 
     # The draft the submitter is reviewing, before it becomes a real Event.
     draft = models.JSONField(default=dict, blank=True)
