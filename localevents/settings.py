@@ -354,6 +354,12 @@ CSRF_COOKIE_SECURE = not DEBUG
 # this header. WebAuthn origin checks depend on getting it right.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
+# Django's default is "same-origin", which sends no Referer to another origin —
+# and the OpenStreetMap tile policy requires one, answering a share of requests
+# without it with a 403 "access blocked" tile. This is the browsers' own
+# default: other sites learn which site sent the reader, never which page.
+SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
+
 # Everything we load is either same-origin or a known CDN. Tailwind's CDN build
 # generates styles at runtime, hence 'unsafe-inline' for styles; scripts are
 # nonce-based. Map tiles and user-submitted event images are remote, so img-src

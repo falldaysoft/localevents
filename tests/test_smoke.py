@@ -41,3 +41,16 @@ def test_user_email_is_unique(django_user_model):
         django_user_model.objects.create_user(
             username="b", email="dup@example.com", password="pw"
         )
+
+
+@pytest.mark.django_db
+def test_other_origins_are_told_which_site_sent_the_reader(client):
+    """The map's tile server refuses requests that carry no Referer.
+
+    Django's default policy, "same-origin", withholds it from every other
+    origin, and OpenStreetMap answers a share of such requests with a 403
+    "access blocked" tile — a map that is intermittently grey, on some
+    visitors' screens and not others. "no-referrer" fails the same way.
+    """
+    response = client.get("/")
+    assert response["Referrer-Policy"] == "strict-origin-when-cross-origin"
