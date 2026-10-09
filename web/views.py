@@ -300,6 +300,7 @@ def venue_detail(request, slug):
             "crumb_url": reverse("venue_list"),
             "crumb_label": "Venues",
             "canonical": reverse("venue_detail", args=[venue.slug]),
+            "feed_url": f"{reverse('events_rss')}?venue={venue.slug}",
             "map_config": _map_config(venue) if venue.has_coordinates else None,
             "schema_json": json.dumps(_venue_schema(venue), ensure_ascii=False),
             "empty_title": "Nothing scheduled here right now.",
@@ -364,6 +365,7 @@ def category_detail(request, slug):
             "crumb_url": reverse("category_list"),
             "crumb_label": "Categories",
             "canonical": reverse("category_detail", args=[category.slug]),
+            "feed_url": f"{reverse('events_rss')}?category={category.slug}",
             "empty_title": "Nothing in this category coming up.",
             "site_config": SiteConfig.load(),
         }

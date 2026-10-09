@@ -5,7 +5,7 @@
 
 {% block head %}
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="alternate" type="application/rss+xml" title="{{ SITE_NAME }}" href="/events.rss">
+    <link rel="alternate" type="application/rss+xml" title="{{ SITE_NAME }}" href="{% url 'events_rss' %}">
 {% endblock %}
 
 {% block main_class %}le-main{% endblock %}

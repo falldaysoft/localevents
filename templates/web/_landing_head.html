@@ -1,4 +1,5 @@
 {# Shared by every theme's landing page: none of it is visible. #}
+{% if feed_url %}<link rel="alternate" type="application/rss+xml" title="{{ page_title }} — {{ SITE_NAME }}" href="{{ feed_url }}">{% endif %}
 <link rel="canonical" href="{{ SITE_BASE_URL }}{{ canonical }}">
 {# A venue or category with nothing coming up is a thin page; keep it out  #}
 {# of the index until it has something on, but let links to it still work. #}

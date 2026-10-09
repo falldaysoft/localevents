@@ -2,11 +2,13 @@ from django.contrib.sitemaps.views import sitemap
 from django.urls import path
 
 from . import views
+from .feeds import LatestEventsFeed
 from .sitemaps import SITEMAPS
 
 urlpatterns = [
     path("", views.index, name="index"),
     path("events/<slug:slug>/", views.event_detail, name="event_detail"),
+    path("events.rss", LatestEventsFeed(), name="events_rss"),
     path("events.geojson", views.events_geojson, name="events_geojson"),
     path("venues/", views.venue_list, name="venue_list"),
     path("venues/<slug:slug>/", views.venue_detail, name="venue_detail"),
