@@ -343,7 +343,14 @@ form POST and run through the confirmation page's own `EventDraftForm` and
 unchanged. Tokens are read by a decorator on the API views and never by an
 authentication backend, so a token opens `/api/` and nothing else — and
 because those views are `csrf_exempt`, a session cookie gets a 401 there.
-`dry_run` answers "is this already listed?" through
+`/api/extract/` is the web form's first step for an agent with only a link:
+the site reads the page on the worker and parks the draft, and the agent
+must post it back to `/api/submissions/<id>/` before anything is queued —
+so on that path the agent stands where the submitter would, and the
+model's reading is still checked before a moderator sees it. `GET /api/` is
+the one view without a token, because a 401 is all an agent without one
+would otherwise learn; a test holds its field list equal to what the parser
+accepts. `dry_run` answers "is this already listed?" through
 `events.duplicates.find_duplicates`, which takes parts rather than an Event
 because saving a draft to ask would create a venue and queue its geocode.
 The agent-facing guide is `docs/API.md`.

@@ -18,7 +18,13 @@ Send it on every request:
 Authorization: Bearer le_…
 ```
 
-A browser session doesn't count. Without the header every endpoint returns 401.
+A browser session doesn't count. Without the header every endpoint except
+`/api/` returns 401.
+
+`GET /api/` needs no token. It describes the fields, rules and workflows, and
+lists the categories, so an agent given only the site's address can start
+there. If you send a token it also reports how many submissions you have left
+today.
 
 ## Endpoints
 
@@ -27,12 +33,13 @@ message and sometimes `errors`, which is keyed by field.
 
 | Method | Path | What it does |
 |---|---|---|
-| GET | `/api/` | Describes the fields, and how many submissions you have left today |
+| GET | `/api/` | Describes the API and lists categories. No token needed |
 | GET | `/api/categories/` | The active categories as `{slug, name}` |
+| POST | `/api/extract/` | Have the site read a page for you (see below) |
 | GET | `/api/submissions/` | Your submissions, newest first |
 | POST | `/api/submissions/` | Submit a listing (or check one with `dry_run`) |
 | GET | `/api/submissions/<id>/` | One of yours: its status, the decision, and moderators' messages |
-| POST | `/api/submissions/<id>/` | Answer a moderator's question by sending the whole listing again |
+| POST | `/api/submissions/<id>/` | Send the listing for a submission that's waiting on you |
 
 ## A listing
 
@@ -83,6 +90,42 @@ rules:
   without a login.
 - **`note`** becomes a message to the moderators on the submission.
 
+## Letting the site read the page
+
+If you only have a link, the site can read it for you the same way it does for
+someone using the web form:
+
+```
+POST /api/extract/
+{"url": "https://example.org/events/poetry-night"}
+```
+
+This returns `202` with a submission whose status is `new`. Reading takes a
+while (minutes, not seconds), so poll `GET /api/submissions/<id>/` until the
+status is `awaiting_submitter`. The submission then carries an `extraction`:
+
+```json
+"extraction": {
+  "failed": false,
+  "message": "…",
+  "notes": "What the reader was unsure of, e.g. the year isn't stated.",
+  "listing": {"title": "…", "occurrences": […], "categories": […], …}
+}
+```
+
+`extraction.listing` uses the same format as a listing you'd write yourself.
+Check it against the page, correct anything wrong, and POST it to
+`/api/submissions/<id>/`. **Nothing reaches the moderators until you do.** A
+model's reading of a page is often nearly right, and the date is what it gets
+wrong most. Someone has to check that before a moderator is asked to trust it,
+and on this path that's you.
+
+If the page needs a login or JavaScript (Facebook, for example), it will read
+badly or not at all. Send `{"source_text": "…"}` with the event's own words
+instead, with or without the `url`. A read that fails still lands at
+`awaiting_submitter`, with `failed: true` and a mostly empty listing for you to
+fill in.
+
 ## Check before you send
 
 Add `"dry_run": true` to validate a listing and look for events already on the
@@ -116,7 +159,8 @@ A submission returns `201`:
 ```
 
 `event.url` stays empty until the listing is published. The statuses you will
-see are `pending_review`, `info_requested` (a moderator asked something, which
+see are `new` and `enriching` (the site is reading a page), `awaiting_submitter`
+(read, and waiting for you to send it), `pending_review`, `info_requested` (a moderator asked something, which
 appears under `messages`), `approved`, `rejected` and `withdrawn`.
 
 When the status is `info_requested`, POST the whole listing to
@@ -131,7 +175,7 @@ event and puts it back in the queue. At any other status that POST returns 409.
 | 404 | Not one of your submissions |
 | 405 | Wrong method |
 | 409 | That submission isn't waiting on you |
-| 429 | Daily submission limit reached (moderators are exempt) |
+| 429 | Daily submission or page-read limit reached (moderators are exempt) |
 
 `errors.occurrences` holds problems with the set of dates.
 `errors.occurrences_rows` holds per-date problems, keyed by position in your

@@ -15,6 +15,7 @@ from django.utils import timezone
 
 from accounts.models import ApiToken
 from events.models import Category, Event, Occurrence, Venue
+from submissions.api import ACCEPTED_FIELDS
 from submissions.models import ModerationAction, Submission
 
 
@@ -275,10 +276,35 @@ def test_categories_lists_active_slugs(api, category):
     assert "retired" not in slugs
 
 
-def test_index_describes_itself(api):
+def test_index_describes_itself_without_a_token(api, category):
+    response = api("get", "api_index", key=None)
+    assert response.status_code == 200
+    body = response.json()
+    assert "Bearer" in body["authentication"]["header"]
+    assert any(e["url"].endswith("/api/submissions/") for e in body["endpoints"])
+    assert "occurrences" in body["listing"]
+    assert {"slug": "test-readings", "name": "Test Readings"} in body["categories"]
+    assert "token" not in body
+
+
+def test_index_names_every_accepted_field(api, db):
+    """The description and the parser must not drift apart."""
+    body = api("get", "api_index", key=None).json()
+    assert set(body["listing"]) == ACCEPTED_FIELDS
+
+
+def test_index_reports_the_token_it_was_sent(api):
     body = api("get", "api_index").json()
-    assert body["submit"].endswith("/api/submissions/")
-    assert "occurrences" in body["fields"]
+    assert body["token"]["name"] == "Calendar scout"
+    assert "submissions_left_today" in body["token"]
+
+
+def test_index_ignores_a_bad_token(api, db):
+    assert api("get", "api_index", key="le_nonsense").status_code == 200
+
+
+def test_a_401_points_at_the_description(api, db):
+    assert "/api/" in api("get", "api_categories", key=None).json()["error"]
 
 
 # Tokens on the profile page -------------------------------------------------
@@ -329,3 +355,94 @@ def test_the_queue_marks_an_agents_submission(client, moderator, api):
     submission = Submission.objects.get()
     page = client.get(reverse("mod_submission", args=[submission.pk])).content.decode()
     assert "Calendar scout" in page
+
+
+# The site reads the page ------------------------------------------------------
+
+
+@pytest.fixture
+def page(monkeypatch, category):
+    """What the site 'reads', with the pipeline replaced at its seam."""
+    from enrichment.pipeline import EnrichmentResult
+    from enrichment.schemas import EventDraft
+
+    start = timezone.localtime() + timedelta(days=10)
+    draft = EventDraft(
+        title="Lantern walk",
+        venue_name="Parish Hall",
+        is_free=True,
+        price_min=0,
+        category_slugs=["test-readings", "invented"],
+        occurrences=[{"start": start.replace(hour=18, minute=0, second=0, microsecond=0, tzinfo=None)}],
+        notes_for_submitter="The year is not stated.",
+    )
+    seen = []
+
+    def fake(url, submission=None, event=None):
+        seen.append(url)
+        return EnrichmentResult(draft=draft, method="structured", message="Read it.")
+
+    monkeypatch.setattr("submissions.tasks.enrich_url", fake)
+    return seen
+
+
+def test_extract_parks_a_draft_and_queues_nothing(api, page):
+    response = api("post", "api_extract", {"url": "https://example.org/lanterns"})
+    assert response.status_code == 202
+    assert page == ["https://example.org/lanterns"]
+    pk = response.json()["submission"]["id"]
+
+    body = api("get", "api_submission", args=[pk]).json()["submission"]
+    assert body["status"] == "awaiting_submitter"
+    assert body["extraction"]["notes"] == "The year is not stated."
+    listing = body["extraction"]["listing"]
+    assert listing["title"] == "Lantern walk"
+    assert listing["source_url"] == "https://example.org/lanterns"
+    assert listing["categories"] == ["test-readings"]
+    assert "price_min" not in listing
+    assert Submission.objects.get(pk=pk).api_token is not None
+    assert not Event.objects.exists()
+
+
+def test_an_extracted_listing_posts_straight_back(api, page):
+    pk = api("post", "api_extract", {"url": "https://example.org/lanterns"}).json()[
+        "submission"
+    ]["id"]
+    listing = api("get", "api_submission", args=[pk]).json()["submission"][
+        "extraction"
+    ]["listing"]
+
+    response = api("post", "api_submission", {**listing, "title": "Lantern walk (fixed)"}, args=[pk])
+    assert response.status_code == 200, response.json()
+    submission = Submission.objects.get(pk=pk)
+    assert submission.status == Submission.Status.PENDING_REVIEW
+    assert submission.event.title == "Lantern walk (fixed)"
+    assert "extraction" not in response.json()["submission"]
+
+
+def test_extract_takes_pasted_text_instead(api, monkeypatch, db):
+    from enrichment.pipeline import EnrichmentResult
+
+    calls = []
+    monkeypatch.setattr(
+        "submissions.tasks.enrich_text",
+        lambda text, url, submission=None: calls.append(text) or EnrichmentResult(failed=True, message="No."),
+    )
+    response = api("post", "api_extract", {"source_text": "Lantern walk, Friday 6pm"})
+    assert response.status_code == 202
+    assert calls == ["Lantern walk, Friday 6pm"]
+    body = api("get", "api_submission", args=[response.json()["submission"]["id"]]).json()
+    assert body["submission"]["extraction"]["failed"] is True
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [{}, {"url": "ftp://example.org/x"}, {"url": "not a url"}, {"link": "https://example.org"}],
+)
+def test_extract_refuses_what_it_cannot_read(api, db, payload):
+    assert api("post", "api_extract", payload).status_code == 400
+    assert not Submission.objects.exists()
+
+
+def test_extract_needs_a_token(api, db):
+    assert api("post", "api_extract", {"url": "https://example.org/x"}, key=None).status_code == 401
