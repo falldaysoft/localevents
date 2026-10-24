@@ -12,6 +12,7 @@ deduplication is a safe signal to collect at all, so it is tested directly
 rather than left as a comment.
 """
 
+import re
 from datetime import timedelta
 
 import pytest
@@ -648,7 +649,14 @@ def test_the_row_offers_every_tier_and_the_press_decides_it(
     submission = _from_agent(submitter, moderator)
     body = signed_in_mod.get(reverse("mod_queue")).content.decode()
     for value, short, _ in services.TIER_BUTTONS:
-        assert f'name="tier" value="{value}"' in body and short in body
+        assert f'type="radio" name="tier" value="{value}"' in body and short in body
+    # Choosing and approving are two acts: the drafted tier is pre-selected,
+    # and one button, not four, does the publishing.
+    drafted = re.search(
+        rf'<input type="radio" name="tier" value="{int(Event.Prominence.LISTED)}"[^>]*>', body
+    ).group(0)
+    assert "checked" in drafted
+    assert body.count(">Approve</button>") == 1
 
     signed_in_mod.post(
         reverse("mod_quick_approve", args=[submission.pk]),

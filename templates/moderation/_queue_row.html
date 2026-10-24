@@ -3,7 +3,8 @@
 {# drift apart in what a decided row looks like.                            #}
 <li class="card {% if row_error %}border-red-300{% endif %}">
     <div class="flex flex-wrap items-start justify-between gap-4">
-        <div class="min-w-0">
+        {# flex-1 as well as min-w-0: without it a long source URL sets this column's width and shoves the chips and the tier picker onto a wrapped line. #}
+        <div class="min-w-0 flex-1">
             <a href="{% url 'mod_submission' submission.pk %}"
                class="font-medium underline decoration-slate-300 underline-offset-2 hover:decoration-slate-900">
                 {{ submission.display_title }}
@@ -47,21 +48,23 @@
             {% if submission.api_token_id and submission.status == 'pending_review' and submission.event %}
                 {# A moderator's own agent read the page, so the review already   #}
                 {# happened; a stranger's listing still goes through the full screen. #}
-                {# The one call left is the tier, so the buttons are the tiers: pressing one publishes there. #}
+                {# The one call left is the tier. Choosing it and approving are two acts, so the tiers are radios #}
+                {# drawn as a segmented control (peer-checked, no script) and Approve is its own button.        #}
                 <form method="post" action="{% url 'mod_quick_approve' submission.pk %}"
                       hx-post="{% url 'mod_quick_approve' submission.pk %}"
                       hx-target="closest li" hx-swap="outerHTML" hx-disabled-elt="find button"
-                      class="mt-1 flex items-center gap-1.5">
+                      class="mt-1 flex items-center gap-2">
                     {% csrf_token %}
-                    <span class="text-xs text-slate-500">Approve as</span>
-                    <span class="inline-flex overflow-hidden rounded-lg border border-slate-300 text-xs">
+                    <span class="inline-flex overflow-hidden rounded-lg border border-slate-300 text-xs" role="radiogroup" aria-label="Tier">
                         {% for value, short, label in tiers %}
-                            <button type="submit" name="tier" value="{{ value }}" title="{{ label }}"
-                                    class="px-2 py-1 {% if submission.event.prominence == value %}bg-slate-900 text-white hover:bg-slate-700{% else %}hover:bg-slate-100{% endif %}">
-                                {{ short }}
-                            </button>
+                            <label title="{{ label }}" class="cursor-pointer">
+                                <input type="radio" name="tier" value="{{ value }}" class="peer sr-only"
+                                       {% if submission.event.prominence == value %}checked{% endif %}>
+                                <span class="block px-2 py-1 hover:bg-slate-100 peer-checked:bg-slate-900 peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-slate-400">{{ short }}</span>
+                            </label>
                         {% endfor %}
                     </span>
+                    <button type="submit" class="btn-primary !px-3 !py-1 text-xs">Approve</button>
                 </form>
             {% endif %}
         </div>
