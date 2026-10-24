@@ -165,12 +165,19 @@ def test_no_second_factor_stage_is_configured():
 
 @pytest.fixture
 def reauthenticated(client, django_user_model):
-    """Signed in with a password within allauth's reauthentication window.
+    """Signed in with a password, then confirmed it on the reauthenticate page.
 
     The passkey pages are behind a freshness check, and `force_login` does not
     record how you got in — so a forced session is redirected straight back out
     to reauthenticate, and any assertion on the form's markup passes against an
     empty body.
+
+    The explicit confirmation step is there because allauth 65.20 stopped
+    counting a recent login as reauthentication ("a recent login no longer
+    counts for views that require reauthentication"). Until then signing in
+    was enough; afterwards the same fixture silently reached the confirm
+    screen instead, which is exactly the empty-body failure described above,
+    and it showed up in CI first because CI installs the newest allauth.
     """
     from allauth.account.models import EmailAddress
 
@@ -184,6 +191,7 @@ def reauthenticated(client, django_user_model):
         reverse("account_login"),
         {"login": user.email, "password": "corn-flake-8842"},
     )
+    client.post(reverse("account_reauthenticate"), {"password": "corn-flake-8842"})
     return user
 
 
