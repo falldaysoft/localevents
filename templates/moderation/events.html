@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Events — {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+    {% include "moderation/_tabs.html" with section="events" %}
+
+    <h1 class="mt-6 text-2xl font-semibold tracking-tight">Events</h1>
+    <p class="mt-2 max-w-2xl text-sm text-slate-600">
+        Every listing, with the quick decisions on each row: its tier, your own
+        interested mark, and taking it down or putting it back. Each one is
+        recorded in the log.
+    </p>
+
+    {# The state lives in the URL, as on the public page: a narrowed view survives a reload and can be handed to a colleague. #}
+    <form id="event-filters" method="get" action="{% url 'mod_events' %}"
+          hx-get="{% url 'mod_events' %}" hx-target="#event-results" hx-select="#event-results"
+          hx-swap="outerHTML" hx-push-url="true"
+          hx-trigger="change, keyup changed delay:300ms from:#event-search, submit"
+          class="mt-4 flex flex-wrap items-center gap-2 text-sm">
+        <input id="event-search" type="search" name="q" value="{{ query }}" placeholder="Title, venue or organiser"
+               class="w-64 rounded-lg border border-slate-300 px-3 py-1.5">
+        <label class="flex items-center gap-1">
+            <span class="text-slate-500">Show</span>
+            <select name="view" class="rounded-lg border border-slate-300 px-2 py-1.5">
+                {% for key, label in views.items %}
+                    <option value="{{ key }}" {% if key == view %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label class="flex items-center gap-1">
+            <span class="text-slate-500">Tier</span>
+            <select name="tier" class="rounded-lg border border-slate-300 px-2 py-1.5">
+                <option value="">Any</option>
+                {% for value, short, label in tiers %}
+                    <option value="{{ value }}" {% if tier == value %}selected{% endif %}>{{ short }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label class="flex items-center gap-1">
+            <span class="text-slate-500">Sort</span>
+            <select name="sort" class="rounded-lg border border-slate-300 px-2 py-1.5">
+                {% for key, label in sorts.items %}
+                    <option value="{{ key }}" {% if key == sort %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <noscript><button type="submit" class="btn-secondary">Apply</button></noscript>
+    </form>
+
+    {% partialdef results inline %}
+    <div id="event-results">
+        <p class="mb-3 mt-4 text-sm text-slate-500">
+            {% if total > cap %}
+                First {{ cap }} of {{ total }} — narrow it down to see the rest.
+            {% else %}
+                {{ total }} listing{{ total|pluralize }}
+            {% endif %}
+        </p>
+        {% if events %}
+            <ul class="space-y-2">
+                {% for event in events %}
+                    {% include "moderation/_event_row.html" %}
+                {% endfor %}
+            </ul>
+        {% else %}
+            <div class="card text-center text-slate-600">
+                <p>Nothing matches.</p>
+            </div>
+        {% endif %}
+    </div>
+    {% endpartialdef %}
+{% endblock %}

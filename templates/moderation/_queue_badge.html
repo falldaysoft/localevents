@@ -1,0 +1,7 @@
+{# Always rendered, even at zero, so the Approve button's response can swap #}
+{# it out of band — HTMX cannot replace an element that is not on the page. #}
+<span id="queue-review-count"{% if oob %} hx-swap-oob="true"{% endif %}>
+    {% if queue_counts.review %}
+        <span class="ml-1 rounded-full bg-slate-900 px-2 py-0.5 text-xs text-white">{{ queue_counts.review }}</span>
+    {% endif %}
+</span>

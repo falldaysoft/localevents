@@ -1,0 +1,63 @@
+{# One submission in the queue. Rendered by the queue page and, on its own, #}
+{# as the HTMX response to the row's Approve button — so the two can never  #}
+{# drift apart in what a decided row looks like.                            #}
+<li class="card {% if row_error %}border-red-300{% endif %}">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+        <div class="min-w-0">
+            <a href="{% url 'mod_submission' submission.pk %}"
+               class="font-medium underline decoration-slate-300 underline-offset-2 hover:decoration-slate-900">
+                {{ submission.display_title }}
+            </a>
+            <p class="mt-1 text-sm text-slate-500">
+                {{ submission.submitted_by.display_name }}
+                &middot; {{ submission.created_at|date:"j M Y, H:i" }}
+                {% if submission.event.venue %}
+                    &middot; {{ submission.event.venue.name }}
+                {% endif %}
+            </p>
+            {% if submission.source_url %}
+                <p class="mt-1 truncate text-xs text-slate-400">{{ submission.source_url }}</p>
+            {% endif %}
+            {% if row_error %}
+                <p class="mt-1 text-sm text-red-700">{{ row_error }}</p>
+            {% endif %}
+        </div>
+
+        <div class="flex shrink-0 flex-col items-end gap-1 text-right">
+            {% if submission.duplicate_count %}
+                <span class="chip bg-amber-100 text-amber-900">Possible duplicate</span>
+            {% endif %}
+            {% if submission.api_token_id %}
+                <span class="chip" title="{{ submission.api_token.name }}">Sent by an agent</span>
+            {% endif %}
+            {% if submission.status == 'approved' and submission.event %}
+                <a href="{% url 'event_detail' submission.event.slug %}"
+                   class="chip bg-emerald-100 text-emerald-900 hover:bg-emerald-200">Live &rarr;</a>
+            {% else %}
+                <span class="chip">{{ submission.get_status_display }}</span>
+            {% endif %}
+            {% if submission.assigned_to %}
+                <span class="text-xs text-slate-500">
+                    {{ submission.assigned_to.display_name }}
+                </span>
+            {% endif %}
+            {% if submission.event.listing_type == 'series' %}
+                <span class="text-xs text-slate-500">Repeats</span>
+            {% endif %}
+            {% if submission.api_token_id and submission.status == 'pending_review' and submission.event %}
+                {# A moderator's own agent read the page, so the review already   #}
+                {# happened; a stranger's listing still goes through the full screen. #}
+                <form method="post" action="{% url 'mod_quick_approve' submission.pk %}"
+                      hx-post="{% url 'mod_quick_approve' submission.pk %}"
+                      hx-target="closest li" hx-swap="outerHTML" hx-disabled-elt="find button"
+                      class="mt-1">
+                    {% csrf_token %}
+                    <button type="submit" class="btn-primary !px-3 !py-1">Approve</button>
+                </form>
+            {% endif %}
+        </div>
+    </div>
+</li>
+{% if swap_badge %}
+    {% include "moderation/_queue_badge.html" with oob=True %}
+{% endif %}

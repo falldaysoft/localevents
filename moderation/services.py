@@ -8,10 +8,10 @@ those three would look fine in review and leave someone waiting forever.
 """
 
 from django.db import transaction
-from django.db.models import Avg, Q
+from django.db.models import Avg, Exists, F, Max, OuterRef, Q, Subquery
 from django.utils import timezone
 
-from events.models import Event, EventRefresh
+from events.models import Event, EventRefresh, Interest, Occurrence, occurrence_overlaps
 from submissions.models import ModerationAction, Submission, SubmissionMessage
 
 from .tasks import email_submitter
@@ -89,6 +89,51 @@ def approve(submission, moderator, *, prominence, listing_type, categories=None,
     if submission.submitted_by_id != moderator.pk:
         _notify(submission, "approved")
     return event
+
+
+class NotQuickApprovable(Exception):
+    """Raised when a submission is not one the one-click Approve may take.
+
+    The queue's Approve button skips the review screen, so it is offered only
+    where the review already happened somewhere else: a submission sent by a
+    moderator's own agent, which read the page on that moderator's behalf.
+    A stranger's submission still goes through the full screen, where the
+    moderator sees the page, the dates and the duplicates before deciding.
+    """
+
+
+class AlreadyDecided(Exception):
+    """Raised when a decision has already been made on this submission.
+
+    A one-click button on a list invites a double click, and the second one
+    must not write a second audit row or send a second email.
+    """
+
+
+def quick_approve(submission, moderator):
+    """Publish an agent's submission as drafted, with no form in between.
+
+    The event keeps the prominence, listing type and categories it already
+    carries — the queue row has nowhere to ask for them, and the full screen is
+    one click away for anything that needs a different answer.
+    """
+    if submission.api_token_id is None:
+        raise NotQuickApprovable(
+            "Only a listing sent by an agent can be approved from the queue."
+        )
+    if submission.status != Submission.Status.PENDING_REVIEW:
+        raise AlreadyDecided(
+            f"This submission is already {submission.get_status_display().lower()}."
+        )
+    event = submission.event
+    if event is None:
+        raise NothingToApprove("This submission has no event yet.")
+    return approve(
+        submission,
+        moderator,
+        prominence=event.prominence,
+        listing_type=event.listing_type,
+    )
 
 
 @transaction.atomic
@@ -220,8 +265,12 @@ def rising_events(limit=25, now=None):
     return ranked[:limit]
 
 
+# A promotion means "onto the front page". Quiet is where a moderator puts a
+# listing to keep it *off* the front page, not a rung a rising program should
+# have to climb twice — so both of the lower tiers promote straight to Listed.
 NEXT_TIER = {
     Event.Prominence.BACKGROUND: Event.Prominence.LISTED,
+    Event.Prominence.QUIET: Event.Prominence.LISTED,
     Event.Prominence.LISTED: Event.Prominence.FEATURED,
 }
 
@@ -243,6 +292,188 @@ def promote(event, moderator):
         detail=f"{was} → {event.get_prominence_display()} ({event.title})",
     )
     return event
+
+
+# ---------------------------------------------------------------------------
+# The events screen: every listing, and the quick decisions about one
+# ---------------------------------------------------------------------------
+#
+# The queue judges a submission once. This is the other side of that: the
+# hundred listings already on the site, which a moderator wants to re-tier,
+# take down or vote for without opening each one. Each action below is one
+# click on a row, so each is reversible and each writes an audit row — a
+# quick button with no record is how "who took that down?" becomes a mystery.
+
+
+REMOVED_STATUSES = [
+    Event.Status.UNPUBLISHED,
+    Event.Status.DUPLICATE,
+    Event.Status.REJECTED,
+    Event.Status.EXPIRED,
+]
+
+EVENT_VIEWS = {
+    "upcoming": "Upcoming",
+    "past": "Past",
+    "pending": "Pending",
+    "removed": "Removed",
+    "all": "Everything",
+}
+
+EVENT_SORTS = {
+    "date": "Next date",
+    "title": "Title",
+    "venue": "Venue",
+    "tier": "Tier",
+    "interest": "Interest",
+    "published": "Recently published",
+    "updated": "Recently changed",
+}
+
+# More than a screen's worth is a search waiting to be typed.
+EVENT_LIST_CAP = 200
+
+# The tier labels are written for a radio button with room to explain itself;
+# a segmented control has room for one word. (value, short name, full label).
+TIER_BUTTONS = [
+    (p.value, p.label.split(" — ")[0], p.label) for p in Event.Prominence
+]
+
+
+def annotated_events(moderator, now=None):
+    """Every event, with the dates a row needs to render.
+
+    Not `EventFilter.apply`: that drops anything without an upcoming date,
+    and this screen exists partly to find the listing whose dates ran out.
+    `next_start` is the soonest live occurrence or null; `last_start` is the
+    final date it ever had, for the past and removed rows.
+    """
+    now = now or timezone.now()
+    soonest = (
+        Occurrence.objects.filter(
+            occurrence_overlaps(now), event=OuterRef("pk"), is_cancelled=False
+        )
+        .order_by("start")
+        .values("start")[:1]
+    )
+    return (
+        Event.objects.select_related("venue", "organizer")
+        .annotate(
+            next_start=Subquery(soonest),
+            last_start=Max("occurrences__start"),
+            moderator_interested=Exists(
+                Interest.objects.filter(event=OuterRef("pk"), user=moderator)
+            ),
+        )
+        .distinct()
+    )
+
+
+def event_list(moderator, *, view="upcoming", tier=None, query="", sort="date", now=None):
+    """The rows behind one view of the events screen, capped."""
+    now = now or timezone.now()
+    events = annotated_events(moderator, now)
+
+    if view == "upcoming":
+        events = events.filter(status=Event.Status.PUBLISHED, next_start__isnull=False)
+    elif view == "past":
+        events = events.filter(status=Event.Status.PUBLISHED, next_start__isnull=True)
+    elif view == "pending":
+        events = events.filter(status=Event.Status.PENDING)
+    elif view == "removed":
+        events = events.filter(status__in=REMOVED_STATUSES)
+
+    if tier is not None:
+        events = events.filter(prominence=tier)
+    if query:
+        events = events.filter(
+            Q(title__icontains=query)
+            | Q(venue__name__icontains=query)
+            | Q(organizer__name__icontains=query)
+        )
+
+    ordering = {
+        "date": [F("next_start").asc(nulls_last=True), "-last_start", "title"],
+        "title": ["title"],
+        "venue": ["venue__name", F("next_start").asc(nulls_last=True)],
+        "tier": ["-prominence", F("next_start").asc(nulls_last=True)],
+        "interest": ["-interest_count", F("next_start").asc(nulls_last=True)],
+        "published": ["-published_at", "-pk"],
+        "updated": ["-updated_at"],
+    }[sort if sort in EVENT_SORTS else "date"]
+    return events.order_by(*ordering)
+
+
+def set_tier(event, moderator, tier):
+    """Put a listing in a tier, on a human's say-so, and say who did."""
+    tier = Event.Prominence(tier)
+    if event.prominence == tier:
+        return event
+    was = event.get_prominence_display()
+    event.prominence = tier
+    event.save(update_fields=["prominence", "updated_at"])
+    ModerationAction.record(
+        moderator,
+        "tier_changed",
+        event=event,
+        detail=f"{was} → {event.get_prominence_display()} ({event.title})",
+    )
+    return event
+
+
+def unpublish(event, moderator, *, duplicate=False):
+    """Take a listing off the site. Reversible with `republish`.
+
+    No mail to the submitter, matching the edit form's status field, which
+    has always unpublished silently: the listing is still theirs to see at
+    its submission page, and a duplicate removal is housekeeping, not a
+    judgement on them.
+    """
+    if event.status in REMOVED_STATUSES:
+        return event
+    event.status = Event.Status.DUPLICATE if duplicate else Event.Status.UNPUBLISHED
+    event.save(update_fields=["status", "updated_at"])
+    ModerationAction.record(
+        moderator,
+        "marked_duplicate" if duplicate else "unpublished",
+        event=event,
+        detail=event.title,
+    )
+    return event
+
+
+def republish(event, moderator):
+    """Put a removed listing back exactly as it was."""
+    if event.status == Event.Status.PUBLISHED:
+        return event
+    was = event.get_status_display()
+    event.status = Event.Status.PUBLISHED
+    # A full save: a listing removed before it was ever published still needs
+    # its published_at derived.
+    event.save()
+    ModerationAction.record(
+        moderator, "republished", event=event, detail=f"was {was} ({event.title})"
+    )
+    return event
+
+
+def toggle_interest(event, user):
+    """The moderator's own "Interested" mark — one per person, on or off.
+
+    This is the same signal a reader gives, counted the same way, and it buys
+    the same thing: a tie-break within a tier and a shot at the Rising queue
+    once `MIN_INTEREST_TO_RISE` others agree. It is not an audit event — the
+    Interest row names the user, and a log full of hearts would bury the
+    decisions it exists to show.
+
+    Returns whether the user is now interested.
+    """
+    existing = Interest.objects.filter(event=event, user=user).first()
+    if existing is not None:
+        existing.delete()
+        return False
+    Interest.objects.create(event=event, user=user)
+    return True
 
 
 # ---------------------------------------------------------------------------

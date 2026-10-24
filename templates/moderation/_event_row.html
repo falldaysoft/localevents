@@ -1,0 +1,79 @@
+{# One listing on the events screen. Rendered by the page and, on its own, as #}
+{# the HTMX response to any of the row's buttons — so a decided row always   #}
+{# looks the same however it got that way.                                   #}
+<li id="event-{{ event.pk }}" class="card !p-4">
+    <div class="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+        <div class="min-w-0 flex-1">
+            <a href="{% if event.status == 'published' %}{% url 'event_detail' event.slug %}{% else %}{% url 'mod_event_edit' event.pk %}{% endif %}"
+               class="font-medium underline decoration-slate-300 underline-offset-2 hover:decoration-slate-900">
+                {{ event.title }}
+            </a>
+            <p class="mt-1 text-sm text-slate-500">
+                {% if event.next_start %}
+                    {{ event.next_start|date:"D j M Y, H:i" }}
+                {% elif event.last_start %}
+                    last on {{ event.last_start|date:"j M Y" }}
+                {% else %}
+                    no dates
+                {% endif %}
+                {% if event.venue %}&middot; {{ event.venue.name }}{% endif %}
+                {% if event.is_series %}&middot; repeats{% endif %}
+                &middot; <a href="{% url 'mod_event_edit' event.pk %}" class="underline hover:text-slate-900">Edit</a>
+            </p>
+        </div>
+
+        <div class="flex shrink-0 flex-wrap items-center gap-2 text-xs">
+            {% if event.status != 'published' %}
+                <span class="chip {% if event.status == 'pending' %}bg-amber-100 text-amber-900{% else %}bg-red-100 text-red-900{% endif %}">
+                    {{ event.get_status_display }}
+                </span>
+            {% endif %}
+
+            {# The tier, as one segmented control: the current one is dark, the rest are a click away. #}
+            <form method="post" action="{% url 'mod_event_tier' event.pk %}"
+                  hx-post="{% url 'mod_event_tier' event.pk %}" hx-target="closest li" hx-swap="outerHTML"
+                  class="inline-flex overflow-hidden rounded-lg border border-slate-300">
+                {% csrf_token %}
+                {% for value, short, label in tiers %}
+                    <button type="submit" name="tier" value="{{ value }}" title="{{ label }}"
+                            {% if event.prominence == value %}aria-current="true" disabled{% endif %}
+                            class="px-2 py-1 {% if event.prominence == value %}bg-slate-900 text-white{% else %}hover:bg-slate-100{% endif %}">
+                        {{ short }}
+                    </button>
+                {% endfor %}
+            </form>
+
+            <form method="post" action="{% url 'mod_event_interest' event.pk %}"
+                  hx-post="{% url 'mod_event_interest' event.pk %}" hx-target="closest li" hx-swap="outerHTML">
+                {% csrf_token %}
+                <button type="submit"
+                        title="{% if event.moderator_interested %}Withdraw your interest{% else %}Mark yourself interested{% endif %}"
+                        class="chip {% if event.moderator_interested %}bg-rose-100 text-rose-800{% else %}hover:bg-slate-200{% endif %}">
+                    &#9829; {{ event.interest_count }}
+                </button>
+            </form>
+
+            {% if event.status == 'published' %}
+                <form method="post" action="{% url 'mod_event_unpublish' event.pk %}"
+                      hx-post="{% url 'mod_event_unpublish' event.pk %}" hx-target="closest li" hx-swap="outerHTML"
+                      hx-confirm="Take “{{ event.title }}” off the site?">
+                    {% csrf_token %}
+                    <button type="submit" class="chip hover:bg-slate-200">Unpublish</button>
+                </form>
+                <form method="post" action="{% url 'mod_event_unpublish' event.pk %}"
+                      hx-post="{% url 'mod_event_unpublish' event.pk %}" hx-target="closest li" hx-swap="outerHTML"
+                      hx-confirm="Take “{{ event.title }}” off the site as a duplicate?">
+                    {% csrf_token %}
+                    <input type="hidden" name="duplicate" value="1">
+                    <button type="submit" class="chip hover:bg-slate-200">Duplicate</button>
+                </form>
+            {% elif event.status != 'pending' %}
+                <form method="post" action="{% url 'mod_event_republish' event.pk %}"
+                      hx-post="{% url 'mod_event_republish' event.pk %}" hx-target="closest li" hx-swap="outerHTML">
+                    {% csrf_token %}
+                    <button type="submit" class="chip bg-emerald-100 text-emerald-900 hover:bg-emerald-200">Republish</button>
+                </form>
+            {% endif %}
+        </div>
+    </div>
+</li>

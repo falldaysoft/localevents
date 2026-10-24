@@ -545,6 +545,7 @@ def test_no_template_syntax_leaks_into_a_moderation_page(signed_in_mod, submitte
     event = submission.event
     pages = [
         reverse("mod_queue"),
+        reverse("mod_events"),
         reverse("mod_rising"),
         reverse("mod_audit"),
         reverse("mod_refreshes"),
@@ -577,6 +578,117 @@ def test_the_decision_panels_need_no_javascript(signed_in_mod, submitter):
 
     assert "x-show" not in body and "x-data" not in body
     assert body.count("<details") == 3
+
+
+# --- one-click approve from the queue ---------------------------------------
+
+
+def _from_agent(submitter, moderator, **event_kwargs):
+    """A pending submission that a moderator's agent sent through /api/."""
+    from accounts.models import ApiToken
+
+    token, _ = ApiToken.issue(moderator, "Calendar scout")
+    submission = _pending(submitter, **event_kwargs)
+    submission.api_token = token
+    submission.save(update_fields=["api_token"])
+    return submission
+
+
+@pytest.mark.django_db
+def test_only_agent_rows_carry_an_approve_button(signed_in_mod, moderator, submitter):
+    """The button skips the review screen, so it is offered only where the
+    review already happened: a listing the moderator's own agent read."""
+    by_hand = _pending(submitter, title="Hand Typed")
+    by_agent = _from_agent(submitter, moderator, title="Scouted")
+
+    body = signed_in_mod.get(reverse("mod_queue")).content.decode()
+
+    assert reverse("mod_quick_approve", args=[by_agent.pk]) in body
+    assert reverse("mod_quick_approve", args=[by_hand.pk]) not in body
+    assert "x-data" not in body
+
+
+@pytest.mark.django_db
+def test_quick_approve_publishes_as_drafted_and_swaps_the_row(
+    signed_in_mod, moderator, submitter, django_capture_on_commit_callbacks
+):
+    submission = _from_agent(
+        submitter, moderator, prominence=Event.Prominence.BACKGROUND
+    )
+
+    with django_capture_on_commit_callbacks(execute=True):
+        response = signed_in_mod.post(
+            reverse("mod_quick_approve", args=[submission.pk]),
+            HTTP_HX_REQUEST="true",
+        )
+
+    assert response.status_code == 200
+    event = Event.objects.get()
+    assert event.status == Event.Status.PUBLISHED
+    assert event.prominence == Event.Prominence.BACKGROUND
+    assert Submission.objects.get().status == Submission.Status.APPROVED
+    assert ModerationAction.objects.filter(action="approved", event=event).exists()
+    assert len(mail.outbox) == 1
+
+    body = response.content.decode()
+    # The row comes back decided, not reloaded: a link to the live listing,
+    # no button, and the Queue badge riding along out of band.
+    assert body.lstrip().startswith("<li")
+    assert reverse("event_detail", args=[event.slug]) in body
+    assert reverse("mod_quick_approve", args=[submission.pk]) not in body
+    assert 'id="queue-review-count" hx-swap-oob="true"' in body
+
+
+@pytest.mark.django_db
+def test_quick_approve_without_htmx_falls_back_to_a_redirect(decide, moderator, submitter):
+    submission = _from_agent(submitter, moderator)
+
+    response = decide("mod_quick_approve", submission)
+
+    assert response.status_code == 302
+    assert response.url == reverse("mod_queue")
+    assert Event.objects.get().status == Event.Status.PUBLISHED
+
+
+@pytest.mark.django_db
+def test_quick_approve_refuses_a_listing_nobody_s_agent_sent(decide, submitter):
+    submission = _pending(submitter)
+
+    response = decide("mod_quick_approve", submission)
+
+    assert response.status_code == 400
+    assert Event.objects.get().status == Event.Status.PENDING
+    assert not ModerationAction.objects.filter(action="approved").exists()
+
+
+@pytest.mark.django_db
+def test_a_second_click_decides_nothing_twice(
+    signed_in_mod, moderator, submitter, django_capture_on_commit_callbacks
+):
+    """A button on a list gets double-clicked. The second POST must not write
+    a second audit row or mail the submitter again."""
+    submission = _from_agent(submitter, moderator)
+    url = reverse("mod_quick_approve", args=[submission.pk])
+
+    with django_capture_on_commit_callbacks(execute=True):
+        signed_in_mod.post(url, HTTP_HX_REQUEST="true")
+        response = signed_in_mod.post(url, HTTP_HX_REQUEST="true")
+
+    assert response.status_code == 200
+    assert ModerationAction.objects.filter(action="approved").count() == 1
+    assert len(mail.outbox) == 1
+    assert "already approved" in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_quick_approve_is_for_moderators_only(client, moderator, submitter):
+    submission = _from_agent(submitter, moderator)
+    client.force_login(submitter)
+
+    response = client.post(reverse("mod_quick_approve", args=[submission.pk]))
+
+    assert response.status_code == 403
+    assert Event.objects.get().status == Event.Status.PENDING
 
 
 # --- email content ----------------------------------------------------------

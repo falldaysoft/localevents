@@ -1,4 +1,5 @@
 import json
+from datetime import timedelta
 
 from django.conf import settings
 from django.http import HttpResponse, JsonResponse
@@ -21,6 +22,11 @@ def _group_by_day(events, now):
     it a list ordered by anything else would emit the same date twice, which
     is why the featured tier is removed before this is called.
 
+    Each day carries two buckets. `events` are the Listed cards; `quiet` are
+    the Quiet listings the front page folds under the day, which a theme may
+    render as "+3 more". A day with nothing but quiet listings still gets its
+    heading, or the fold would have nothing to hang from.
+
     The local day matters — an evening event in a timezone behind UTC belongs
     to the day the reader is living in, not the one the column stores.
     """
@@ -35,21 +41,35 @@ def _group_by_day(events, now):
                     "date": day,
                     "rel": "Today" if delta == 0 else "Tomorrow" if delta == 1 else "",
                     "events": [],
+                    "quiet": [],
                 }
             )
-        groups[-1]["events"].append(event)
+        bucket = "quiet" if event.prominence == Event.Prominence.QUIET else "events"
+        groups[-1][bucket].append(event)
+    for group in groups:
+        group["count"] = len(group["events"]) + len(group["quiet"])
     return groups
 
 
-def _listing(filters, now):
+def _listing(filters, now, quiet_horizon_days=None):
     """The listing half of a browse page, for any set of filters.
 
     Shared by the front page and the venue and category pages, so a landing
     page collapses series and splits tiers exactly as the front page does
     rather than growing a second, drifting query.
+
+    `quiet_horizon_days` is the front page's bargain with the Quiet tier:
+    given, Quiet listings further out than that are left off and the rest are
+    folded under their day; `None` means a reader asked a narrower question
+    (a venue, a category, a search) and Quiet listings are ordinary cards.
     """
     main_feed = list(filters.main_feed(now)[:120])
     programs = list(filters.programs(now)[:120])
+
+    until = None
+    if quiet_horizon_days is not None:
+        until = now + timedelta(days=quiet_horizon_days)
+    quiet = list(filters.quiet(now, until=until)[:120])
 
     # Split by tier so a theme can group the rest by date without a featured
     # listing appearing under a day heading weeks away. `main_feed` is ordered
@@ -57,25 +77,39 @@ def _listing(filters, now):
     featured = [e for e in main_feed if e.prominence == Event.Prominence.FEATURED]
     listed = [e for e in main_feed if e.prominence != Event.Prominence.FEATURED]
 
+    # Folded or not, a quiet listing sits under its own day. Merged by date
+    # with the listed run so `_group_by_day` sees one ordered walk; `sorted`
+    # is stable, so within a day the listed cards keep their order and the
+    # quiet ones follow.
+    by_day = sorted(listed + quiet, key=lambda e: e.next_start)
+
     return {
         "events": main_feed,
         "featured": featured,
-        "days": _group_by_day(listed, now),
+        "days": _group_by_day(by_day, now),
+        "quiet": quiet,
+        "quiet_folded": quiet_horizon_days is not None,
+        "quiet_horizon_days": quiet_horizon_days,
         "programs": programs,
         "program_count": len(programs),
-        "result_count": len(main_feed),
+        "result_count": len(main_feed) + len(quiet),
     }
 
 
 def _browse_context(request):
     filters = EventFilter.from_request(request)
+    site_config = SiteConfig.load()
+    # The horizon is the front page's rule. Any narrowing — a date range, a
+    # category, a search — is a reader asking a question, and the answer
+    # should not leave out a listing because it is quiet.
+    horizon = None if filters.is_active else site_config.quiet_horizon_days
     return {
-        **_listing(filters, timezone.now()),
+        **_listing(filters, timezone.now(), quiet_horizon_days=horizon),
         "filters": filters,
         "categories": Category.objects.filter(is_active=True),
         "venues": active_venues(),
         "when_choices": WHEN_CHOICES,
-        "site_config": SiteConfig.load(),
+        "site_config": site_config,
     }
 
 

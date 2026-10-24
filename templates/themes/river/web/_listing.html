@@ -55,13 +55,29 @@
             <path d="M0 6 C50 0 80 12 130 6 C180 0 210 12 260 6 C310 0 350 12 400 6"
                   fill="none" stroke="#C9DCE6" stroke-width="2" stroke-linecap="round"/>
         </svg>
-        <span class="le-day__count">{{ day.events|length }} event{{ day.events|length|pluralize }}</span>
+        <span class="le-day__count">{{ day.count }} event{{ day.count|pluralize }}</span>
     </div>
     <ul class="le-list">
         {% for event in day.events %}
             {% include "themes/river/web/_event_card.html" with event=event %}
         {% endfor %}
+        {% if day.quiet and not quiet_folded %}
+            {% for event in day.quiet %}
+                {% include "themes/river/web/_event_card.html" with event=event %}
+            {% endfor %}
+        {% endif %}
     </ul>
+    {% if day.quiet and quiet_folded %}
+        {# Quiet listings fold under their day on the front page; a venue or category page opens them out. #}
+        <details class="le-fold">
+            <summary>+{{ day.quiet|length }} more</summary>
+            <ul class="le-list le-list--quiet">
+                {% for event in day.quiet %}
+                    {% include "themes/river/web/_event_card.html" with event=event compact=True %}
+                {% endfor %}
+            </ul>
+        </details>
+    {% endif %}
 {% endfor %}
 
 {% if not featured and not days %}

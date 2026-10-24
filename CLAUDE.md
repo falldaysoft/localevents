@@ -162,10 +162,27 @@ rather than a regression.
 
 **Two orthogonal axes on `Event`.** `listing_type` (one-off vs series) controls
 *collapsing* — a weekly class must never emit 52 cards. `prominence`
-(featured/listed/background) controls *placement* and is set by a moderator.
-Conflating them is how a listing site turns into noise. Every public query goes
-through `Occurrence`, not `Event`: "what's on this weekend" is a question about
-dates. There is deliberately no concept of an online event.
+(featured/listed/quiet/background) controls *placement* and is set by a
+moderator. Conflating them is how a listing site turns into noise. Every
+public query goes through `Occurrence`, not `Event`: "what's on this weekend"
+is a question about dates. There is deliberately no concept of an online event.
+
+**Quiet is the tier for a listing that belongs on the site but not on the
+front page.** A busy instance hit the front page's 120-card cap with library
+talks and club meetings, and Background was the wrong home for them — it is
+title-ordered and dateless, built for standing weekly programs. A Quiet
+listing keeps its date and appears in full wherever a reader has asked a
+narrower question (a venue page, a category page, any active filter, the
+HTMX fragment included), and on the front page only within
+`SiteConfig.quiet_horizon_days`, folded under its day as "+3 more" in a
+`<details>`. `web.views._listing` takes the horizon as a parameter and only
+`index` passes one, so the venue and category pages cannot drift from the
+front page by accident. The horizon is applied in SQL inside `EventFilter.quiet`
+rather than by dropping rows after the slice. The values are integers sorted
+most-prominent-first, so adding the tier renumbered Listed and Featured;
+`events/migrations/0006` does that with one UPDATE and reverses cleanly.
+Promotion from Quiet goes straight to Listed — a promotion means "onto the
+front page", and Quiet is where a moderator *demotes* to.
 
 **Moderator decisions go through `moderation/services.py`, never a view.** Four
 things must move together — the event, the submission, the audit row, and the
@@ -280,6 +297,25 @@ created a venue the first would have reused. `set_occurrences` writes only the
 keys a row actually carries, which is what lets a refresh restate a page's
 dates without un-cancelling one a moderator cancelled.
 
+**`/moderate/events/` is where listings already on the site get re-tiered,
+taken down and put back.** The queue judges a submission once; this screen is
+for the hundred published listings a moderator wants to reclassify without
+opening each one. Every row carries the tier as a segmented control, the
+moderator's own "Interested" mark, and Unpublish / Duplicate / Republish, each
+an HTMX `hx-post` that swaps the row in place and falls back to a plain form
+POST. The services behind them (`set_tier`, `unpublish`, `republish`) each
+write a `ModerationAction`, because a quick button with no record is how "who
+took that down?" becomes a mystery; the interest toggle does not, since the
+`Interest` row already names the user and a log full of hearts would bury the
+decisions. Two `Event.Status` values exist for this — `UNPUBLISHED` and
+`DUPLICATE` — rather than reusing `REJECTED`, so the screen's Removed view
+can say why a listing is gone; both fall out of public view because every
+public query keys on `PUBLISHED`, and both are reversible. The list is read
+through `services.annotated_events`, not `EventFilter.apply`, because the
+filter drops anything without an upcoming date and this screen exists partly
+to find those. No mail is sent on unpublish, matching the edit form's status
+field, which has always unpublished silently.
+
 **The crowd nominates, a human decides.** The "Interested" count feeds a mod
 *Rising* queue and breaks ties within a prominence tier; it can never move an
 event between tiers. That is why anonymous interest with weak cookie/IP dedup
@@ -350,7 +386,12 @@ so on that path the agent stands where the submitter would, and the
 model's reading is still checked before a moderator sees it. `GET /api/` is
 the one view without a token, because a 401 is all an agent without one
 would otherwise learn; a test holds its field list equal to what the parser
-accepts. `dry_run` answers "is this already listed?" through
+accepts. Because the moderator owns the agent, the queue row for an
+agent's submission carries a one-click **Approve** (`quick_approve`, HTMX
+swaps the row in place) that publishes as drafted; a listing a stranger typed
+has no such button and the view refuses it, so the full review screen stays
+the only path for anything a moderator has not already vouched for.
+`dry_run` answers "is this already listed?" through
 `events.duplicates.find_duplicates`, which takes parts rather than an Event
 because saving a draft to ask would create a venue and queue its geocode.
 The agent-facing guide is `docs/API.md`.
@@ -379,7 +420,11 @@ next_start`, so grouping it directly would emit the same date twice and print
 a featured event under a day heading weeks from its own. `web.views` splits
 the tiers first and only day-groups the remainder — `_group_by_day` walks a
 single date-ordered run rather than building a lookup, which is correct only
-because that split has already happened. Prominence keeps controlling
+because that split has already happened. Each day carries two buckets,
+`events` and `quiet`, and a day holding only quiet listings still gets its
+heading, or the fold would have nothing to hang from. The fold is `.le-fold`,
+not `.le-more`: that class is the filter disclosure and positions its panel
+out of flow. Prominence keeps controlling
 placement, which is what it is documented to do. The day heading also owns the
 date, so the card underneath spends nothing repeating it: it carries a
 category-coloured spine instead, drawn as an inset pseudo-element because a

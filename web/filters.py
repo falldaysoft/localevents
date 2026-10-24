@@ -177,6 +177,18 @@ class EventFilter:
             "-prominence", "next_start"
         )
 
+    def quiet(self, now=None, until=None):
+        """Quiet listings, soonest first — optionally only those before `until`.
+
+        The horizon is applied here, in SQL, rather than by dropping rows after
+        the fact: the front page slices this list, and a slice taken before the
+        horizon would be full of events the horizon then threw away.
+        """
+        queryset = self.apply(Event.objects.quiet(), now)
+        if until is not None:
+            queryset = queryset.filter(next_start__lte=until)
+        return queryset.order_by("next_start")
+
     def programs(self, now=None):
         """Background listings — the regular weekly things.
 

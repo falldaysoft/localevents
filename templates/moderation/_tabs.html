@@ -2,9 +2,11 @@
     <a href="{% url 'mod_queue' %}"
        class="font-medium {% if section == 'queue' %}text-slate-900{% else %}text-slate-500 hover:text-slate-900{% endif %}">
         Queue
-        {% if queue_counts.review %}
-            <span class="ml-1 rounded-full bg-slate-900 px-2 py-0.5 text-xs text-white">{{ queue_counts.review }}</span>
-        {% endif %}
+        {% include "moderation/_queue_badge.html" %}
+    </a>
+    <a href="{% url 'mod_events' %}"
+       class="font-medium {% if section == 'events' %}text-slate-900{% else %}text-slate-500 hover:text-slate-900{% endif %}">
+        Events
     </a>
     <a href="{% url 'mod_rising' %}"
        class="font-medium {% if section == 'rising' %}text-slate-900{% else %}text-slate-500 hover:text-slate-900{% endif %}">

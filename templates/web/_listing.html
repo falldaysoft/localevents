@@ -1,11 +1,30 @@
 {# The listings under a browse page: the front page, a venue, a category.  #}
 {# `empty_title` lets each say what "nothing here" means for it.           #}
-{% if events %}
+{% if events or quiet %}
     <ul class="space-y-3">
         {% for event in events %}
             {% include "web/_event_card.html" with event=event %}
         {% endfor %}
+        {% if quiet and not quiet_folded %}
+            {# A reader asked a narrower question, so quiet listings are ordinary cards. #}
+            {% for event in quiet %}
+                {% include "web/_event_card.html" with event=event %}
+            {% endfor %}
+        {% endif %}
     </ul>
+    {% if quiet and quiet_folded %}
+        {# The front page's bargain with the Quiet tier: soon, and folded. #}
+        <details class="le-fold card mt-3 text-sm text-slate-600">
+            <summary class="cursor-pointer font-medium">
+                {{ quiet|length }} more low-key listing{{ quiet|length|pluralize }} in the next {{ quiet_horizon_days }} days
+            </summary>
+            <ul class="mt-3 space-y-3">
+                {% for event in quiet %}
+                    {% include "web/_event_card.html" with event=event compact=True %}
+                {% endfor %}
+            </ul>
+        </details>
+    {% endif %}
 {% else %}
     <div class="card text-center text-slate-600">
         <p class="font-medium">{{ empty_title|default:"Nothing matches that yet." }}</p>

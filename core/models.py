@@ -68,6 +68,15 @@ class SiteConfig(SingletonModel):
             "every visitor immediately; it does not touch any listing."
         ),
     )
+    quiet_horizon_days = models.PositiveSmallIntegerField(
+        default=14,
+        verbose_name="quiet listings horizon (days)",
+        help_text=(
+            "How far ahead the front page shows Quiet listings, folded under "
+            "their day. Beyond this they appear only on venue, category and "
+            "search pages. Featured and Listed events are not affected."
+        ),
+    )
     script_hosts = models.TextField(
         blank=True,
         verbose_name="script hosts to allow",

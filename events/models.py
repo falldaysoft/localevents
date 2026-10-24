@@ -378,9 +378,16 @@ class EventQuerySet(models.QuerySet):
 
         Background listings — the regular weekly programs — are reachable by
         filter and in their own section, but they do not compete with a one-off
-        concert for the front page.
+        concert for the front page. Quiet listings are the same bargain for
+        one-off events: `quiet()` serves them, and the front page decides how
+        many days ahead it is willing to show.
         """
-        return self.published().exclude(prominence=Event.Prominence.BACKGROUND)
+        return self.published().filter(
+            prominence__in=[Event.Prominence.LISTED, Event.Prominence.FEATURED]
+        )
+
+    def quiet(self):
+        return self.published().filter(prominence=Event.Prominence.QUIET)
 
     def programs(self):
         return self.published().filter(prominence=Event.Prominence.BACKGROUND)
@@ -423,11 +430,19 @@ class Event(models.Model):
         """How much room this gets. Set by a moderator, never by a submitter.
 
         Ordered so that a plain descending sort puts the most prominent first.
+
+        Quiet is for the listing that belongs on the site but not on the
+        front page: a library talk, a club's monthly meeting. It appears in
+        full wherever a reader has asked a narrower question — a venue page,
+        a category, a search — and on the front page only once it is close,
+        folded under the day. Without it, every such listing is either Listed
+        and crowding the page, or Background and stripped of its date.
         """
 
         BACKGROUND = 1, "Background — regular program"
-        LISTED = 2, "Listed — appears in the main feed"
-        FEATURED = 3, "Featured — highlighted"
+        QUIET = 2, "Quiet — on the front page only when it's soon"
+        LISTED = 3, "Listed — appears in the main feed"
+        FEATURED = 4, "Featured — highlighted"
 
     class Status(models.TextChoices):
         DRAFT = "draft", "Draft"
@@ -435,6 +450,12 @@ class Event(models.Model):
         PUBLISHED = "published", "Published"
         REJECTED = "rejected", "Rejected"
         EXPIRED = "expired", "Expired"
+        # Taken down after publication, from the moderators' events screen.
+        # Two values rather than one because "why is this gone" is the first
+        # question anyone asks, and a duplicate is the usual answer. Both are
+        # reversible: republishing puts the same row back.
+        UNPUBLISHED = "unpublished", "Unpublished"
+        DUPLICATE = "duplicate", "Duplicate"
 
     class Source(models.TextChoices):
         SUBMISSION = "submission", "Submitted"

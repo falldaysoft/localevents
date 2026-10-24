@@ -4,11 +4,13 @@ from . import views
 
 urlpatterns = [
     path("", views.queue, name="mod_queue"),
+    path("events/", views.events, name="mod_events"),
     path("rising/", views.rising, name="mod_rising"),
     path("log/", views.audit, name="mod_audit"),
     path("<int:pk>/", views.submission_detail, name="mod_submission"),
     path("<int:pk>/assign/", views.assign, name="mod_assign"),
     path("<int:pk>/approve/", views.approve, name="mod_approve"),
+    path("<int:pk>/approve/quick/", views.quick_approve, name="mod_quick_approve"),
     path("<int:pk>/reject/", views.reject, name="mod_reject"),
     path("<int:pk>/ask/", views.request_info, name="mod_request_info"),
     path("promote/<int:pk>/", views.promote, name="mod_promote"),
@@ -16,6 +18,10 @@ urlpatterns = [
     # Namespaced under event/ so it never collides with the bare <int:pk>
     # submission route above, which it would otherwise shadow.
     path("event/<int:pk>/edit/", views.event_edit, name="mod_event_edit"),
+    path("event/<int:pk>/tier/", views.event_tier, name="mod_event_tier"),
+    path("event/<int:pk>/unpublish/", views.event_unpublish, name="mod_event_unpublish"),
+    path("event/<int:pk>/republish/", views.event_republish, name="mod_event_republish"),
+    path("event/<int:pk>/interest/", views.event_interest, name="mod_event_interest"),
     path("event/<int:pk>/dates/", views.event_dates, name="mod_event_dates"),
     path("event/<int:pk>/refresh/", views.event_refresh, name="mod_event_refresh"),
     path(

@@ -8,6 +8,7 @@ backlog should never have to open a second tab to find out what a page said.
 
 from django.contrib import messages
 from django.db import transaction
+from django.http import HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
@@ -165,6 +166,50 @@ def approve(request, pk):
 
 @moderator_required
 @require_POST
+def quick_approve(request, pk):
+    """Approve an agent's submission from its queue row.
+
+    Under HTMX the response is the row itself, re-rendered in its decided
+    state, and the Queue tab's badge rides along out of band so the count a
+    moderator is working down keeps moving. Without HTMX it is the ordinary
+    redirect-with-message, so the button still works as a plain form.
+    """
+    submission = get_object_or_404(
+        Submission.objects.select_related(
+            "submitted_by", "assigned_to", "api_token", "event", "event__venue"
+        ),
+        pk=pk,
+    )
+    error = ""
+    try:
+        services.quick_approve(submission, request.user)
+    except services.NotQuickApprovable as exc:
+        return HttpResponseBadRequest(str(exc))
+    except (services.AlreadyDecided, services.NothingToApprove) as exc:
+        error = str(exc)
+
+    if not request.headers.get("HX-Request"):
+        if error:
+            messages.error(request, error)
+        else:
+            messages.success(request, f"“{submission.event.title}” is live.")
+        return redirect("mod_queue")
+
+    submission.duplicate_count = 0
+    return render(
+        request,
+        "moderation/_queue_row.html",
+        {
+            "submission": submission,
+            "row_error": error,
+            "queue_counts": services.queue_counts(request.user),
+            "swap_badge": True,
+        },
+    )
+
+
+@moderator_required
+@require_POST
 def reject(request, pk):
     submission = get_object_or_404(
         Submission.objects.select_related("event"), pk=pk
@@ -193,6 +238,127 @@ def request_info(request, pk):
     services.request_info(submission, request.user, body=form.cleaned_data["body"])
     messages.success(request, "Asked. It's back with the submitter now.")
     return redirect("mod_queue")
+
+
+@moderator_required
+def events(request):
+    """Every listing on one screen, with the quick decisions on each row.
+
+    The filter state lives in the URL, as on the public browse page, so a view
+    a moderator has narrowed to "quiet, upcoming, library" survives a reload
+    and can be handed to a colleague. HTMX re-renders only the list.
+    """
+    from events.models import Event
+
+    view = request.GET.get("view", "upcoming")
+    if view not in services.EVENT_VIEWS:
+        view = "upcoming"
+    sort = request.GET.get("sort", "date")
+    if sort not in services.EVENT_SORTS:
+        sort = "date"
+    tier = None
+    try:
+        tier = Event.Prominence(int(request.GET.get("tier", "")))
+    except ValueError:
+        pass
+    query = request.GET.get("q", "").strip()[:200]
+
+    rows = services.event_list(
+        request.user, view=view, tier=tier, query=query, sort=sort
+    )
+    total = rows.count()
+    context = _chrome(
+        request,
+        events=rows[: services.EVENT_LIST_CAP],
+        total=total,
+        cap=services.EVENT_LIST_CAP,
+        view=view,
+        views=services.EVENT_VIEWS,
+        sort=sort,
+        sorts=services.EVENT_SORTS,
+        tier=tier,
+        tiers=services.TIER_BUTTONS,
+        query=query,
+    )
+    if request.headers.get("HX-Request"):
+        return render(request, "moderation/events.html#results", context)
+    return render(request, "moderation/events.html", context)
+
+
+def _event_row_response(request, event, note=""):
+    """After a row action: the row itself under HTMX, otherwise back to the list.
+
+    The row is re-fetched through `annotated_events` so it comes back with the
+    same dates and interest flag the list gave it — a row that lost its date
+    after one click would read as the click having broken something.
+    """
+    if not request.headers.get("HX-Request"):
+        if note:
+            messages.success(request, note)
+        return redirect("mod_events")
+
+    row = services.annotated_events(request.user).get(pk=event.pk)
+    return render(
+        request,
+        "moderation/_event_row.html",
+        {"event": row, "tiers": services.TIER_BUTTONS},
+    )
+
+
+@moderator_required
+@require_POST
+def event_tier(request, pk):
+    from events.models import Event
+
+    event = get_object_or_404(Event, pk=pk)
+    try:
+        tier = Event.Prominence(int(request.POST.get("tier", "")))
+    except ValueError:
+        return HttpResponseBadRequest("Choose a tier.")
+    services.set_tier(event, request.user, tier)
+    return _event_row_response(
+        request, event, f"“{event.title}” is now {event.get_prominence_display()}."
+    )
+
+
+@moderator_required
+@require_POST
+def event_unpublish(request, pk):
+    from events.models import Event
+
+    event = get_object_or_404(Event, pk=pk)
+    duplicate = request.POST.get("duplicate") == "1"
+    services.unpublish(event, request.user, duplicate=duplicate)
+    return _event_row_response(
+        request,
+        event,
+        f"“{event.title}” is off the site"
+        + (" as a duplicate." if duplicate else "."),
+    )
+
+
+@moderator_required
+@require_POST
+def event_republish(request, pk):
+    from events.models import Event
+
+    event = get_object_or_404(Event, pk=pk)
+    services.republish(event, request.user)
+    return _event_row_response(request, event, f"“{event.title}” is back on the site.")
+
+
+@moderator_required
+@require_POST
+def event_interest(request, pk):
+    from events.models import Event
+
+    event = get_object_or_404(Event, pk=pk)
+    now_interested = services.toggle_interest(event, request.user)
+    return _event_row_response(
+        request,
+        event,
+        "Marked as interested." if now_interested else "Interest withdrawn.",
+    )
 
 
 @moderator_required

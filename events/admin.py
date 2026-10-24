@@ -144,7 +144,10 @@ class EventAdmin(admin.ModelAdmin):
             return format_html('<span style="color:#999">—</span>')
         return occurrence.start.strftime("%Y-%m-%d %H:%M")
 
-    actions = ["publish", "feature", "send_to_background", "refresh_from_source"]
+    actions = [
+        "publish", "feature", "send_to_quiet", "send_to_background",
+        "refresh_from_source",
+    ]
 
     @admin.action(description="Read the source page again")
     def refresh_from_source(self, request, queryset):
@@ -192,6 +195,11 @@ class EventAdmin(admin.ModelAdmin):
     def feature(self, request, queryset):
         updated = queryset.update(prominence=Event.Prominence.FEATURED)
         self.message_user(request, f"{updated} event(s) featured.")
+
+    @admin.action(description="Move selected events to Quiet")
+    def send_to_quiet(self, request, queryset):
+        updated = queryset.update(prominence=Event.Prominence.QUIET)
+        self.message_user(request, f"{updated} event(s) moved to Quiet.")
 
     @admin.action(description="Move selected events to Background (programs)")
     def send_to_background(self, request, queryset):

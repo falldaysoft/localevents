@@ -22,6 +22,7 @@ Last updated after the multi-day work that followed Phase 4.
 | pages and media (small CMS) | done | this commit |
 | search indexing: robots, sitemap, venue/category pages | done | this commit |
 | agent submission API (`/api/`, moderator tokens) | done | this commit |
+| Quiet tier + front-page horizon; moderator All-events screen; one-click Approve | done | this commit |
 | 5 — feed importers | **next** | |
 | 6 — outbound feeds (ICS/RSS/JSON) | not started | |
 | 7 — interest button (Rising itself is done) | not started | |
