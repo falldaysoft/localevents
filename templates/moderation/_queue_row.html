@@ -47,12 +47,21 @@
             {% if submission.api_token_id and submission.status == 'pending_review' and submission.event %}
                 {# A moderator's own agent read the page, so the review already   #}
                 {# happened; a stranger's listing still goes through the full screen. #}
+                {# The one call left is the tier, so the buttons are the tiers: pressing one publishes there. #}
                 <form method="post" action="{% url 'mod_quick_approve' submission.pk %}"
                       hx-post="{% url 'mod_quick_approve' submission.pk %}"
                       hx-target="closest li" hx-swap="outerHTML" hx-disabled-elt="find button"
-                      class="mt-1">
+                      class="mt-1 flex items-center gap-1.5">
                     {% csrf_token %}
-                    <button type="submit" class="btn-primary !px-3 !py-1">Approve</button>
+                    <span class="text-xs text-slate-500">Approve as</span>
+                    <span class="inline-flex overflow-hidden rounded-lg border border-slate-300 text-xs">
+                        {% for value, short, label in tiers %}
+                            <button type="submit" name="tier" value="{{ value }}" title="{{ label }}"
+                                    class="px-2 py-1 {% if submission.event.prominence == value %}bg-slate-900 text-white hover:bg-slate-700{% else %}hover:bg-slate-100{% endif %}">
+                                {{ short }}
+                            </button>
+                        {% endfor %}
+                    </span>
                 </form>
             {% endif %}
         </div>

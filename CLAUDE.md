@@ -388,7 +388,8 @@ the one view without a token, because a 401 is all an agent without one
 would otherwise learn; a test holds its field list equal to what the parser
 accepts. Because the moderator owns the agent, the queue row for an
 agent's submission carries a one-click **Approve** (`quick_approve`, HTMX
-swaps the row in place) that publishes as drafted; a listing a stranger typed
+swaps the row in place) whose buttons are the tiers — pressing Quiet
+publishes as Quiet, and everything else stays as drafted; a listing a stranger typed
 has no such button and the view refuses it, so the full review screen stays
 the only path for anything a moderator has not already vouched for.
 `dry_run` answers "is this already listed?" through

@@ -640,6 +640,35 @@ def test_quick_approve_publishes_as_drafted_and_swaps_the_row(
 
 
 @pytest.mark.django_db
+def test_the_row_offers_every_tier_and_the_press_decides_it(
+    signed_in_mod, moderator, submitter
+):
+    """The one editorial call on approval is the tier, so the row's buttons
+    *are* the tiers — pressing Quiet publishes as Quiet, whatever was drafted."""
+    submission = _from_agent(submitter, moderator)
+    body = signed_in_mod.get(reverse("mod_queue")).content.decode()
+    for value, short, _ in services.TIER_BUTTONS:
+        assert f'name="tier" value="{value}"' in body and short in body
+
+    signed_in_mod.post(
+        reverse("mod_quick_approve", args=[submission.pk]),
+        {"tier": Event.Prominence.QUIET},
+        HTTP_HX_REQUEST="true",
+    )
+    event = Event.objects.get()
+    assert event.status == Event.Status.PUBLISHED
+    assert event.prominence == Event.Prominence.QUIET
+
+
+@pytest.mark.django_db
+def test_quick_approve_refuses_a_tier_that_does_not_exist(decide, moderator, submitter):
+    submission = _from_agent(submitter, moderator)
+    response = decide("mod_quick_approve", submission, {"tier": "9"})
+    assert response.status_code == 400
+    assert Event.objects.get().status == Event.Status.PENDING
+
+
+@pytest.mark.django_db
 def test_quick_approve_without_htmx_falls_back_to_a_redirect(decide, moderator, submitter):
     submission = _from_agent(submitter, moderator)
 

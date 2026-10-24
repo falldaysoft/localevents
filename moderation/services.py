@@ -110,12 +110,14 @@ class AlreadyDecided(Exception):
     """
 
 
-def quick_approve(submission, moderator):
-    """Publish an agent's submission as drafted, with no form in between.
+def quick_approve(submission, moderator, tier=None):
+    """Publish an agent's submission from its queue row, with no form between.
 
-    The event keeps the prominence, listing type and categories it already
-    carries — the queue row has nowhere to ask for them, and the full screen is
-    one click away for anything that needs a different answer.
+    The one editorial call a moderator makes on approval is the tier, so the
+    row offers that and nothing else: `tier` is the button they pressed, or
+    the drafted prominence when the row has no picker. Listing type and
+    categories stay as drafted — the full screen is one click away for
+    anything that needs a different answer.
     """
     if submission.api_token_id is None:
         raise NotQuickApprovable(
@@ -131,7 +133,7 @@ def quick_approve(submission, moderator):
     return approve(
         submission,
         moderator,
-        prominence=event.prominence,
+        prominence=Event.Prominence(tier) if tier is not None else event.prominence,
         listing_type=event.listing_type,
     )
 

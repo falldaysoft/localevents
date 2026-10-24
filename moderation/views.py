@@ -55,6 +55,7 @@ def queue(request):
             submissions=_with_duplicate_counts(
                 services.queue_for(view, request.user)[:200]
             ),
+            tiers=services.TIER_BUTTONS,
         ),
     )
 
@@ -180,9 +181,18 @@ def quick_approve(request, pk):
         ),
         pk=pk,
     )
+    from events.models import Event
+
+    tier = None
+    if request.POST.get("tier"):
+        try:
+            tier = Event.Prominence(int(request.POST["tier"]))
+        except ValueError:
+            return HttpResponseBadRequest("Choose a tier.")
+
     error = ""
     try:
-        services.quick_approve(submission, request.user)
+        services.quick_approve(submission, request.user, tier=tier)
     except services.NotQuickApprovable as exc:
         return HttpResponseBadRequest(str(exc))
     except (services.AlreadyDecided, services.NothingToApprove) as exc:
@@ -204,6 +214,7 @@ def quick_approve(request, pk):
             "row_error": error,
             "queue_counts": services.queue_counts(request.user),
             "swap_badge": True,
+            "tiers": services.TIER_BUTTONS,
         },
     )
 
