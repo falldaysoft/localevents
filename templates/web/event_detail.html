@@ -38,6 +38,12 @@
                 {% if event.summary %}
                     <p class="mt-2 text-lg text-slate-600">{{ event.summary }}</p>
                 {% endif %}
+                {% comment %}
+                    Under the title rather than in the aside with Tickets: a
+                    reader decides whether they care before they decide whether
+                    to buy, and "Interested" is the first of those.
+                {% endcomment %}
+                <div class="mt-3">{% include "web/_interest_button.html" with full=True %}</div>
             </header>
 
             <div class="mt-4 flex flex-wrap gap-1.5">

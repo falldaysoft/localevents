@@ -46,6 +46,11 @@ class EventFilter:
     venue: str = ""
     query: str = ""
     include_programs: bool = False
+    # Never parsed from a request: "My events" builds a filter over the ids a
+    # viewer has marked so that page collapses series and splits tiers exactly
+    # as the front page does. None means no restriction; an empty set means
+    # nothing, which is what a viewer with no marks should see.
+    ids: set | None = None
 
     @classmethod
     def from_request(cls, request):
@@ -134,6 +139,8 @@ class EventFilter:
         """
         now = now or timezone.now()
 
+        if self.ids is not None:
+            queryset = queryset.filter(pk__in=self.ids)
         if self.categories:
             queryset = queryset.filter(categories__slug__in=self.categories)
         if self.free_only:

@@ -712,7 +712,7 @@ class Interest(models.Model):
     fingerprint = models.CharField(
         max_length=64,
         blank=True,
-        help_text="Hash of a per-visitor cookie id and IP, for anonymous marks.",
+        help_text="HMAC of the visitor cookie's id, for anonymous marks. Never the IP: see events.interest.",
     )
     created_at = models.DateTimeField(auto_now_add=True)
 

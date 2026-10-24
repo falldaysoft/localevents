@@ -55,6 +55,12 @@ TILE_ATTRIBUTION = os.environ.get(
     '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
 )
 
+# How many "Interested" toggles one address may make in an hour. A nuisance
+# cap against scanners that submit every form they see, not a security
+# control — see events.interest. A hall full of people on one Wi-Fi is the
+# honest ceiling to size it to.
+INTEREST_TOGGLES_PER_HOUR = int(os.environ.get("INTEREST_TOGGLES_PER_HOUR", "120"))
+
 # Identifies us to Nominatim and to sites we fetch for enrichment. Their usage
 # policies require a contactable UA, so this is not merely cosmetic.
 USER_AGENT = os.environ.get("USER_AGENT", f"{SITE_NAME} bot ({CONTACT_EMAIL})")
@@ -135,6 +141,7 @@ TEMPLATES = [
                 "core.context_processors.theme",
                 "accounts.context_processors.claim",
                 "content.context_processors.footer_pages",
+                "web.context_processors.viewer",
             ],
         },
     },

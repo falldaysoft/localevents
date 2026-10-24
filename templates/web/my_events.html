@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% load themes %}
+
+{% block title %}My events — {{ SITE_NAME }}{% endblock %}
+{% block description %}What you have marked on {{ SITE_NAME }}, and what you have sent in.{% endblock %}
+
+{% block head %}
+    {# Personal to the viewer; nothing here is for an index. #}
+    <meta name="robots" content="noindex">
+{% endblock %}
+
+{% block content %}
+    <header class="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div>
+            <h1 class="text-3xl font-semibold tracking-tight">My events</h1>
+            <p class="mt-1 text-slate-600">
+                {% if user.is_authenticated %}What you've marked, and what you've sent in.{% else %}What you've marked.{% endif %}
+            </p>
+        </div>
+        {% if user.is_authenticated %}
+            <a href="{% url 'submit' %}" class="btn-primary">Add an event</a>
+        {% endif %}
+    </header>
+
+    {% if not user.is_authenticated %}
+        <div class="card mb-6 text-sm text-slate-600">
+            Your marks are remembered on this device.
+            <a href="{% url 'account_login' %}?next={% url 'my_events' %}" class="underline hover:text-slate-900">Sign in</a>
+            to keep them on every device you use.
+        </div>
+    {% endif %}
+
+    <section id="marked">
+        <h2 class="text-xl font-semibold tracking-tight">Marked</h2>
+        <p class="mb-4 mt-1 text-sm text-slate-500">
+            {% if result_count or program_count %}
+                {{ result_count }} coming up{% if program_count %} &middot; {{ program_count }} regular program{{ program_count|pluralize }}{% endif %}
+            {% else %}
+                Press <span aria-hidden="true">&#9734;</span> on any event to keep it here.
+            {% endif %}
+        </p>
+        {% theme_include "web/_listing.html" %}
+
+        {% if past %}
+            <h3 class="mt-8 text-sm font-semibold uppercase tracking-wide text-slate-500">Already happened</h3>
+            <ul class="mt-2 space-y-1 text-sm">
+                {% for event in past %}
+                    <li><a href="{% url 'event_detail' event.slug %}" class="underline hover:text-slate-900">{{ event.title }}</a></li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    </section>
+
+    {% if user.is_authenticated %}
+        <section id="submitted" class="mt-12">
+            <h2 class="text-xl font-semibold tracking-tight">Submitted</h2>
+            <p class="mt-1 text-sm text-slate-500">Everything you have sent in, and where it got to.</p>
+            {% include "submissions/_mine_list.html" %}
+        </section>
+    {% endif %}
+{% endblock %}

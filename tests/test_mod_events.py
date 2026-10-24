@@ -175,13 +175,13 @@ def test_interest_is_a_toggle_on_the_moderators_own_mark(signed_in_mod, moderato
     concert.refresh_from_db()
     assert concert.interest_count == 1
     assert Interest.objects.get(event=concert).user == moderator
-    assert "&#9829; 1" in body
+    assert "&#9733; 1" in body
 
     signed_in_mod.post(url, **HX)
     concert.refresh_from_db()
     assert concert.interest_count == 0
     assert not Interest.objects.exists()
-    # A heart is not a decision: nothing in the log.
+    # A star is not a decision: nothing in the log.
     assert not ModerationAction.objects.exists()
 
 

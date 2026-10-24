@@ -122,3 +122,71 @@ def set_occurrences(event, rows, keep_before=None):
             start=row["start"],
             defaults={key: value for key, value in row.items() if key != "start"},
         )
+
+
+# ---------------------------------------------------------------------------
+# Interest
+# ---------------------------------------------------------------------------
+
+
+def toggle_interest(event, *, user=None, fingerprint=None):
+    """One person's "Interested" mark on one event — on or off.
+
+    The same signal whoever gives it: a reader on the event page, an anonymous
+    visitor identified by their cookie, or a moderator from the events screen.
+    It buys the same thing in every case — a tie-break within a tier and a
+    shot at the Rising queue once `MIN_INTEREST_TO_RISE` others agree — and it
+    is not an audit event, because the row already names who gave it.
+
+    Exactly one of `user` and `fingerprint` identifies the person. Returns
+    whether they are now interested.
+    """
+    from django.db import IntegrityError, transaction
+
+    from events.models import Interest
+
+    if (user is None) == (fingerprint is None):
+        raise ValueError("Identify the person by user or by fingerprint, not both.")
+
+    if user is not None:
+        rows = Interest.objects.filter(event=event, user=user)
+        fields = {"user": user}
+    else:
+        rows = Interest.objects.filter(
+            event=event, user__isnull=True, fingerprint=fingerprint
+        )
+        fields = {"fingerprint": fingerprint}
+
+    existing = rows.first()
+    if existing is not None:
+        existing.delete()
+        return False
+    try:
+        with transaction.atomic():
+            Interest.objects.create(event=event, **fields)
+    except IntegrityError:
+        # Two clicks landed together and the other one won. The person is
+        # interested, which is what they asked for either way.
+        pass
+    return True
+
+
+def merge_anonymous_interest(user, fingerprint):
+    """Hand a device's anonymous marks to the account that just signed in.
+
+    Re-pointed with an UPDATE rather than through `save()`, which would count
+    each mark a second time. Where the account already holds a mark on an
+    event the device also marked, the anonymous twin is deleted through the
+    model so the count comes down by the one it is losing.
+    """
+    from events.models import Interest
+
+    if not fingerprint:
+        return
+    anonymous = Interest.objects.filter(user__isnull=True, fingerprint=fingerprint)
+    already = set(
+        Interest.objects.filter(user=user).values_list("event_id", flat=True)
+    )
+    for twin in anonymous.filter(event_id__in=already):
+        twin.delete()
+    anonymous.update(user=user, fingerprint="")

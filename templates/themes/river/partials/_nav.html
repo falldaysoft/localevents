@@ -10,9 +10,11 @@
         <span class="le-nav__links">
             {% if user.is_authenticated %}
                 {% if user.is_moderator %}<a href="{% url 'mod_queue' %}">Moderate</a>{% endif %}
+                <a href="{% url 'my_events' %}">My events</a>
                 <a href="{% url 'profile' %}">{{ user.display_name }}</a>
                 <a href="{% url 'submit' %}" class="le-btn">Add an event</a>
             {% else %}
+                {% if HAS_VISITOR_COOKIE %}<a href="{% url 'my_events' %}">My events</a>{% endif %}
                 <a href="{% url 'account_login' %}">Sign in</a>
                 {# Signed out, the CTA is the same promise; signing up is just #}
                 {# the first step of it, and 'submit' would bounce here anyway. #}

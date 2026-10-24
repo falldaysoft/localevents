@@ -38,6 +38,7 @@
             <header>
                 <h1>{{ event.title }}</h1>
                 {% if event.summary %}<p class="le-detail__lede">{{ event.summary }}</p>{% endif %}
+                <div style="margin-top:14px">{% include "themes/river/web/_interest_button.html" with full=True %}</div>
             </header>
 
             <div class="le-cats" style="margin-top:16px">

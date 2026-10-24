@@ -1,0 +1,14 @@
+{# River's star — same form, the theme's own chip. See web/_interest_button. #}
+{% if interested or event.pk in interested_ids %}{% firstof 1 as on %}{% endif %}
+<form method="post" action="{% url 'event_interest' event.slug %}"
+      hx-post="{% url 'event_interest' event.slug %}" hx-swap="outerHTML"
+      class="le-interest">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ next_url|default:request.get_full_path }}">
+    <button type="submit" aria-pressed="{% if on %}true{% else %}false{% endif %}"
+            title="{% if on %}Stop following this event{% else %}Mark yourself interested{% endif %}">
+        <span aria-hidden="true">{% if on %}&#9733;{% else %}&#9734;{% endif %}</span>
+        {% if full %}<span>{% if on %}Interested{% else %}I&rsquo;m interested{% endif %}</span>{% endif %}
+        {% if event.interest_count %}<span>{{ event.interest_count }}</span>{% endif %}
+    </button>
+</form>

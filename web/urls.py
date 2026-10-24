@@ -8,6 +8,8 @@ from .sitemaps import SITEMAPS
 urlpatterns = [
     path("", views.index, name="index"),
     path("events/<slug:slug>/", views.event_detail, name="event_detail"),
+    path("events/<slug:slug>/interest/", views.event_interest, name="event_interest"),
+    path("mine/", views.my_events, name="my_events"),
     path("events.rss", LatestEventsFeed(), name="events_rss"),
     path("events.geojson", views.events_geojson, name="events_geojson"),
     path("venues/", views.venue_list, name="venue_list"),

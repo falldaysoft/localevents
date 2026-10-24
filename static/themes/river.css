@@ -1193,3 +1193,74 @@
     transform: none;
   }
 }
+
+/* ── Interested ────────────────────────────────────────────────────────── */
+
+/* The reader's star, on cards and the event page: interest, not affection,
+   so the glyph is ☆/★ and a pressed star goes peach like the featured
+   kicker rather than red like "On now". --deep-2 on --peach measures 7.4. */
+[data-theme="river"] .le-interest {
+  display: inline-flex;
+}
+
+[data-theme="river"] .le-interest button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 12.5px;
+  line-height: 1.35;
+  padding: 4px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--sand-2);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+[data-theme="river"] .le-interest button:hover {
+  background: var(--sand-3);
+  color: var(--ink);
+}
+
+[data-theme="river"] .le-interest button[aria-pressed="true"] {
+  background: var(--peach);
+  color: var(--deep-2);
+}
+
+/* The whole card is the title link's ::after overlay; a button under that
+   overlay cannot be tapped. Lifting the star into its own layer above it is
+   what lets it be the one control a card carries. */
+[data-theme="river"] .le-row .le-interest,
+[data-theme="river"] .le-feature .le-interest {
+  position: relative;
+  z-index: 1;
+}
+
+[data-theme="river"] .le-feature__interest {
+  margin-top: 14px;
+}
+
+[data-theme="river"] .le-feature .le-interest button {
+  background: rgba(255, 255, 255, 0.17);
+  color: #fff;
+}
+
+[data-theme="river"] .le-feature .le-interest button:hover {
+  background: rgba(255, 255, 255, 0.3);
+  color: #fff;
+}
+
+[data-theme="river"] .le-feature .le-interest button[aria-pressed="true"] {
+  background: var(--peach);
+  color: var(--deep-2);
+}
+
+[data-theme="river"] .le-section__title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 22px;
+  letter-spacing: -0.025em;
+  color: var(--deep);
+}

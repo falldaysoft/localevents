@@ -15,6 +15,7 @@
                 {% if user.is_moderator %}
                     <a href="{% url 'mod_queue' %}" class="text-slate-600 hover:text-slate-900">Moderate</a>
                 {% endif %}
+                <a href="{% url 'my_events' %}" class="text-slate-600 hover:text-slate-900">My events</a>
                 {# Not hidden on small screens like the links either side of it: #}
                 {# this is the only route to passwords, passkeys and email, and  #}
                 {# a phone is where someone is most likely to go looking.        #}
@@ -24,6 +25,11 @@
                 <a href="{% url 'profile' %}" class="text-slate-600 hover:text-slate-900">{{ user.display_name }}</a>
                 <a href="{% url 'submit' %}" class="btn-primary">Add an event</a>
             {% else %}
+                {# Only once this browser has marked something: an empty page #}
+                {# is no welcome. The cookie is set on the first star.         #}
+                {% if HAS_VISITOR_COOKIE %}
+                    <a href="{% url 'my_events' %}" class="text-slate-600 hover:text-slate-900">My events</a>
+                {% endif %}
                 <a href="{% url 'account_login' %}" class="text-slate-600 hover:text-slate-900">Sign in</a>
                 {# Signed out, the CTA is the same promise; signing up is just #}
                 {# the first step of it, and 'submit' would bounce here anyway. #}

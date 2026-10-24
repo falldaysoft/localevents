@@ -697,7 +697,7 @@ def test_a_manual_submission_is_not_shown_as_untitled(signed_in, submitter):
     submission.refresh_from_db()
     assert submission.display_title == "Riverside Community Barbecue"
 
-    body = signed_in.get(reverse("my_submissions")).content.decode()
+    body = signed_in.get(reverse("my_submissions"), follow=True).content.decode()
     assert "Riverside Community Barbecue" in body
     assert "Untitled" not in body
 

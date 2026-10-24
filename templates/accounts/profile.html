@@ -114,10 +114,10 @@
         <ul class="mt-4 divide-y divide-slate-100 text-sm">
             <li class="flex items-center justify-between gap-4 py-3">
                 <div>
-                    <p class="font-medium">Your events</p>
-                    <p class="mt-0.5 text-slate-500">Everything you have submitted, and where it got to.</p>
+                    <p class="font-medium">My events</p>
+                    <p class="mt-0.5 text-slate-500">What you have marked, and what you have submitted.</p>
                 </div>
-                <a href="{% url 'my_submissions' %}" class="btn-secondary shrink-0">View</a>
+                <a href="{% url 'my_events' %}" class="btn-secondary shrink-0">View</a>
             </li>
             {% if user.is_moderator %}
                 <li class="flex items-center justify-between gap-4 py-3">

@@ -305,9 +305,11 @@ def submission_status_fragment(request, pk):
 
 @login_required
 def my_submissions(request):
-    submissions = Submission.objects.filter(submitted_by=request.user)
-    return render(
-        request,
-        "submissions/mine.html",
-        {"submissions": submissions, "site_config": SiteConfig.load()},
-    )
+    """Kept because it was handed out — in mail, and on every submission page.
+
+    The list itself lives on "My events" now, beside what the person has
+    marked, so this only sends them there.
+    """
+    return redirect(f"{reverse('my_events')}#submitted")
+
+

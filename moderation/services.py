@@ -460,22 +460,12 @@ def republish(event, moderator):
 
 
 def toggle_interest(event, user):
-    """The moderator's own "Interested" mark — one per person, on or off.
+    """The moderator's own "Interested" mark — the reader's star, from the
+    events screen. See `events.services.toggle_interest` for why it is not an
+    audit event. Returns whether the user is now interested."""
+    from events.services import toggle_interest as toggle
 
-    This is the same signal a reader gives, counted the same way, and it buys
-    the same thing: a tie-break within a tier and a shot at the Rising queue
-    once `MIN_INTEREST_TO_RISE` others agree. It is not an audit event — the
-    Interest row names the user, and a log full of hearts would bury the
-    decisions it exists to show.
-
-    Returns whether the user is now interested.
-    """
-    existing = Interest.objects.filter(event=event, user=user).first()
-    if existing is not None:
-        existing.delete()
-        return False
-    Interest.objects.create(event=event, user=user)
-    return True
+    return toggle(event, user=user)
 
 
 # ---------------------------------------------------------------------------

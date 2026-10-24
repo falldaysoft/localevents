@@ -306,7 +306,7 @@ an HTMX `hx-post` that swaps the row in place and falls back to a plain form
 POST. The services behind them (`set_tier`, `unpublish`, `republish`) each
 write a `ModerationAction`, because a quick button with no record is how "who
 took that down?" becomes a mystery; the interest toggle does not, since the
-`Interest` row already names the user and a log full of hearts would bury the
+`Interest` row already names the user and a log full of stars would bury the
 decisions. Two `Event.Status` values exist for this — `UNPUBLISHED` and
 `DUPLICATE` — rather than reusing `REJECTED`, so the screen's Removed view
 can say why a listing is gone; both fall out of public view because every
@@ -315,6 +315,30 @@ through `services.annotated_events`, not `EventFilter.apply`, because the
 filter drops anything without an upcoming date and this screen exists partly
 to find those. No mail is sent on unpublish, matching the edit form's status
 field, which has always unpublished silently.
+
+**The reader's star is a POST behind CSRF, and that is the bot protection.**
+`POST /events/<slug>/interest/` toggles an `Interest` row; a signed-in reader
+is their account, an anonymous one is a signed `visitor` cookie handed out on
+the *first click*, never on page view, so browsing leaves nothing behind. The
+row stores an HMAC of the cookie id and deliberately not the IP — a phone's
+address changes daily and a mark the site forgets by tomorrow is not the
+remembering it promised; the IP goes to a per-address hourly cap on the
+default (locmem, per-process) cache instead, sized to catch a scanner that
+submits every form it sees. There is no user-agent sniffing, honeypot or
+captcha: crawlers, prefetchers and unfurlers GET and hold no CSRF cookie, and
+the signal cannot move an event between tiers anyway. Signing in folds the
+device's anonymous marks into the account through Django's `user_logged_in`
+(every way in ends in `auth.login`), re-pointing rows with an UPDATE so the
+counter is not bumped twice and deleting the twin where the account already
+marked the same event. `events.services.toggle_interest` is the one writer;
+the moderator's star on `/moderate/events/` calls it. Listings test each
+card against one set of marked ids fetched per request, which is only
+correct because nothing is page-cached. River's card is one stretched link,
+so its star is lifted above that overlay with a `z-index` — the one control
+a river card carries. `/mine/` is "My events": the viewer's marks through
+`_listing` (so they collapse and tier like the front page), the ones that have
+passed by name, and, signed in, their submissions; the old `/submit/mine/`
+redirects there because it was handed out in mail.
 
 **The crowd nominates, a human decides.** The "Interested" count feeds a mod
 *Rising* queue and breaks ties within a prominence tier; it can never move an

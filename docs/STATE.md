@@ -25,18 +25,27 @@ Last updated after the multi-day work that followed Phase 4.
 | Quiet tier + front-page horizon; moderator All-events screen; one-click Approve | done | this commit |
 | 5 — feed importers | **next** | |
 | 6 — outbound feeds (ICS/RSS/JSON) | not started | |
-| 7 — interest button (Rising itself is done) | not started | |
+| 7 — interest button, My events | done | this commit |
 | 8 — series lifecycle, reusability docs | not started | |
 
-515 tests passing. `make check` clean.
+610 tests passing. `make check` clean.
 
-Phase 7 shrank: the `Interest` model, the Rising ranking and the promotion
-action all landed with Phase 4, because the mod queue is where they are read.
-What is left of it is the public "Interested" button and its cookie/IP
-fingerprint dedup.
+Phase 7 landed in two halves: the `Interest` model, the Rising ranking and the
+promotion action with Phase 4, because the mod queue is where they are read;
+the public star, the anonymous cookie behind it, the merge on sign-in and
+`/mine/` ("My events": marked plus submitted) now. The fingerprint is the
+cookie alone, not cookie-and-IP as first planned — see `events/interest.py`.
+The design assumes no page caching anywhere; a full-page cache would serve one
+viewer's stars to everyone.
 
 ## Verified against reality, not just tests
 
+- **The reader's star, both themes.** Anonymous click on a river row and on
+  the featured card swapped the button in place with the URL unchanged, the
+  overlay did not swallow the tap, "My events" appeared in the nav and listed
+  the mark from the cookie alone; classic's event page toggled it off. The
+  merge on sign-in is held by a test against a real allauth login POST, not
+  yet driven in a browser.
 - **Signup → email confirmation → login by email.** Username is a display name
   and is rejected as a credential, server-side as well as by the input type.
 - **Browse, filters, map.** Narrowing to one category took the map from two

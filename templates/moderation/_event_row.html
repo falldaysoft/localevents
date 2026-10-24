@@ -48,8 +48,8 @@
                 {% csrf_token %}
                 <button type="submit"
                         title="{% if event.moderator_interested %}Withdraw your interest{% else %}Mark yourself interested{% endif %}"
-                        class="chip {% if event.moderator_interested %}bg-rose-100 text-rose-800{% else %}hover:bg-slate-200{% endif %}">
-                    &#9829; {{ event.interest_count }}
+                        class="chip {% if event.moderator_interested %}bg-amber-100 text-amber-800{% else %}hover:bg-slate-200{% endif %}">
+                    {% if event.moderator_interested %}&#9733;{% else %}&#9734;{% endif %} {{ event.interest_count }}
                 </button>
             </form>
 
