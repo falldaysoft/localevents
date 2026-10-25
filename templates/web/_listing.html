@@ -1,5 +1,7 @@
 {# The listings under a browse page: the front page, a venue, a category.  #}
 {# `empty_title` lets each say what "nothing here" means for it.           #}
+{% load themes %}
+{% theme_include "web/_pager.html" where="top" %}
 {% if events or quiet %}
     <ul class="space-y-3">
         {% for event in events %}
@@ -16,7 +18,7 @@
         {# The front page's bargain with the Quiet tier: soon, and folded. #}
         <details class="le-fold card mt-3 text-sm text-slate-600">
             <summary class="cursor-pointer font-medium">
-                {{ quiet|length }} more low-key listing{{ quiet|length|pluralize }} in the next {{ quiet_horizon_days }} days
+                {{ quiet|length }} more low-key listing{{ quiet|length|pluralize }}{% if not next_from and not page_from %} in the next {{ quiet_horizon_days }} days{% endif %}
             </summary>
             <ul class="mt-3 space-y-3">
                 {% for event in quiet %}
@@ -25,10 +27,15 @@
             </ul>
         </details>
     {% endif %}
+    {% theme_include "web/_pager.html" where="bottom" %}
 {% else %}
     <div class="card text-center text-slate-600">
-        <p class="font-medium">{{ empty_title|default:"Nothing matches that yet." }}</p>
-        {% if not empty_title %}<p class="mt-1 text-sm">Try a wider date range, or clear a filter or two.</p>{% endif %}
+        {% if page_from %}
+            <p class="font-medium">Nothing further from then.</p>
+        {% else %}
+            <p class="font-medium">{{ empty_title|default:"Nothing matches that yet." }}</p>
+            {% if not empty_title %}<p class="mt-1 text-sm">Try a wider date range, or clear a filter or two.</p>{% endif %}
+        {% endif %}
     </div>
 {% endif %}
 

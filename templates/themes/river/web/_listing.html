@@ -1,4 +1,4 @@
-{% load event_dates %}
+{% load event_dates themes %}
 {# The listings under a browse page: the front page, a venue, a category.  #}
 {% comment %}
     Featured listings sit above the day list rather than inside it.
@@ -6,6 +6,8 @@
     moderator's featured pick three weeks down a date-ordered page
     would quietly take that control away.
 {% endcomment %}
+{% theme_include "web/_pager.html" where="top" %}
+
 {% for event in featured %}
     <article class="le-feature"
              {% for category in event.categories.all|slice:":1" %}style="--spine: var(--cat-{{ category.slug }}, var(--river))"{% endfor %}>
@@ -81,10 +83,16 @@
     {% endif %}
 {% endfor %}
 
+{% theme_include "web/_pager.html" where="bottom" %}
+
 {% if not featured and not days %}
     <div class="le-empty" style="margin-top:20px">
-        <strong>{{ empty_title|default:"Nothing matches that yet." }}</strong>
-        {% if not empty_title %}<span>Try a wider date range, or clear a filter or two.</span>{% endif %}
+        {% if page_from %}
+            <strong>Nothing further from then.</strong>
+        {% else %}
+            <strong>{{ empty_title|default:"Nothing matches that yet." }}</strong>
+            {% if not empty_title %}<span>Try a wider date range, or clear a filter or two.</span>{% endif %}
+        {% endif %}
     </div>
 {% endif %}
 

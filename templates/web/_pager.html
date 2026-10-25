@@ -1,0 +1,14 @@
+{# Plain links rather than HTMX, so a later page is a URL like any other. #}
+{% if where == "top" and page_from %}
+    <p class="mb-4 text-sm text-slate-600">
+        From {{ page_from|date:"l j F" }}
+        &middot; <a class="underline hover:text-slate-800" href="{% if page_query %}?{{ page_query }}{% else %}.{% endif %}">&larr; Back to today</a>
+    </p>
+{% elif where == "bottom" and next_from %}
+    <nav class="mt-6 text-center" aria-label="More events">
+        <a class="btn-secondary inline-block" rel="nofollow"
+           href="?{% if page_query %}{{ page_query }}&amp;{% endif %}from={{ next_from|date:'Y-m-d' }}">
+            Later &mdash; from {{ next_from|date:"D j F" }} &rarr;
+        </a>
+    </nav>
+{% endif %}

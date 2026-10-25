@@ -1,0 +1,19 @@
+{% comment %}
+    The way into the rest of the listing. Plain links rather than HTMX, so a
+    later page is a URL like any other: shareable, and the back button works.
+    `where` is "top" for the line that says where this page starts, and
+    "bottom" for the link onward.
+{% endcomment %}
+{% if where == "top" and page_from %}
+    <p class="le-pager le-pager--top">
+        From {{ page_from|date:"l j F" }}
+        &middot; <a href="{% if page_query %}?{{ page_query }}{% else %}.{% endif %}">&larr; Back to today</a>
+    </p>
+{% elif where == "bottom" and next_from %}
+    <nav class="le-pager" aria-label="More events">
+        <a class="le-pager__later" rel="nofollow"
+           href="?{% if page_query %}{{ page_query }}&amp;{% endif %}from={{ next_from|date:'Y-m-d' }}">
+            Later &mdash; from {{ next_from|date:"D j F" }} &rarr;
+        </a>
+    </nav>
+{% endif %}

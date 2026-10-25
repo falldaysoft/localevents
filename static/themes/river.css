@@ -1264,3 +1264,39 @@
   letter-spacing: -0.025em;
   color: var(--deep);
 }
+
+/* ── Pager ─────────────────────────────────────────────────────────────── */
+
+/* A browse page ends between two days and offers the next one. Plain links,
+   so a later page is a URL that can be shared and returned to. */
+[data-theme="river"] .le-pager {
+  margin: 28px 0 8px;
+  text-align: center;
+}
+
+[data-theme="river"] .le-pager--top {
+  margin: 4px 0 0;
+  text-align: left;
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+
+[data-theme="river"] .le-pager__later {
+  display: inline-block;
+  padding: 12px 22px;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--river-deep);
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: 0 1px 2px rgba(23, 38, 46, 0.08), inset 0 0 0 1.5px #c9dce6;
+}
+
+[data-theme="river"] .le-pager__later:hover {
+  box-shadow: 0 1px 2px rgba(23, 38, 46, 0.08), inset 0 0 0 2px var(--river);
+}
+
+[data-theme="river"] .le-pager__later:focus-visible {
+  outline: 2px solid var(--river);
+  outline-offset: 2px;
+}

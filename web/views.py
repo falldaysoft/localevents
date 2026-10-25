@@ -1,5 +1,5 @@
 import json
-from datetime import timedelta
+from datetime import date, timedelta
 
 from django.conf import settings
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
@@ -15,7 +15,7 @@ from events import interest
 from events.models import Category, Event, Venue
 from events.services import toggle_interest
 
-from .filters import WHEN_CHOICES, EventFilter, active_venues
+from .filters import WHEN_CHOICES, EventFilter, _day_bounds, active_venues
 
 
 def _group_by_day(events, now):
@@ -55,7 +55,89 @@ def _group_by_day(events, now):
     return groups
 
 
-def _listing(filters, now, quiet_horizon_days=None):
+# Roughly how many cards a browse page shows before it offers "Later". A
+# budget rather than a number of days, because a quiet fortnight and a
+# festival weekend should both fill about one screenful, and never exact,
+# because a page only ever ends between two days.
+PAGE_CARDS = 40
+
+
+def _page_start(request):
+    """The day a reader asked the listing to start from, or None for now.
+
+    Malformed or not in the future, it is ignored rather than raising — the
+    same degrade-don't-500 rule the filters follow.
+    """
+    try:
+        day = date.fromisoformat(request.GET.get("from", ""))
+    except ValueError:
+        return None
+    return day if day > timezone.localdate() else None
+
+
+def _page_end(listed, quiet, budget, count_quiet):
+    """The first day that does not fit on this page, or None if all of it does.
+
+    `listed` and `quiet` are each date-ordered and hold up to budget + 1 rows,
+    which is enough to find where the budget runs out. A folded quiet listing
+    costs a line inside a fold rather than a card, so it counts only when it
+    is shown as one. The page ends *before* the day the budget runs out on,
+    never inside it — unless that is the page's first day, which is shown
+    whole, or a very busy day could never be reached at all.
+    """
+    merged = sorted(listed + quiet, key=lambda e: e.next_start)
+    first_day = None
+    used = 0
+    for event in merged:
+        if not count_quiet and event.prominence == Event.Prominence.QUIET:
+            continue
+        day = timezone.localtime(event.next_start).date()
+        if first_day is None:
+            first_day = day
+        used += 1
+        if used > budget:
+            return day if day != first_day else day + timedelta(days=1)
+    return None
+
+
+# Featured listings are pinned above the day list, and a pile of them pushes
+# the first day below the fold. Everything featured within the horizon is
+# pinned however many there are, since that is a genuinely busy fortnight;
+# further out, only enough to make up the cap.
+FEATURED_CAP = 3
+FEATURED_HORIZON = timedelta(days=30)
+
+
+def _pinned_featured(featured, now):
+    """The featured listings that sit above the day list, soonest first.
+
+    One that misses the cut is not hidden: it is still in `main_feed`, so it
+    joins the date run as an ordinary card on its own day and is pinned once
+    its date comes inside the horizon. A moderator's pick is moved, never
+    taken away.
+    """
+    pinned = []
+    for event in featured.order_by("next_start"):
+        if event.next_start <= now + FEATURED_HORIZON or len(pinned) < FEATURED_CAP:
+            pinned.append(event)
+    return pinned
+
+
+def _first_page_floor(today):
+    """The earliest day the first page may end before: past this week's Sunday.
+
+    "What's on this week and this weekend" is the question the front page
+    exists to answer, so the card budget never cuts into it. From Saturday
+    on, "this weekend" is already half gone and the question has become next
+    week's, so the floor moves to the following Sunday.
+    """
+    sunday = today + timedelta(days=6 - today.weekday())
+    if today.weekday() >= 5:
+        sunday += timedelta(days=7)
+    return sunday + timedelta(days=1)
+
+
+def _listing(filters, now, quiet_horizon_days=None, start=None, paged=True):
     """The listing half of a browse page, for any set of filters.
 
     Shared by the front page and the venue and category pages, so a landing
@@ -66,29 +148,80 @@ def _listing(filters, now, quiet_horizon_days=None):
     given, Quiet listings further out than that are left off and the rest are
     folded under their day; `None` means a reader asked a narrower question
     (a venue, a category, a search) and Quiet listings are ordinary cards.
+
+    `paged` splits the dated listings into pages of whole days, about
+    `PAGE_CARDS` each, and `start` is the day a later page begins on. The
+    first page always runs to the end of the week, however busy it is (see
+    `_first_page_floor`). It used
+    to be a flat cap of 120, which on a busy instance meant everything past
+    the fourth week silently was not there. The cut is applied to the
+    `next_start` annotation and never by moving `now`, so a weekly listing
+    collapses to the same date on every page instead of reappearing on each.
+    Pinned featured listings (see `_pinned_featured`) and regular programs
+    are not in the date run, so they appear on the first page only. "My events" passes `paged=False`, because
+    it decides what has passed by what this returns.
+
+    Finding the boundary costs a second pass: a budget-sized slice of each
+    run to find the day it runs out on, then each run again cut at that day.
     """
-    main_feed = list(filters.main_feed(now)[:120])
-    programs = list(filters.programs(now)[:120])
+    tz = timezone.get_current_timezone()
+    from_dt = _day_bounds(start, tz)[0] if start else None
 
     until = None
     if quiet_horizon_days is not None:
         until = now + timedelta(days=quiet_horizon_days)
-    quiet = list(filters.quiet(now, until=until)[:120])
+    quiet_all = filters.quiet(now, until=until)
+    featured = _pinned_featured(
+        filters.main_feed(now).filter(prominence=Event.Prominence.FEATURED), now
+    )
+    listed_all = (
+        filters.main_feed(now)
+        .exclude(pk__in=[e.pk for e in featured])
+        .order_by("next_start")
+    )
+    listed_qs, quiet_qs = listed_all, quiet_all
+    if from_dt:
+        listed_qs = listed_qs.filter(next_start__gte=from_dt)
+        quiet_qs = quiet_qs.filter(next_start__gte=from_dt)
 
-    # Split by tier so a theme can group the rest by date without a featured
-    # listing appearing under a day heading weeks away. `main_feed` is ordered
-    # by prominence first, so the featured run is contiguous at the front.
-    featured = [e for e in main_feed if e.prominence == Event.Prominence.FEATURED]
-    listed = [e for e in main_feed if e.prominence != Event.Prominence.FEATURED]
+    next_from = None
+    if paged:
+        next_from = _page_end(
+            list(listed_qs[: PAGE_CARDS + 1]),
+            list(quiet_qs[: PAGE_CARDS + 1]),
+            PAGE_CARDS,
+            count_quiet=quiet_horizon_days is None,
+        )
+        if next_from and start is None:
+            next_from = max(next_from, _first_page_floor(timezone.localdate(now)))
+        if next_from:
+            to_dt = _day_bounds(next_from, tz)[0]
+            listed_qs = listed_qs.filter(next_start__lt=to_dt)
+            quiet_qs = quiet_qs.filter(next_start__lt=to_dt)
+            # A first day shown whole can be the last day there is, and a
+            # "Later" that leads to an empty page is worse than none.
+            if not (
+                listed_all.filter(next_start__gte=to_dt).exists()
+                or quiet_all.filter(next_start__gte=to_dt).exists()
+            ):
+                next_from = None
+
+    listed = list(listed_qs)
+    quiet = list(quiet_qs)
+    first_page = start is None
+    if not first_page:
+        featured = []
+    programs = list(filters.programs(now)) if first_page else []
 
     # Folded or not, a quiet listing sits under its own day. Merged by date
     # with the listed run so `_group_by_day` sees one ordered walk; `sorted`
     # is stable, so within a day the listed cards keep their order and the
-    # quiet ones follow.
+    # quiet ones follow. Featured listings are kept out of the walk so a
+    # theme can group by date without one appearing under a day weeks away.
     by_day = sorted(listed + quiet, key=lambda e: e.next_start)
 
     return {
-        "events": main_feed,
+        "events": featured + listed,
         "featured": featured,
         "days": _group_by_day(by_day, now),
         "quiet": quiet,
@@ -96,7 +229,11 @@ def _listing(filters, now, quiet_horizon_days=None):
         "quiet_horizon_days": quiet_horizon_days,
         "programs": programs,
         "program_count": len(programs),
-        "result_count": len(main_feed) + len(quiet),
+        # The whole answer, not this page of it: "212 events" is what tells a
+        # reader there is a "Later" worth pressing.
+        "result_count": filters.main_feed(now).count() + quiet_all.count(),
+        "page_from": start,
+        "next_from": next_from,
     }
 
 
@@ -113,8 +250,16 @@ def _browse_context(request):
     # should not leave out a listing because it is quiet.
     horizon = None if filters.is_active else site_config.quiet_horizon_days
     return {
-        **_listing(filters, timezone.now(), quiet_horizon_days=horizon),
+        **_listing(
+            filters,
+            timezone.now(),
+            quiet_horizon_days=horizon,
+            start=_page_start(request),
+        ),
         **_viewer(request),
+        # A "Later" link keeps the reader's filters; changing a filter drops
+        # the page, since `from` is not a field in the form.
+        "page_query": filters.querystring(),
         "filters": filters,
         "categories": Category.objects.filter(is_active=True),
         "venues": active_venues(),
@@ -233,7 +378,7 @@ def my_events(request):
     """
     now = timezone.now()
     marked = interest.interested_event_ids(request)
-    context = _listing(EventFilter(ids=marked), now)
+    context = _listing(EventFilter(ids=marked), now, paged=False)
     shown = {e.pk for e in context["events"] + context["quiet"] + context["programs"]}
     past = (
         Event.objects.published()
@@ -424,7 +569,9 @@ def venue_detail(request, slug):
         Venue.objects.filter(events__status=Event.Status.PUBLISHED).distinct(),
         slug=slug,
     )
-    context = _listing(EventFilter(venue=venue.slug), timezone.now())
+    context = _listing(
+        EventFilter(venue=venue.slug), timezone.now(), start=_page_start(request)
+    )
     context.update(
         {
             "venue": venue,
@@ -490,7 +637,11 @@ def category_list(request):
 
 def category_detail(request, slug):
     category = get_object_or_404(Category, slug=slug, is_active=True)
-    context = _listing(EventFilter(categories=[category.slug]), timezone.now())
+    context = _listing(
+        EventFilter(categories=[category.slug]),
+        timezone.now(),
+        start=_page_start(request),
+    )
     context.update(
         {
             "category": category,

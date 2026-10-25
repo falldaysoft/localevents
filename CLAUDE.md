@@ -184,6 +184,33 @@ most-prominent-first, so adding the tier renumbered Listed and Featured;
 Promotion from Quiet goes straight to Listed — a promotion means "onto the
 front page", and Quiet is where a moderator *demotes* to.
 
+**A browse page is a run of whole days, not a count of cards.** The front
+page took the first 120 cards and stopped, and on a busy instance that meant
+everything past about the fourth week was silently absent — no "more", no
+hint. `web.views._listing` now ends a page between two days once it has
+spent about `PAGE_CARDS` cards, and a "Later — from Sat 7 November" link
+carries on with `?from=<date>`. Days rather than page numbers because the
+river theme groups by day (a numbered break would split a day and print its
+count wrong on both halves) and because a date is a URL worth sharing. The
+cut is a filter on the `next_start` annotation, never a later `now`: moving
+`now` would re-collapse a weekly listing to a later date and show it on
+every page. A first day busier than the budget is shown whole, and the
+first page always runs through this week's Sunday — the following Sunday
+from Saturday on — because "this week and this weekend" is the question the
+front page exists to answer (`_first_page_floor`). Pinned
+featured listings and programs are outside the date run, so they are on the
+first page only. Featured listings are capped at `FEATURED_CAP` (3) unless
+more than that fall within `FEATURED_HORIZON` (30 days) — a pile of far-off
+picks pushed the first day below the fold — and one that misses the cut is
+not hidden but joins the date run as an ordinary card on its own day, so a
+moderator's pick is moved, never taken away. Finding a page's end costs a
+second pass (a budget-sized slice to find the day, then each run cut there).
+Folded Quiet listings cost nothing against the budget, while unfolded ones (a venue page) count like any card. `from` is read in the
+view, not in `EventFilter`, so it is not a filter: `is_active` and the
+horizon are unaffected, and the map and feeds ignore it. "My events" passes
+`paged=False`, because it works out what has passed from what `_listing`
+returned. The links are plain `<a>`, not HTMX, so the back button works.
+
 **Moderator decisions go through `moderation/services.py`, never a view.** Four
 things must move together — the event, the submission, the audit row, and the
 mail to the submitter — and a view that did three of the four would look fine in

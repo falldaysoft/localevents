@@ -23,12 +23,13 @@ Last updated after the multi-day work that followed Phase 4.
 | search indexing: robots, sitemap, venue/category pages | done | this commit |
 | agent submission API (`/api/`, moderator tokens) | done | this commit |
 | Quiet tier + front-page horizon; moderator All-events screen; one-click Approve | done | this commit |
+| browse pages by whole days (`?from=`), replacing the 120-card cap; featured capped at 3 beyond 30 days | done | this commit |
 | 5 — feed importers | **next** | |
 | 6 — outbound feeds (ICS/RSS/JSON) | not started | |
 | 7 — interest button, My events | done | this commit |
 | 8 — series lifecycle, reusability docs | not started | |
 
-610 tests passing. `make check` clean.
+637 tests passing. `make check` clean.
 
 Phase 7 landed in two halves: the `Interest` model, the Rising ranking and the
 promotion action with Phase 4, because the mod queue is where they are read;

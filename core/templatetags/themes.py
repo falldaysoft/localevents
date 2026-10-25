@@ -17,11 +17,12 @@ register = template.Library()
 
 
 @register.simple_tag(takes_context=True)
-def theme_include(context, path):
+def theme_include(context, path, **extra):
+    """`extra` is `{% include ... with %}` spelled as keyword arguments."""
     theme = context.get("THEME") or get_theme(None)
     rendered = render_to_string(
         template_name(theme, path),
-        context.flatten(),
+        {**context.flatten(), **extra},
         request=context.get("request"),
     )
     # The included template has already escaped its own content; without this
