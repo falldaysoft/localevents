@@ -106,6 +106,41 @@ def test_a_moderator_sees_the_pending_queue(signed_in_mod, submitter):
     assert "Riverside Barbecue" in body
 
 
+def test_a_queue_row_says_when_the_event_is(signed_in_mod, submitter):
+    from events.templatetags.event_dates import occurrence_when
+
+    submission = _pending(submitter, title="Riverside Barbecue")
+    first = submission.event.occurrences.get()
+    for days in (17, 24):
+        Occurrence.objects.create(
+            event=submission.event, start=first.start + timedelta(days=days)
+        )
+    when = occurrence_when(first.start, with_year=first.start.year != timezone.now().year)
+
+    body = signed_in_mod.get(reverse("mod_queue")).content.decode()
+    assert f"{when} · +2 more dates" in body
+
+
+@pytest.mark.django_db
+def test_the_date_summary_flags_a_listing_whose_dates_have_all_gone_by(submitter):
+    from events.templatetags.event_dates import dates_summary
+
+    submission = _pending(submitter)
+    occurrence = submission.event.occurrences.get()
+    occurrence.start = timezone.now() - timedelta(days=400)
+    occurrence.save()
+
+    summary = dates_summary(submission.event.occurrences.all())
+    assert summary.endswith("(past)")
+    assert str(timezone.localtime(occurrence.start).year) in summary
+
+
+def test_a_queue_row_with_no_dates_says_so(signed_in_mod, submitter):
+    _pending(submitter).event.occurrences.all().delete()
+    body = signed_in_mod.get(reverse("mod_queue")).content.decode()
+    assert "No dates recorded." in body
+
+
 # --- assignment -------------------------------------------------------------
 
 

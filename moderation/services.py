@@ -485,7 +485,7 @@ def queue_for(view, moderator):
     """The submissions behind one tab of the queue."""
     base = Submission.objects.select_related(
         "submitted_by", "assigned_to", "api_token", "event", "event__venue"
-    )
+    ).prefetch_related("event__occurrences")
 
     if view == "mine":
         return base.filter(assigned_to=moderator).filter(

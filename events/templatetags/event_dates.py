@@ -81,6 +81,36 @@ def occurrence_days(start, end=None, with_year=False):
     return f"{_fmt(start, DAY)} – {_fmt(end, day)}"
 
 
+@register.simple_tag
+def dates_summary(occurrences):
+    """Every date of a listing in one line, for a row with no room for a list.
+
+    The moderation queue needs to say *when* without opening the submission:
+    the next date still to come (or, if they have all gone by, the last one,
+    which is the thing a moderator should notice), then how many others. The
+    year is shown only when it is not this one, so a wrong-year extraction
+    stands out instead of hiding in every row. Cancelled dates are skipped
+    unless there is nothing else.
+    """
+    occurrences = list(occurrences)
+    live = [o for o in occurrences if not o.is_cancelled] or occurrences
+    if not live:
+        return ""
+
+    now = timezone.now()
+    upcoming = [o for o in live if (o.end or o.start) >= now]
+    shown = upcoming[0] if upcoming else live[-1]
+    with_year = _local(shown.start).year != _local(now).year
+    text = occurrence_when(shown.start, shown.end, with_year=with_year)
+    if not upcoming:
+        text += " (past)"
+
+    others = len(live) - 1
+    if others:
+        text += f" · +{others} more date{'s' if others != 1 else ''}"
+    return text
+
+
 @register.filter
 def is_under_way(start, end=None):
     """Is this happening right now?
