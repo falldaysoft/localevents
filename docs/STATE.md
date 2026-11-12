@@ -31,7 +31,7 @@ Last updated after the multi-day work that followed Phase 4.
 | 7 — interest button, My events | done | this commit |
 | 8 — series lifecycle, reusability docs | not started | |
 
-691 tests passing. `make check` clean.
+697 tests passing. `make check` clean.
 
 Phase 7 landed in two halves: the `Interest` model, the Rising ranking and the
 promotion action with Phase 4, because the mod queue is where they are read;
@@ -128,7 +128,10 @@ viewer's stars to everyone.
   was not_event (~1s, ~$0.01 each). `poll_inbox` has only met a fake IMAP
   server in tests — no real mailbox, so folder names, `UNSEEN` behaviour and
   whether the provider adds an `Authentication-Results` header with `dmarc=`
-  are unknown. Until it does, every sender shows as unverified. The live run
+  were unknown. Since then, live on brantevents (DreamHost IMAP,
+  `submissions@`): sign-in, poll and triage work — a bare `example.org` link
+  titled "Test Submission" was called spam, fairly. DreamHost adds no
+  `Authentication-Results`, which is why the site now checks DKIM itself. The live run
   also hit the format ladder's blind spot: an *unprobed* model that hangs on
   `json_schema` times out (90s read timeout, one retry) and fails rather than
   falling to the next rung. Production has presumably already learned the

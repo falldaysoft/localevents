@@ -464,7 +464,11 @@ existing one, or a new one with no password and an unverified address that
 nothing an emailed listing says was confirmed by a person: the queue marks it
 "By email", the review screen shows the email and whether DMARC vouched for
 the From address (only the topmost `Authentication-Results` is believed;
-`dmarc=fail` is spam without a model call). Nothing triage turns away is
+`dmarc=fail` is spam without a model call). DreamHost records no DMARC
+result at all, so without one the site checks DKIM itself (`dkimpy`): a
+valid signature whose `d=` is the From domain or a parent of it verifies; a
+broken or missing one is "not verified", never "fail", because lists and
+forwarders break signatures on honest mail. Nothing triage turns away is
 lost: `/moderate/inbox/` lists what needs a person — questions, corrections,
 events with no date, failed reads — with spam under All, and "It's an event"
 re-reads with the verdict settled. Loop guards: mail from our own addresses

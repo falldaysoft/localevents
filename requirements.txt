@@ -26,6 +26,10 @@ beautifulsoup4>=4.12
 icalendar>=6.0
 pydantic>=2.0
 
+# Inbound mail: verifying the sender's DKIM signature ourselves, because not
+# every mailbox provider records a DMARC result on what it delivers.
+dkimpy>=1.1
+
 # LLM client. Lazy-imported, and pointed at any OpenAI-compatible endpoint —
 # OpenRouter by default. Configured in the admin, not here.
 openai>=1.0

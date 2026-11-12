@@ -441,3 +441,92 @@ def test_the_queue_says_by_email(client, moderator, model_says):
     page = client.get(reverse("mod_submission", args=[submission.pk])).content.decode()
     assert "The email it came from" in page
     assert "not verified" in page
+
+
+# --- DKIM, for providers that record no DMARC result ---------------------------
+
+
+@pytest.fixture(scope="module")
+def dkim_key():
+    import base64
+
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    private = key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.TraditionalOpenSSL,
+        serialization.NoEncryption(),
+    )
+    public = key.public_key().public_bytes(
+        serialization.Encoding.DER,
+        serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+    record = b"v=DKIM1; k=rsa; p=" + base64.b64encode(public)
+    return private, record
+
+
+def signed(raw, key, domain):
+    import dkim
+
+    private, _ = key
+    return dkim.sign(
+        raw, b"s1", domain.encode(), private,
+        include_headers=[b"from", b"subject", b"message-id"],
+    ) + raw
+
+
+def dns_for(key, domain):
+    _, record = key
+
+    def lookup(name, timeout=5):
+        return record if name == f"s1._domainkey.{domain}.".encode() else None
+
+    return lookup
+
+
+def check(raw, dns):
+    from email import message_from_bytes, policy
+
+    message = message_from_bytes(raw, policy=policy.default)
+    return inbound.sender_check(message, raw, dnsfunc=dns)
+
+
+def test_a_valid_signature_from_the_from_domain_verifies(dkim_key):
+    raw = signed(raw_email(), dkim_key, "club.example")
+    assert check(raw, dns_for(dkim_key, "club.example")) == InboundEmail.SenderCheck.PASS
+
+
+def test_a_parent_domain_signature_is_aligned(dkim_key):
+    raw = signed(raw_email(sender="jo@mail.club.example"), dkim_key, "club.example")
+    assert check(raw, dns_for(dkim_key, "club.example")) == InboundEmail.SenderCheck.PASS
+
+
+def test_a_signature_from_some_other_domain_proves_nothing(dkim_key):
+    # Anyone can sign with their own domain; it says nothing about From.
+    raw = signed(raw_email(), dkim_key, "spammer.example")
+    assert check(raw, dns_for(dkim_key, "spammer.example")) == InboundEmail.SenderCheck.NONE
+
+
+def test_an_altered_message_is_not_verified_and_not_called_forged(dkim_key):
+    raw = signed(raw_email(subject="Original"), dkim_key, "club.example")
+    tampered = raw.replace(b"Subject: Original", b"Subject: Altered")
+    # Lists and forwarders break signatures on honest mail: not a "fail".
+    assert check(tampered, dns_for(dkim_key, "club.example")) == InboundEmail.SenderCheck.NONE
+
+
+def test_a_dns_failure_is_not_verified(dkim_key):
+    raw = signed(raw_email(), dkim_key, "club.example")
+
+    def broken(name, timeout=5):
+        raise OSError("no DNS")
+
+    assert check(raw, broken) == InboundEmail.SenderCheck.NONE
+
+
+def test_the_providers_dmarc_verdict_wins_over_our_own_check(dkim_key):
+    raw = signed(raw_email(headers={
+        "Authentication-Results": "mx.ours; dmarc=fail header.from=club.example",
+    }), dkim_key, "club.example")
+    assert check(raw, dns_for(dkim_key, "club.example")) == InboundEmail.SenderCheck.FAIL

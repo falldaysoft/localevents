@@ -80,25 +80,62 @@ def _own_addresses():
     return {a.lower() for a in addresses if a and "@" in a}
 
 
-def sender_check(message):
+def sender_check(message, raw=None, dnsfunc=None):
     """Did the sender's domain vouch for the From address?
 
-    Only the topmost Authentication-Results header counts. It is the one our
-    own mail provider added on receipt; anything below it arrived with the
-    message and a spoofer can write whatever they like there.
+    The receiving provider's verdict wins when it gave one. Only the topmost
+    Authentication-Results header counts: it is the one our own provider
+    added on receipt, and anything below it arrived with the message, where
+    a spoofer can write whatever they like.
+
+    Not every provider records one — DreamHost does not — so without it we
+    check DKIM ourselves: a valid signature from the From address's own
+    domain is the same proof DMARC's DKIM half asks for. A missing or broken
+    signature is "not verified", never "fail": forwarding and mailing lists
+    break signatures on perfectly honest mail, and only a DMARC policy can
+    say a failure means forgery.
     """
     header = message.get("Authentication-Results")
-    if not header:
-        return InboundEmail.SenderCheck.NONE
-    found = re.search(r"\bdmarc=(\w+)", str(header), re.IGNORECASE)
-    if not found:
-        return InboundEmail.SenderCheck.NONE
-    result = found.group(1).lower()
-    if result == "pass":
+    if header:
+        found = re.search(r"\bdmarc=(\w+)", str(header), re.IGNORECASE)
+        if found and found.group(1).lower() == "pass":
+            return InboundEmail.SenderCheck.PASS
+        if found and found.group(1).lower() == "fail":
+            return InboundEmail.SenderCheck.FAIL
+    if raw is not None and _dkim_aligned(message, raw, dnsfunc):
         return InboundEmail.SenderCheck.PASS
-    if result == "fail":
-        return InboundEmail.SenderCheck.FAIL
     return InboundEmail.SenderCheck.NONE
+
+
+def _dkim_aligned(message, raw, dnsfunc=None):
+    """Is there a valid DKIM signature whose d= is the From domain?
+
+    Relaxed alignment, approximately: the signing domain may be the From
+    domain or a parent of it (mail.club.example signed by club.example).
+    """
+    import dkim
+
+    from_domain = parseaddr(str(message.get("From", "")))[1].rpartition("@")[2].lower()
+    signatures = message.get_all("DKIM-Signature") or []
+    if not from_domain or not signatures:
+        return False
+    checker = dkim.DKIM(raw)
+    for index, signature in enumerate(signatures[:5]):
+        found = re.search(r"(?:^|;)\s*d\s*=\s*([^;\s]+)", str(signature))
+        signer = found.group(1).lower().rstrip(".") if found else ""
+        if not signer or not (
+            from_domain == signer or from_domain.endswith("." + signer)
+        ):
+            continue
+        try:
+            kwargs = {"dnsfunc": dnsfunc} if dnsfunc else {}
+            if checker.verify(idx=index, **kwargs):
+                return True
+        except Exception as exc:
+            # A DNS timeout or a malformed signature is "not verified",
+            # never a reason to lose the message.
+            logger.info("DKIM check failed for %s: %s", from_domain, exc)
+    return False
 
 
 def _is_bounce(message, address):
@@ -169,7 +206,7 @@ def store(raw):
         subject=str(message.get("Subject", ""))[:300],
         body=_body_text(message),
         attachment_names=_attachment_names(message),
-        sender_check=sender_check(message),
+        sender_check=sender_check(message, raw),
         is_automated=_is_automated(message),
     )
 
