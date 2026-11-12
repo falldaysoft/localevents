@@ -1,0 +1,16 @@
+{% extends "admin/change_form.html" %}
+
+{% block object-tools %}
+    {# Outside the change form: these are their own POSTs, and they test what is saved. #}
+    <div style="display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; margin:0 0 1rem;">
+        <form method="post" action="{% url 'admin:core_mailconfig_test_outbound' %}">
+            {% csrf_token %}
+            <button type="submit" class="button">Send a test email to {{ request.user.email }}</button>
+        </form>
+        <form method="post" action="{% url 'admin:core_mailconfig_test_inbound' %}">
+            {% csrf_token %}
+            <button type="submit" class="button">Test the inbound mailbox</button>
+        </form>
+        <span style="color:var(--body-quiet-color);">The tests use the saved settings — save first.</span>
+    </div>
+{% endblock %}

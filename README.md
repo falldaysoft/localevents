@@ -165,6 +165,10 @@ echo "command=\"/home/$USER/apps/$I/deploy.sh\",no-port-forwarding,no-X11-forwar
 # Housekeeping, hourly. `run` rather than `up`: the service is under a
 # profile precisely so that `up -d` never starts it.
 (crontab -l; echo "17 * * * * cd ~/apps/$I && docker compose run --rm housekeeping >> ~/apps/$I/housekeeping.log 2>&1") | crontab -
+
+# Only if INBOUND_IMAP_HOST is set: read the submissions mailbox every five
+# minutes. Housekeeping polls it hourly too, but that is a backstop.
+(crontab -l; echo "*/5 * * * * cd ~/apps/$I && docker compose run --rm housekeeping python manage.py poll_inbox >> ~/apps/$I/inbox.log 2>&1") | crontab -
 ```
 
 Then push to `main`, or `make deploy INSTANCE=$I` from a checkout that has

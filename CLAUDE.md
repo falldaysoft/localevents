@@ -448,6 +448,49 @@ the only path for anything a moderator has not already vouched for.
 because saving a draft to ask would create a venue and queue its geocode.
 The agent-facing guide is `docs/API.md`.
 
+**Email is a third way in, and triage decides only what reaches the queue.**
+`submissions/inbound.py`: `manage.py poll_inbox` (crontab, every five
+minutes; housekeeping hourly as a backstop) reads unseen IMAP mail, stores
+each message as an `InboundEmail` keyed on Message-ID — so a poll dying
+between storing and flagging `\Seen` cannot make one email two listings —
+and the worker triages it with one model call (`enrichment/triage.py`) that
+both classifies (event / not_event / spam) and extracts, because a separate
+"is it spam?" call would pay for every real submission's input twice. Each
+extracted event goes through the API's own `_validate`, so the wrong-year
+guard and every form rule apply; a garbled optional field is dropped rather
+than costing the event. The sender becomes one account by address — an
+existing one, or a new one with no password and an unverified address that
+"forgot password" takes over — so decision mail reaches them. Like the API,
+nothing an emailed listing says was confirmed by a person: the queue marks it
+"By email", the review screen shows the email and whether DMARC vouched for
+the From address (only the topmost `Authentication-Results` is believed;
+`dmarc=fail` is spam without a model call). Nothing triage turns away is
+lost: `/moderate/inbox/` lists what needs a person — questions, corrections,
+events with no date, failed reads — with spam under All, and "It's an event"
+re-reads with the verdict settled. Loop guards: mail from our own addresses
+and bounces is dropped, mail a machine sent (`Auto-Submitted`, `List-Id`,
+`Precedence`) is triaged but never answered, replies are capped per sender
+per day and carry `Auto-Submitted: auto-replied` with Reply-To set to the
+inbox so a sender's answer comes back through triage. Attachments are not
+read — a poster-only email lands as incomplete.
+
+**Mail servers are set in the admin, and the environment is the fallback.**
+`core.MailConfig` holds SMTP (outbound) and IMAP (inbound) settings, each half
+all-or-nothing: an SMTP host saved there means every outbound setting comes
+from the row, none means the `EMAIL_*` variables as before — mixing a host
+from one place with a password from the other is how a provider change
+half-applies. `EMAIL_BACKEND` is always `core.mail.ConfiguredEmailBackend`,
+which reads the row at send time and otherwise hands off to
+`EMAIL_DELIVERY_BACKEND` (what the `EMAIL_BACKEND` *environment variable*
+now sets). It also rewrites a message from `DEFAULT_FROM_EMAIL` — fixed at
+start-up and read directly by allauth and the moderation mail — to the saved
+sender. The admin page is superuser-only because outbound mail carries every
+password-reset link; passwords are write-only there (blank keeps, a checkbox
+clears). Its two buttons test what is *saved*: one sends a real message to
+the presser, the other signs in, opens the folder read-only and counts unread
+mail without flagging any. pytest-django replaces `EMAIL_BACKEND` with
+locmem, so `tests/test_mail_config.py` calls the backend by name.
+
 **A theme is a look; an instance is a community. They are not the same axis.**
 `SiteConfig.theme` picks from `core/themes.py`, and a theme is a stylesheet
 plus an optional set of template *overlays* — `core.themes.template_name`

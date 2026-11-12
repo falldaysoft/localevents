@@ -1,0 +1,18 @@
+{% autoescape off %}Thanks for writing to {{ site_name }}. We've passed {% if queued|length == 1 %}this event{% else %}these events{% endif %} to our moderators:
+{% for submission in queued %}
+  - {{ submission.display_title }}{% endfor %}
+
+A person checks every listing before it goes up, and you'll get an email
+when that happens.
+{% if problems %}
+Some of your email we couldn't use:
+{% for problem in problems %}
+  - {{ problem }}{% endfor %}
+{% endif %}
+{% if has_password %}You can follow it under "My events": {{ mine_url }}
+{% else %}We've kept your submissions together under this email address. To
+sign in and follow them, set a password here:
+{{ reset_url }}
+{% endif %}
+— {{ site_name }}
+{% endautoescape %}

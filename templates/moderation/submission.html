@@ -19,6 +19,12 @@
                     Sent through the API with the token “{{ submission.api_token.name }}”, so nobody confirmed these details on the site — check them against the source.
                 </p>
             {% endif %}
+            {% if submission.inbound_email_id %}
+                <p class="mt-1 text-sm text-slate-500">
+                    Read from an email by AI triage, so nobody confirmed these details — check them against the email below.
+                    {% if submission.inbound_email.sender_check == 'pass' %}The sender's domain vouched for the From address.{% else %}<strong class="font-medium text-amber-800">The From address is not verified</strong> — it may not be who it says.{% endif %}
+                </p>
+            {% endif %}
         </div>
         <div class="flex shrink-0 items-center gap-2">
             <span class="chip">{{ submission.get_status_display }}</span>
@@ -206,7 +212,7 @@
                 {% endcomment %}
                 {% if submission.pasted_text %}
                     <details>
-                        <summary class="cursor-pointer text-slate-700">Text the submitter pasted</summary>
+                        <summary class="cursor-pointer text-slate-700">{% if submission.inbound_email_id %}The email it came from{% else %}Text the submitter pasted{% endif %}</summary>
                         <p class="mt-2 whitespace-pre-line rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-700">{{ submission.pasted_text }}</p>
                     </details>
                 {% endif %}

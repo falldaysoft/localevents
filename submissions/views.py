@@ -6,7 +6,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
-from core.models import SiteConfig
+from core.models import MailConfig, SiteConfig
 from events.models import Category
 
 from .forms import (
@@ -79,7 +79,11 @@ def start(request):
     return render(
         request,
         "submissions/start.html",
-        {"form": form, "site_config": SiteConfig.load()},
+        {
+            "form": form,
+            "site_config": SiteConfig.load(),
+            "inbound_address": MailConfig.load().inbound().address,
+        },
     )
 
 

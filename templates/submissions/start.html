@@ -69,6 +69,13 @@
             </button>
         </form>
 
+        {% if inbound_address %}
+            <p class="mt-4 text-center text-sm text-slate-600">
+                Or email the details, or the poster's text, to
+                <a href="mailto:{{ inbound_address }}" class="underline hover:text-slate-900">{{ inbound_address }}</a>.
+            </p>
+        {% endif %}
+
         <p class="mt-8 text-center text-sm text-slate-500">
             <a href="{% url 'my_submissions' %}" class="underline hover:text-slate-700">
                 See your previous submissions

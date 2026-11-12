@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from .models import (
+    InboundEmail,
     ModerationAction,
     Submission,
     SubmissionMessage,
@@ -49,3 +50,16 @@ class ModerationActionAdmin(admin.ModelAdmin):
 class SubmissionQuotaAdmin(admin.ModelAdmin):
     list_display = ("user", "submissions_per_day", "enrichments_per_day")
     search_fields = ("user__username", "user__email")
+
+
+@admin.register(InboundEmail)
+class InboundEmailAdmin(admin.ModelAdmin):
+    """Read-only: what arrived is a record, and the inbox screen acts on it."""
+
+    list_display = ("subject", "from_address", "status", "sender_check", "received_at")
+    list_filter = ("status", "sender_check", "is_automated")
+    search_fields = ("from_address", "subject", "body")
+    readonly_fields = [f.name for f in InboundEmail._meta.fields]
+
+    def has_add_permission(self, request):
+        return False

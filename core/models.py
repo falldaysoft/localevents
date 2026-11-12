@@ -254,3 +254,108 @@ class AIConfig(SingletonModel):
         if not self.daily_spend_cap_usd:
             return True
         return self.spent_today() < self.daily_spend_cap_usd
+
+
+class MailConfig(SingletonModel):
+    """Mail server settings, editable without a redeploy.
+
+    Each half is all-or-nothing: with an SMTP host here, *every* outbound
+    setting comes from this row, and with none, every one comes from the
+    environment as before. Mixing the two — a host from here and a password
+    from .env — is how a change of provider half-applies and fails in a way
+    nobody can read off either screen.
+
+    Passwords are stored as entered, like the AI key beside them; the admin
+    for this model is superuser-only for that reason, and never echoes them.
+    """
+
+    smtp_host = models.CharField(
+        "SMTP host", max_length=200, blank=True,
+        help_text="Leave blank to use the EMAIL_* environment variables.",
+    )
+    smtp_port = models.PositiveIntegerField("SMTP port", default=587)
+    smtp_use_tls = models.BooleanField(
+        "STARTTLS", default=True, help_text="Port 587 wants this on."
+    )
+    smtp_use_ssl = models.BooleanField(
+        "Implicit TLS", default=False,
+        help_text="Port 465 wants this on and STARTTLS off.",
+    )
+    smtp_user = models.CharField("SMTP user", max_length=200, blank=True)
+    smtp_password = models.CharField("SMTP password", max_length=500, blank=True)
+    from_email = models.CharField(
+        "Send as", max_length=254, blank=True,
+        help_text="e.g. 'Town Events <noreply@example.org>'. Blank uses "
+        "DEFAULT_FROM_EMAIL.",
+    )
+
+    imap_host = models.CharField(
+        "IMAP host", max_length=200, blank=True,
+        help_text="The mailbox people email events to. Leave blank to use the "
+        "INBOUND_* environment variables; blank in both means email "
+        "submissions are off.",
+    )
+    imap_port = models.PositiveIntegerField("IMAP port", default=993)
+    imap_user = models.CharField("IMAP user", max_length=200, blank=True)
+    imap_password = models.CharField("IMAP password", max_length=500, blank=True)
+    imap_folder = models.CharField("IMAP folder", max_length=200, default="INBOX")
+    inbound_address = models.EmailField(
+        "Submissions address", blank=True,
+        help_text="The address shown on the submit page and set as Reply-To "
+        "on our answers.",
+    )
+
+    class Meta:
+        verbose_name = "mail configuration"
+        verbose_name_plural = "mail configuration"
+
+    def __str__(self):
+        return "Mail configuration"
+
+    def outbound(self):
+        """SMTP keyword arguments, or None to use the environment's backend."""
+        if not self.smtp_host:
+            return None
+        return {
+            "host": self.smtp_host,
+            "port": self.smtp_port,
+            "username": self.smtp_user,
+            "password": self.smtp_password,
+            "use_tls": self.smtp_use_tls and not self.smtp_use_ssl,
+            "use_ssl": self.smtp_use_ssl,
+        }
+
+    def resolved_from_email(self):
+        from django.conf import settings
+
+        return self.from_email or settings.DEFAULT_FROM_EMAIL
+
+    def inbound(self):
+        from django.conf import settings
+
+        if self.imap_host:
+            return ImapSettings(
+                self.imap_host, self.imap_port, self.imap_user,
+                self.imap_password, self.imap_folder or "INBOX",
+                self.inbound_address,
+            )
+        return ImapSettings(
+            settings.INBOUND_IMAP_HOST, settings.INBOUND_IMAP_PORT,
+            settings.INBOUND_IMAP_USER, settings.INBOUND_IMAP_PASSWORD,
+            settings.INBOUND_IMAP_FOLDER,
+            self.inbound_address or settings.INBOUND_EMAIL_ADDRESS,
+        )
+
+
+class ImapSettings:
+    def __init__(self, host, port, user, password, folder, address):
+        self.host = host
+        self.port = port
+        self.user = user
+        self.password = password
+        self.folder = folder
+        self.address = address
+
+    @property
+    def configured(self):
+        return bool(self.host and self.user)

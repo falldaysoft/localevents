@@ -13,9 +13,9 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
-from core.models import SiteConfig
+from core.models import MailConfig, SiteConfig
 from events.duplicates import possible_duplicates
-from submissions.models import ModerationAction, Submission
+from submissions.models import InboundEmail, ModerationAction, Submission
 
 from . import services
 from .forms import (
@@ -82,7 +82,7 @@ def submission_detail(request, pk):
     """Everything needed to decide, on one screen."""
     submission = get_object_or_404(
         Submission.objects.select_related(
-            "submitted_by", "assigned_to", "decided_by", "api_token", "event", "event__venue",
+            "submitted_by", "assigned_to", "decided_by", "api_token", "inbound_email", "event", "event__venue",
             "event__organizer",
         ).prefetch_related(
             "messages__author", "actions__actor", "enrichment_runs",
@@ -177,7 +177,7 @@ def quick_approve(request, pk):
     """
     submission = get_object_or_404(
         Submission.objects.select_related(
-            "submitted_by", "assigned_to", "api_token", "event", "event__venue"
+            "submitted_by", "assigned_to", "api_token", "inbound_email", "event", "event__venue"
         ),
         pk=pk,
     )
@@ -416,6 +416,53 @@ def audit(request):
         "actor", "submission", "event"
     )[:300]
     return render(request, "moderation/audit.html", _chrome(request, actions=actions))
+
+
+@moderator_required
+def inbox(request):
+    """Mail to the submissions address that triage did not send to the queue.
+
+    The model decides what reaches the queue; this is where a moderator sees
+    what it decided against. "Needs a look" is the mail a person wrote that
+    is not a listing yet — a question, a correction, an event with no date.
+    """
+    view = "all" if request.GET.get("view") == "all" else "open"
+    return render(
+        request,
+        "moderation/inbox.html",
+        _chrome(
+            request,
+            view=view,
+            emails=services.inbox_for(view),
+            inbound_address=MailConfig.load().inbound().address,
+        ),
+    )
+
+
+def _inbox_url(request):
+    url = reverse("mod_inbox")
+    return url + "?view=all" if request.POST.get("view") == "all" else url
+
+
+@moderator_required
+@require_POST
+def inbox_handled(request, pk):
+    inbound = get_object_or_404(InboundEmail, pk=pk)
+    services.mark_email_handled(inbound, request.user)
+    return redirect(_inbox_url(request))
+
+
+@moderator_required
+@require_POST
+def inbox_read_as_event(request, pk):
+    inbound = get_object_or_404(InboundEmail, pk=pk)
+    services.read_email_as_event(inbound, request.user)
+    messages.success(
+        request,
+        "Reading it again as an event. It will appear in the queue if it "
+        "holds a date, or back here if it still doesn't.",
+    )
+    return redirect(_inbox_url(request))
 
 
 @moderator_required

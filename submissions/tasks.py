@@ -69,3 +69,30 @@ def enrich_submission(submission_id):
     submission.enrichment_message = result.message[:300]
     submission.status = Submission.Status.AWAITING_SUBMITTER
     submission.save()
+
+
+@task()
+def triage_inbound_email(inbound_id, force=False):
+    """Read one stored email and queue whatever events it holds.
+
+    Renaming this is a two-step deploy — see CLAUDE.md on stale task paths.
+    """
+    from .inbound import process
+    from .models import InboundEmail
+
+    try:
+        inbound = InboundEmail.objects.get(pk=inbound_id)
+    except InboundEmail.DoesNotExist:
+        logger.warning("triage_inbound_email: %s no longer exists", inbound_id)
+        return
+    # A forced re-read may start from any verdict; an ordinary one only from
+    # a fresh message, so a duplicate enqueue cannot queue an event twice.
+    if not force and inbound.status != InboundEmail.Status.RECEIVED:
+        return
+    try:
+        process(inbound, force=force)
+    except Exception:
+        logger.exception("triage crashed for inbound email %s", inbound_id)
+        inbound.status = InboundEmail.Status.FAILED
+        inbound.triage_reason = "Something went wrong reading this email."
+        inbound.save(update_fields=["status", "triage_reason", "updated_at"])

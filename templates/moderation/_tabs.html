@@ -19,6 +19,13 @@
             <span class="ml-1 rounded-full bg-slate-900 px-2 py-0.5 text-xs text-white">{{ queue_counts.refreshes }}</span>
         {% endif %}
     </a>
+    <a href="{% url 'mod_inbox' %}"
+       class="font-medium {% if section == 'inbox' %}text-slate-900{% else %}text-slate-500 hover:text-slate-900{% endif %}">
+        Inbox
+        {% if queue_counts.inbox %}
+            <span class="ml-1 rounded-full bg-slate-900 px-2 py-0.5 text-xs text-white">{{ queue_counts.inbox }}</span>
+        {% endif %}
+    </a>
     <a href="{% url 'mod_audit' %}"
        class="font-medium {% if section == 'audit' %}text-slate-900{% else %}text-slate-500 hover:text-slate-900{% endif %}">
         Log

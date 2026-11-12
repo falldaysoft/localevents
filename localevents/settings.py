@@ -306,9 +306,13 @@ LOGOUT_REDIRECT_URL = "/"
 # needed — the credentials are IAM SMTP credentials, not an AWS access key.
 # ---------------------------------------------------------------------------
 
-EMAIL_BACKEND = os.environ.get(
+# What carries mail when nothing is saved under Mail configuration in the
+# admin. EMAIL_BACKEND itself is always the wrapper that checks there first
+# (core.mail), so the environment variable keeps its old meaning.
+EMAIL_DELIVERY_BACKEND = os.environ.get(
     "EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend"
 )
+EMAIL_BACKEND = "core.mail.ConfiguredEmailBackend"
 EMAIL_HOST = os.environ.get("EMAIL_HOST", "localhost")
 EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
 EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "true").lower() == "true"
@@ -316,6 +320,19 @@ EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", f"noreply@{ALLOWED_HOSTS[0]}")
 SERVER_EMAIL = DEFAULT_FROM_EMAIL
+
+# Inbound: event submissions by email. A mailbox on any provider, read over
+# IMAP by `manage.py poll_inbox` — no public endpoint and no provider to sign
+# up with. These are the fallback for Mail configuration in the admin, which
+# wins when it has an IMAP host; blank in both means the feature is off. INBOUND_EMAIL_ADDRESS is the
+# address people write to; it is shown on the submit page and set as Reply-To
+# on our answers, so a sender's reply comes back through triage.
+INBOUND_IMAP_HOST = os.environ.get("INBOUND_IMAP_HOST", "")
+INBOUND_IMAP_PORT = int(os.environ.get("INBOUND_IMAP_PORT", "993"))
+INBOUND_IMAP_USER = os.environ.get("INBOUND_IMAP_USER", "")
+INBOUND_IMAP_PASSWORD = os.environ.get("INBOUND_IMAP_PASSWORD", "")
+INBOUND_IMAP_FOLDER = os.environ.get("INBOUND_IMAP_FOLDER", "INBOX")
+INBOUND_EMAIL_ADDRESS = os.environ.get("INBOUND_EMAIL_ADDRESS", "")
 
 
 # ---------------------------------------------------------------------------

@@ -23,6 +23,7 @@ class EnrichmentRun(models.Model):
     class Method(models.TextChoices):
         STRUCTURED = "structured", "Page's own event data"
         LLM = "llm", "Language model"
+        TRIAGE = "triage", "Email triage"
 
     class Status(models.TextChoices):
         OK = "ok", "Succeeded"
@@ -43,6 +44,16 @@ class EnrichmentRun(models.Model):
     # with no submission and no way to tell what they were for.
     event = models.ForeignKey(
         "events.Event",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="enrichment_runs",
+    )
+    # Email triage reads a message before any submission exists, and costs
+    # the same money against the same cap — so it is recorded here too, hung
+    # off the email it read.
+    inbound_email = models.ForeignKey(
+        "submissions.InboundEmail",
         null=True,
         blank=True,
         on_delete=models.SET_NULL,

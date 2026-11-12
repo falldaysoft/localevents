@@ -24,12 +24,14 @@ Last updated after the multi-day work that followed Phase 4.
 | agent submission API (`/api/`, moderator tokens) | done | this commit |
 | Quiet tier + front-page horizon; moderator All-events screen; one-click Approve | done | this commit |
 | browse pages by whole days (`?from=`), replacing the 120-card cap; featured capped at 3 beyond 30 days | done | this commit |
+| event submissions by email: IMAP poll, AI triage, `/moderate/inbox/` | done | this commit |
+| mail servers in the admin (`MailConfig`), Test buttons for SMTP and IMAP | done | this commit |
 | 5 — feed importers | **next** | |
 | 6 — outbound feeds (ICS/RSS/JSON) | not started | |
 | 7 — interest button, My events | done | this commit |
 | 8 — series lifecycle, reusability docs | not started | |
 
-637 tests passing. `make check` clean.
+691 tests passing. `make check` clean.
 
 Phase 7 landed in two halves: the `Interest` model, the Rising ranking and the
 promotion action with Phase 4, because the mod queue is where they are read;
@@ -110,10 +112,27 @@ viewer's stars to everyone.
   login is the first thing to check if a deploy fails at `pull`. Making the
   package public in the repo's package settings is the other option.
 
-- **No real email has been sent.** Console backend throughout — the moderation
-  mail is proven to *render and dispatch*, not to arrive. SES credentials and
+- **Outbound reaches the relay; arrival is unconfirmed.** A test message went
+  through `core.mail.delivery_connection` to brantevents' SES Mail Manager
+  relay with the overlay's credentials and was accepted (to
+  `info@brantevents.org`). Whether it landed — and DKIM — is the next thing to
+  check, and the admin's "Send a test email" button is how. Before this,
+  console backend throughout — the moderation mail was proven to *render and
+  dispatch*, not to arrive. SES credentials and
   DKIM are unproven, and `SITE_BASE_URL` (new, in settings) must be set per
   instance or every link in those emails points at localhost.
+- **Inbound email: triage is proven, the mailbox is not.** Triage ran live
+  against `claude-sonnet-5` on three hand-written emails: a two-event
+  organiser's note became two pending listings with the right dates, venue and
+  categories (6s, ~$0.02); an SEO pitch was spam and a correction request
+  was not_event (~1s, ~$0.01 each). `poll_inbox` has only met a fake IMAP
+  server in tests — no real mailbox, so folder names, `UNSEEN` behaviour and
+  whether the provider adds an `Authentication-Results` header with `dmarc=`
+  are unknown. Until it does, every sender shows as unverified. The live run
+  also hit the format ladder's blind spot: an *unprobed* model that hangs on
+  `json_schema` times out (90s read timeout, one retry) and fails rather than
+  falling to the next rung. Production has presumably already learned the
+  answer; a fresh database has not.
 - **Postgres is unproven.** Everything so far is SQLite. Watch for anything
   relying on SQLite's laxness — the `select_for_update()` in `GeocodeThrottle`
   is a no-op on SQLite and only does its job on Postgres.

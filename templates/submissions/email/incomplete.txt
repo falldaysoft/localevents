@@ -1,0 +1,12 @@
+{% autoescape off %}Thanks for writing to {{ site_name }}. Your email looks like an event, but we
+couldn't find enough in it to list:
+{% for problem in problems %}
+  - {{ problem }}{% endfor %}
+
+The usual missing piece is the date and time. Reply to this email with the
+event's name, date, time and place and we'll read it again — or add it
+yourself here:
+{{ submit_url }}
+
+— {{ site_name }}
+{% endautoescape %}

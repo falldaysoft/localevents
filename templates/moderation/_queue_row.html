@@ -38,6 +38,9 @@
             {% if submission.api_token_id %}
                 <span class="chip" title="{{ submission.api_token.name }}">Sent by an agent</span>
             {% endif %}
+            {% if submission.inbound_email_id %}
+                <span class="chip" title="{{ submission.inbound_email.from_address }}">By email</span>
+            {% endif %}
             {% if submission.status == 'approved' and submission.event %}
                 <a href="{% url 'event_detail' submission.event.slug %}"
                    class="chip bg-emerald-100 text-emerald-900 hover:bg-emerald-200">Live &rarr;</a>

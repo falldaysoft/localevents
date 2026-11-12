@@ -12,7 +12,12 @@ from django.db.models import Avg, Exists, F, Max, OuterRef, Q, Subquery
 from django.utils import timezone
 
 from events.models import Event, EventRefresh, Interest, Occurrence, occurrence_overlaps
-from submissions.models import ModerationAction, Submission, SubmissionMessage
+from submissions.models import (
+    InboundEmail,
+    ModerationAction,
+    Submission,
+    SubmissionMessage,
+)
 
 from .tasks import email_submitter
 
@@ -484,7 +489,7 @@ QUEUE_VIEWS = {
 def queue_for(view, moderator):
     """The submissions behind one tab of the queue."""
     base = Submission.objects.select_related(
-        "submitted_by", "assigned_to", "api_token", "event", "event__venue"
+        "submitted_by", "assigned_to", "api_token", "inbound_email", "event", "event__venue"
     ).prefetch_related("event__occurrences")
 
     if view == "mine":
@@ -547,7 +552,51 @@ def queue_counts(moderator):
     # nowhere a moderator would think to look, and an unbadged tab is a
     # feature nobody uses.
     rows["refreshes"] = EventRefresh.objects.awaiting_review().count()
+    # And a third: mail triage would not queue is only seen if it is counted.
+    rows["inbox"] = InboundEmail.objects.needs_a_look().count()
     return rows
+
+
+# ---------------------------------------------------------------------------
+# Inbox
+# ---------------------------------------------------------------------------
+
+
+def inbox_for(view):
+    emails = InboundEmail.objects.prefetch_related("submissions__event")
+    if view == "all":
+        return emails[:200]
+    return emails.needs_a_look()
+
+
+@transaction.atomic
+def mark_email_handled(inbound, moderator):
+    inbound.handled_by = moderator
+    inbound.handled_at = timezone.now()
+    inbound.save(update_fields=["handled_by", "handled_at", "updated_at"])
+    ModerationAction.record(
+        moderator, "email_handled", detail=f"{inbound.from_address}: {inbound.subject}"
+    )
+
+
+@transaction.atomic
+def read_email_as_event(inbound, moderator):
+    """Overrule triage: this is an event, read it again with that settled."""
+    from submissions.tasks import triage_inbound_email
+
+    # Unhandled again: if the second reading fails too, it must come back
+    # to the inbox rather than vanish behind the first "handled".
+    inbound.handled_by = None
+    inbound.handled_at = None
+    inbound.status = InboundEmail.Status.RECEIVED
+    inbound.save(update_fields=["handled_by", "handled_at", "status", "updated_at"])
+    ModerationAction.record(
+        moderator, "email_read_as_event",
+        detail=f"{inbound.from_address}: {inbound.subject}",
+    )
+    transaction.on_commit(
+        lambda: triage_inbound_email.enqueue(inbound.pk, force=True)
+    )
 
 
 def _count(**lookups):

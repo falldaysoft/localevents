@@ -150,6 +150,22 @@ def _usage(response):
 
 def extract(config, text, source_url, category_slugs, pasted=False):
     """Extract an EventDraft from page text. Returns (draft, usage_dict)."""
+    return complete_json(
+        config,
+        SYSTEM_PROMPT,
+        _user_prompt(text, source_url, category_slugs, pasted),
+        EventDraft,
+        "event_draft",
+    )
+
+
+def complete_json(config, system_prompt, user_content, model_cls, schema_name):
+    """Ask for one JSON object matching `model_cls`. Returns (instance, usage).
+
+    Shared by extraction and email triage, so both get the same degradation
+    through response formats and the same corrective retry — the lessons in
+    the module docstring were paid for once and should not be paid again.
+    """
     if not config.resolved_api_key():
         raise LLMError(
             "No API key configured. Set one in the admin under AI "
@@ -170,12 +186,12 @@ def extract(config, text, source_url, category_slugs, pasted=False):
         max_retries=1,
     )
 
-    schema = EventDraft.model_json_schema()
+    schema = model_cls.model_json_schema()
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": system_prompt},
         {
             "role": "user",
-            "content": _user_prompt(text, source_url, category_slugs, pasted)
+            "content": user_content
             + "\n\nReply with a single JSON object matching this schema. "
             "No prose, no code fences.\n\n"
             + json.dumps(schema),
@@ -187,7 +203,7 @@ def extract(config, text, source_url, category_slugs, pasted=False):
     # weakest still yields a correct draft or a clean failure.
     formats = [
         {"type": "json_schema",
-         "json_schema": {"name": "event_draft", "strict": False, "schema": schema}},
+         "json_schema": {"name": schema_name, "strict": False, "schema": schema}},
         {"type": "json_object"},
         None,
     ]
@@ -245,7 +261,7 @@ def extract(config, text, source_url, category_slugs, pasted=False):
         content = response.choices[0].message.content or ""
 
         try:
-            return EventDraft.model_validate(_extract_json(content)), usage
+            return model_cls.model_validate(_extract_json(content)), usage
         except (LLMError, ValidationError) as exc:
             last_error = exc
             logger.info(

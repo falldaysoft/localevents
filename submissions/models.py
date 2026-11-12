@@ -82,6 +82,15 @@ class Submission(models.Model):
         related_name="submissions",
     )
 
+    # Set when the listing arrived as an email and triage queued it. Like an
+    # API submission, nobody confirmed it on the site, so the moderator is
+    # shown the message it came from (kept in `pasted_text`) and whether the
+    # sender's domain vouched for the From address.
+    inbound_email = models.ForeignKey(
+        "InboundEmail", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="submissions",
+    )
+
     # The draft the submitter is reviewing, before it becomes a real Event.
     draft = models.JSONField(default=dict, blank=True)
     enrichment_message = models.CharField(max_length=300, blank=True)
@@ -341,3 +350,90 @@ class SubmissionQuota(models.Model):
 
     def may_enrich(self):
         return self.is_exempt or self.enrichments_today() < self.enrichments_per_day
+
+
+class InboundEmailQuerySet(models.QuerySet):
+    def needs_a_look(self):
+        """Mail a person should read: triage could not, or would not, queue it.
+
+        Spam is deliberately not here — it is the bulk of any public inbox —
+        but it is one click away under "All" because a model calling a real
+        event spam is exactly the mistake a moderator needs to be able to undo.
+        """
+        return self.filter(
+            status__in=InboundEmail.NEEDS_A_LOOK, handled_at__isnull=True
+        )
+
+
+class InboundEmail(models.Model):
+    """One message from the submissions mailbox, and what triage made of it.
+
+    Every message is kept, spam included, so a verdict can be questioned:
+    the model decides what reaches the queue, and a moderator can always see
+    what it turned away and send it back through with "it's an event".
+    """
+
+    class Status(models.TextChoices):
+        RECEIVED = "received", "Waiting for triage"
+        QUEUED = "queued", "Sent to the queue"
+        INCOMPLETE = "incomplete", "An event, but not enough to list"
+        NOT_EVENT = "not_event", "Not an event"
+        SPAM = "spam", "Spam"
+        FAILED = "failed", "Could not be triaged"
+        IGNORED = "ignored", "Ignored (bounce or auto-reply)"
+        LIMITED = "limited", "Sender over the daily limit"
+
+    NEEDS_A_LOOK = (
+        Status.INCOMPLETE, Status.NOT_EVENT, Status.FAILED,
+    )
+
+    class SenderCheck(models.TextChoices):
+        # From the receiving server's topmost Authentication-Results header —
+        # the only one the sender cannot have written themselves.
+        PASS = "pass", "Verified by the sender's domain"
+        FAIL = "fail", "Failed the sender's domain check"
+        NONE = "none", "Not verified"
+
+    # Message-ID, or a hash of the message when it has none. Unique so a
+    # poll that dies between storing a message and flagging it read cannot
+    # turn one email into two submissions on the next run.
+    message_key = models.CharField(max_length=255, unique=True)
+    from_address = models.EmailField(max_length=254)
+    from_name = models.CharField(max_length=200, blank=True)
+    subject = models.CharField(max_length=300, blank=True)
+    body = models.TextField(blank=True)
+    attachment_names = models.JSONField(default=list, blank=True)
+    sender_check = models.CharField(
+        max_length=4, choices=SenderCheck.choices, default=SenderCheck.NONE
+    )
+    # Mail a machine sent: auto-replies, mailing lists, newsletters. Still
+    # triaged — a venue's newsletter is a fine source of events — but never
+    # answered, which is what keeps two auto-responders from talking forever.
+    is_automated = models.BooleanField(default=False)
+
+    status = models.CharField(
+        max_length=12, choices=Status.choices, default=Status.RECEIVED
+    )
+    triage_reason = models.CharField(max_length=500, blank=True)
+    replied_at = models.DateTimeField(null=True, blank=True)
+    handled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="+",
+    )
+    handled_at = models.DateTimeField(null=True, blank=True)
+
+    received_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = InboundEmailQuerySet.as_manager()
+
+    class Meta:
+        ordering = ["-received_at"]
+        indexes = [models.Index(fields=["from_address", "received_at"])]
+
+    def __str__(self):
+        return f"{self.from_address}: {self.subject or '(no subject)'}"
+
+    @property
+    def needs_a_look(self):
+        return self.status in self.NEEDS_A_LOOK and self.handled_at is None

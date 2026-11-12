@@ -6,8 +6,10 @@ series expiry from running.
 """
 
 import logging
+from datetime import timedelta
 
 from django.core.management.base import BaseCommand
+from django.utils import timezone
 
 logger = logging.getLogger("core.housekeeping")
 
@@ -20,6 +22,7 @@ class Command(BaseCommand):
             ("recover stranded submissions", self.recover_stranded_submissions),
             ("geocode pending venues", self.geocode_pending_venues),
             ("poll import sources", self.poll_import_sources),
+            ("read the submissions mailbox", self.poll_inbox),
             ("expire stale series", self.expire_series),
             ("send renewal reminders", self.send_renewal_reminders),
         ]
@@ -71,6 +74,25 @@ class Command(BaseCommand):
 
     def poll_import_sources(self):
         return
+
+    def poll_inbox(self):
+        """A backstop for the five-minute crontab line, not a replacement.
+
+        Also re-queues triage for anything stored but never read — a worker
+        restart between the two is the same stranding as enrichment's.
+        """
+        from submissions import inbound
+        from submissions.models import InboundEmail
+        from submissions.tasks import triage_inbound_email
+
+        if inbound.is_configured():
+            stored = inbound.poll()
+            self.stdout.write(f"  stored {stored} new message(s)")
+        cutoff = timezone.now() - timedelta(minutes=30)
+        for pk in InboundEmail.objects.filter(
+            status=InboundEmail.Status.RECEIVED, updated_at__lt=cutoff
+        ).values_list("pk", flat=True):
+            triage_inbound_email.enqueue(pk)
 
     def expire_series(self):
         return
