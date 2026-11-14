@@ -1,0 +1,47 @@
+{% extends "digest/_layout.html" %}
+
+{% block title %}Weekly email — {{ SITE_NAME }}{% endblock %}
+{% block description %}What's on in the coming week, from {{ SITE_NAME }}, once a week by email.{% endblock %}
+
+{% block head %}{% endblock %}
+
+{% block content %}
+    <h1 class="text-3xl font-semibold tracking-tight">The weekly email</h1>
+    <p class="mt-3 text-slate-600">
+        Once a week, what's on in the seven days ahead. Anything you've starred that's happening that weekend comes first.
+        Every email has a link to stop them, and we use your address for nothing else.
+    </p>
+
+    {% if own_email %}
+        <div class="card mt-8">
+            {% if own_subscription.is_active %}
+                <p>The weekly email goes to <strong>{{ own_email }}</strong>.</p>
+                <form method="post" action="{% url 'digest_profile_toggle' %}" class="mt-4">
+                    {% csrf_token %}
+                    <input type="hidden" name="on" value="0">
+                    <input type="hidden" name="next" value="digest">
+                    <button type="submit" class="btn-secondary">Stop sending it</button>
+                </form>
+            {% else %}
+                <p>Send it to <strong>{{ own_email }}</strong>, the address on your account.</p>
+                <form method="post" action="{% url 'digest_profile_toggle' %}" class="mt-4">
+                    {% csrf_token %}
+                    <input type="hidden" name="on" value="1">
+                    <input type="hidden" name="next" value="digest">
+                    <button type="submit" class="btn-primary">Send me the weekly email</button>
+                </form>
+            {% endif %}
+        </div>
+    {% else %}
+        <form method="post" class="card mt-8 space-y-3" novalidate>
+            {% csrf_token %}
+            <label for="{{ form.email.id_for_label }}" class="block text-sm font-medium">{{ form.email.label }}</label>
+            {{ form.email }}
+            {% for error in form.email.errors %}
+                <p class="text-xs text-red-600">{{ error }}</p>
+            {% endfor %}
+            <p class="text-xs text-slate-500">We'll send a link to confirm it's you. Nothing arrives until you press it.</p>
+            <button type="submit" class="btn-primary">Sign up</button>
+        </form>
+    {% endif %}
+{% endblock %}

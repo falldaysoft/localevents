@@ -19,6 +19,18 @@ from .forms import ClaimForm, ProfileForm
 from .models import ApiToken
 
 
+def _digest_status(user):
+    from digest.models import Subscriber
+    from digest.services import verified_email
+
+    email = verified_email(user)
+    subscriber = Subscriber.objects.filter(email=email).first() if email else None
+    return {
+        "digest_email": email,
+        "digest_active": bool(subscriber and subscriber.is_active),
+    }
+
+
 @login_required
 def profile(request):
     """Everything about your own account, in one place.
@@ -55,6 +67,7 @@ def profile(request):
             # Popped, not read: the key exists nowhere else, and it should be
             # on screen exactly once.
             "new_api_key": request.session.pop("new_api_key", None),
+            **_digest_status(request.user),
         },
         status=status,
     )

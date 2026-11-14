@@ -63,6 +63,29 @@
         </ul>
     </div>
 
+    <div id="digest" class="mt-4 card">
+        <h2 class="font-semibold">Weekly email</h2>
+        <div class="mt-4 flex items-center justify-between gap-4 text-sm">
+            {% if not digest_email %}
+                <p class="text-slate-500">Verify your email address to get what's on each week, with the events you've starred first.</p>
+            {% elif digest_active %}
+                <p class="text-slate-500">What's on each week goes to {{ digest_email }}, with the events you've starred first.</p>
+                <form method="post" action="{% url 'digest_profile_toggle' %}" class="shrink-0">
+                    {% csrf_token %}
+                    <input type="hidden" name="on" value="0">
+                    <button type="submit" class="btn-secondary">Turn off</button>
+                </form>
+            {% else %}
+                <p class="text-slate-500">Get what's on each week at {{ digest_email }}, with the events you've starred first.</p>
+                <form method="post" action="{% url 'digest_profile_toggle' %}" class="shrink-0">
+                    {% csrf_token %}
+                    <input type="hidden" name="on" value="1">
+                    <button type="submit" class="btn-secondary">Turn on</button>
+                </form>
+            {% endif %}
+        </div>
+    </div>
+
     {% if user.is_moderator %}
     <div id="api" class="mt-4 card">
         <h2 class="font-semibold">API tokens</h2>

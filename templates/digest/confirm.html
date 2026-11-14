@@ -1,0 +1,25 @@
+{% extends "digest/_layout.html" %}
+
+{% block title %}Confirm your weekly email — {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+    {% if invalid %}
+        <h1 class="text-3xl font-semibold tracking-tight">That link has expired</h1>
+        <p class="mt-3 text-slate-600">
+            Confirmation links work for a week. <a href="{% url 'digest_signup' %}" class="underline hover:text-slate-900">Sign up again</a> for a fresh one.
+        </p>
+    {% elif done or already %}
+        <h1 class="text-3xl font-semibold tracking-tight">You're signed up</h1>
+        <p class="mt-3 text-slate-600">
+            The weekly email will go to <strong>{{ subscriber.email }}</strong>. Star events you like the look of and they'll come first when they're on that weekend.
+        </p>
+        <p class="mt-6"><a href="{% url 'index' %}" class="underline hover:text-slate-900">See what's on</a></p>
+    {% else %}
+        <h1 class="text-3xl font-semibold tracking-tight">Confirm your weekly email</h1>
+        <p class="mt-3 text-slate-600">Send {{ SITE_NAME }}'s weekly email to <strong>{{ subscriber.email }}</strong>?</p>
+        <form method="post" class="mt-6">
+            {% csrf_token %}
+            <button type="submit" class="btn-primary">Yes, send it to me</button>
+        </form>
+    {% endif %}
+{% endblock %}

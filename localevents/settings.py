@@ -60,6 +60,9 @@ TILE_ATTRIBUTION = os.environ.get(
 # control — see events.interest. A hall full of people on one Wi-Fi is the
 # honest ceiling to size it to.
 INTEREST_TOGGLES_PER_HOUR = int(os.environ.get("INTEREST_TOGGLES_PER_HOUR", "120"))
+# Weekly-email signups per address per hour. A household signs up once or
+# twice; the cap is for a script posting strangers' addresses.
+DIGEST_SIGNUPS_PER_HOUR = int(os.environ.get("DIGEST_SIGNUPS_PER_HOUR", "10"))
 
 # Identifies us to Nominatim and to sites we fetch for enrichment. Their usage
 # policies require a contactable UA, so this is not merely cosmetic.
@@ -100,6 +103,7 @@ INSTALLED_APPS = [
     "accounts",
     "content",
     "core",
+    "digest",
     "enrichment",
     "events",
     "moderation",

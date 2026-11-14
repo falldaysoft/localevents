@@ -13,6 +13,7 @@ urlpatterns = [
     # prefix and the access rule line up, as moderation's do.
     path("api/", include("submissions.api_urls")),
     path("", include("submissions.urls")),
+    path("", include("digest.urls")),
     path("", include("content.urls")),
     path("", include("web.urls")),
 ]

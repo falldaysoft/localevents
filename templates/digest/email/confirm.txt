@@ -1,0 +1,10 @@
+Someone — hopefully you — asked for {{ site_name }}'s weekly email to be sent to this address.
+
+To start receiving it, open this link and press the button:
+
+{{ confirm_url }}
+
+The link works for a week. If you didn't ask for this, ignore this message and you won't hear from us again.
+
+— {{ site_name }}
+{{ contact_email }}

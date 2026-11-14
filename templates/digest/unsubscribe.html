@@ -1,0 +1,20 @@
+{% extends "digest/_layout.html" %}
+
+{% block title %}Stop the weekly email — {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+    {% if done or already %}
+        <h1 class="text-3xl font-semibold tracking-tight">You're unsubscribed</h1>
+        <p class="mt-3 text-slate-600">
+            No more weekly emails will go to <strong>{{ subscriber.email }}</strong>.
+            Changed your mind? <a href="{% url 'digest_signup' %}" class="underline hover:text-slate-900">Sign up again</a>.
+        </p>
+    {% else %}
+        <h1 class="text-3xl font-semibold tracking-tight">Stop the weekly email?</h1>
+        <p class="mt-3 text-slate-600">It goes to <strong>{{ subscriber.email }}</strong>.</p>
+        <form method="post" class="mt-6">
+            {% csrf_token %}
+            <button type="submit" class="btn-primary">Unsubscribe</button>
+        </form>
+    {% endif %}
+{% endblock %}

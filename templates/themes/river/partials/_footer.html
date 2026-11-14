@@ -10,6 +10,7 @@
             {# owns, a footer link is usually somewhere else entirely.            #}
             <a href="{% url 'venue_list' %}">Venues</a>
             <a href="{% url 'category_list' %}">Categories</a>
+            <a href="{% url 'digest_signup' %}">Weekly email</a>
             {% for page in FOOTER_PAGES %}
                 <a href="{{ page.get_absolute_url }}">{{ page.title }}</a>
             {% endfor %}

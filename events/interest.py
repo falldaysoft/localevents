@@ -110,16 +110,20 @@ def client_ip(request):
     return request.META.get("REMOTE_ADDR", "")
 
 
-def within_rate_limit(request):
+def within_rate_limit(request, bucket="interest-toggles", limit=None):
     """Allow this toggle, and count it.
+
+    `bucket` and `limit` let another anonymous POST (the weekly-email signup)
+    keep its own count on the same terms.
 
     Counted on the default cache. With no CACHES configured that is local
     memory, per process and lost on restart — approximate, and enough: the
     threat is a scanner hammering one address, not a distributed campaign, and
     the signal it protects cannot move an event between tiers anyway.
     """
-    limit = settings.INTEREST_TOGGLES_PER_HOUR
-    key = f"interest-toggles:{client_ip(request)}"
+    if limit is None:
+        limit = settings.INTEREST_TOGGLES_PER_HOUR
+    key = f"{bucket}:{client_ip(request)}"
     cache.add(key, 0, timeout=60 * 60)
     try:
         count = cache.incr(key)

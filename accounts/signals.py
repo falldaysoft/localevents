@@ -20,3 +20,16 @@ def claim_anonymous_interest(sender, request, user, **kwargs):
     if request is None:
         return
     merge_anonymous_interest(user, interest.fingerprint(request))
+
+
+@receiver(user_logged_in)
+def claim_digest_subscription(sender, request, user, **kwargs):
+    """Let the weekly email find this account's marks from now on.
+
+    A reader who signed up anonymously and later made an account would
+    otherwise keep getting an email built from a cookie whose marks this very
+    sign-in has just moved onto the account.
+    """
+    from digest.services import link_user
+
+    link_user(user)

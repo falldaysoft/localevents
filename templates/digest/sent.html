@@ -1,0 +1,12 @@
+{% extends "digest/_layout.html" %}
+
+{% block title %}Check your inbox — {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+    <h1 class="text-3xl font-semibold tracking-tight">Check your inbox</h1>
+    <p class="mt-3 text-slate-600">
+        If that address isn't already signed up, a link to confirm it is on its way. It works for a week.
+        Nothing is sent until it's pressed.
+    </p>
+    <p class="mt-6"><a href="{% url 'index' %}" class="underline hover:text-slate-900">Back to what's on</a></p>
+{% endblock %}
