@@ -25,6 +25,7 @@ class Command(BaseCommand):
             ("read the submissions mailbox", self.poll_inbox),
             ("expire stale series", self.expire_series),
             ("send renewal reminders", self.send_renewal_reminders),
+            ("send the weekly email", self.send_weekly_email),
         ]
 
         failures = 0
@@ -99,3 +100,16 @@ class Command(BaseCommand):
 
     def send_renewal_reminders(self):
         return
+
+    def send_weekly_email(self):
+        """Start this week's email if it is due; re-queue a stranded one.
+
+        Hourly is the schedule's resolution, which is why the weekly email has
+        a day and an hour in SiteConfig rather than a crontab line of its own:
+        an instance changes when it sends in the admin, not on the VM.
+        """
+        from digest.sending import start_due_run
+
+        run = start_due_run()
+        if run is not None:
+            self.stdout.write(f"  weekly email {run.send_date}")

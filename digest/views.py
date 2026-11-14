@@ -107,7 +107,7 @@ def unsubscribe(request, token):
     if subscriber is None:
         raise Http404
     if request.method == "POST":
-        services.unsubscribe(subscriber)
+        services.unsubscribe(subscriber, delivery_id=request.GET.get("d"))
         return render(
             request, "digest/unsubscribe.html", {"done": True, "subscriber": subscriber}
         )

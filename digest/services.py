@@ -137,8 +137,16 @@ def subscribe_user(user, fingerprint=""):
     return subscriber
 
 
-def unsubscribe(subscriber):
-    subscriber.deactivate()
+def unsubscribe(subscriber, delivery_id=None):
+    """Stop the email, noting which week's email the link came from.
+
+    The delivery id rides in the link's query string, so it is only believed
+    when it names a delivery that was actually sent to this subscriber.
+    """
+    via = None
+    if delivery_id and str(delivery_id).isdigit():
+        via = subscriber.deliveries.filter(pk=int(delivery_id)).first()
+    subscriber.deactivate(via=via)
 
 
 def link_user(user):

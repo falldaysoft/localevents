@@ -41,5 +41,9 @@
        class="font-medium {% if section == 'media' %}text-slate-900{% else %}text-slate-500 hover:text-slate-900{% endif %}">
         Media
     </a>
+    <a href="{% url 'mod_digest' %}"
+       class="font-medium {% if section == 'digest' %}text-slate-900{% else %}text-slate-500 hover:text-slate-900{% endif %}">
+        Weekly email
+    </a>
     <a href="{% url 'admin:index' %}" class="ml-auto text-slate-400 hover:text-slate-700">Admin</a>
 </div>

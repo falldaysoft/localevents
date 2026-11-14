@@ -72,6 +72,15 @@ class Subscriber(models.Model):
     confirmed_at = models.DateTimeField(null=True, blank=True)
     unsubscribed_at = models.DateTimeField(null=True, blank=True)
     last_sent_at = models.DateTimeField(null=True, blank=True)
+    # The email whose link they unsubscribed from, when it was one — what
+    # lets the send log say how many people a given week drove away.
+    unsubscribed_via = models.ForeignKey(
+        "DigestDelivery",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="unsubscribes",
+    )
 
     objects = SubscriberQuerySet.as_manager()
 
@@ -111,8 +120,76 @@ class Subscriber(models.Model):
             )
         self.save(update_fields=["confirmed_at", "unsubscribed_at", "consent_note"])
 
-    def deactivate(self):
+    def deactivate(self, via=None):
         if self.unsubscribed_at:
             return
         self.unsubscribed_at = timezone.now()
-        self.save(update_fields=["unsubscribed_at"])
+        self.unsubscribed_via = via
+        self.save(update_fields=["unsubscribed_at", "unsubscribed_via"])
+
+
+class DigestRun(models.Model):
+    """One week's sending: who was due it, and when it started and finished.
+
+    `send_date` is unique, and creating the row is how a sender claims the
+    week — a second housekeeping run in the same hour, or the next hour's,
+    finds it and leaves the sending to whoever made it.
+    """
+
+    send_date = models.DateField(unique=True)
+    started_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    # Active subscribers when the run began, for the log's trend line; the
+    # run's own deliveries are the people it actually covered.
+    active_subscribers = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["-send_date"]
+
+    def __str__(self):
+        return f"Weekly email {self.send_date}"
+
+
+class DigestDelivery(models.Model):
+    """One reader's email in one run, and what happened to it.
+
+    Unique per run and reader, and only ever moved out of PENDING under a
+    row lock, so a batch run twice — a worker restart, a re-queued batch —
+    cannot send anyone the same week twice. The address is copied so the log
+    still says who it went to after the subscriber row is gone.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Waiting"
+        SENT = "sent", "Sent"
+        SKIPPED = "skipped", "Skipped"
+        FAILED = "failed", "Failed"
+
+    run = models.ForeignKey(
+        DigestRun, on_delete=models.CASCADE, related_name="deliveries"
+    )
+    subscriber = models.ForeignKey(
+        Subscriber, null=True, on_delete=models.SET_NULL, related_name="deliveries"
+    )
+    email = models.EmailField()
+    status = models.CharField(
+        max_length=10, choices=Status.choices, default=Status.PENDING
+    )
+    # Why a delivery was skipped or failed: a reason a moderator can read, or the
+    # exception's.
+    detail = models.CharField(max_length=300, blank=True)
+    subject = models.CharField(max_length=300, blank=True)
+    event_count = models.PositiveSmallIntegerField(default=0)
+    favorites_count = models.PositiveSmallIntegerField(default=0)
+    sent_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["email"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["run", "subscriber"], name="one_delivery_per_run_and_reader"
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.run.send_date} → {self.email}"

@@ -85,6 +85,33 @@ class SiteConfig(SingletonModel):
             "search pages. Featured and Listed events are not affected."
         ),
     )
+    # The weekly email. Off until an administrator turns it on, like
+    # enrichment: a deploy must never start mailing people by itself.
+    digest_enabled = models.BooleanField(
+        default=False,
+        verbose_name="send the weekly email",
+        help_text="Off: nothing is sent, though people can still sign up.",
+    )
+    digest_weekday = models.PositiveSmallIntegerField(
+        default=3,
+        choices=[
+            (0, "Monday"), (1, "Tuesday"), (2, "Wednesday"), (3, "Thursday"),
+            (4, "Friday"), (5, "Saturday"), (6, "Sunday"),
+        ],
+        verbose_name="weekly email day",
+        help_text="Thursday leaves time to plan the weekend.",
+    )
+    digest_hour = models.PositiveSmallIntegerField(
+        default=7,
+        verbose_name="weekly email hour",
+        help_text="Local hour, 0-23. Sending starts within the hour after it.",
+    )
+    digest_min_events = models.PositiveSmallIntegerField(
+        default=3,
+        verbose_name="weekly email minimum events",
+        help_text="A reader whose email would list fewer events than this "
+        "gets none that week.",
+    )
     script_hosts = models.TextField(
         blank=True,
         verbose_name="script hosts to allow",

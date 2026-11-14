@@ -51,3 +51,11 @@ def send_confirmation(subscriber_id):
         reply_to=[settings.CONTACT_EMAIL],
         headers={"Auto-Submitted": "auto-generated"},
     ).send()
+
+
+@task()
+def send_digest_batch(run_id, delivery_ids):
+    """Send one batch of a weekly run over one SMTP connection."""
+    from .sending import send_batch
+
+    send_batch(run_id, delivery_ids)
