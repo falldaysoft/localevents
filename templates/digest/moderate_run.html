@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Weekly email {{ run.send_date|date:"j M Y" }} — moderation{% endblock %}
+
+{% block content %}
+    {% include "moderation/_tabs.html" with section="digest" %}
+
+    <p class="mt-6 text-sm"><a href="{% url 'mod_digest' %}" class="text-slate-500 hover:text-slate-900">&larr; Weekly email</a></p>
+    <h1 class="mt-2 text-2xl font-semibold tracking-tight">{{ run.send_date|date:"l j F Y" }}</h1>
+    <p class="mt-2 text-sm text-slate-600">
+        Started {{ run.started_at|date:"H:i" }}{% if run.finished_at %}, finished {{ run.finished_at|date:"j M, H:i" }}{% else %}, still sending{% endif %}.
+        {{ run.active_subscribers }} subscriber{{ run.active_subscribers|pluralize }} when it began.
+    </p>
+
+    <div class="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+        <a href="?" class="{% if not shown %}font-semibold text-slate-900{% else %}text-slate-500 hover:text-slate-900{% endif %}">All {{ total }}</a>
+        <a href="?status=sent" class="{% if shown == 'sent' %}font-semibold text-slate-900{% else %}text-slate-500 hover:text-slate-900{% endif %}">Sent {{ counts.sent }}</a>
+        <a href="?status=skipped" class="{% if shown == 'skipped' %}font-semibold text-slate-900{% else %}text-slate-500 hover:text-slate-900{% endif %}">Skipped {{ counts.skipped }}</a>
+        <a href="?status=failed" class="{% if shown == 'failed' %}font-semibold text-slate-900{% else %}text-slate-500 hover:text-slate-900{% endif %}">Failed {{ counts.failed }}</a>
+        {% if counts.waiting %}<a href="?status=waiting" class="{% if shown == 'waiting' %}font-semibold text-slate-900{% else %}text-slate-500 hover:text-slate-900{% endif %}">Waiting {{ counts.waiting }}</a>{% endif %}
+        <form method="get" class="ml-auto flex gap-2">
+            {% if shown %}<input type="hidden" name="status" value="{{ shown }}">{% endif %}
+            <input type="search" name="q" value="{{ q }}" placeholder="Address" class="rounded-lg border border-slate-300 px-3 py-1.5 text-sm">
+            <button type="submit" class="btn-secondary">Find</button>
+        </form>
+    </div>
+
+    <div class="card mt-4 overflow-x-auto p-0">
+        <table class="w-full text-left text-sm">
+            <thead class="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                    <th class="px-4 py-3 font-medium">To</th>
+                    <th class="px-4 py-3 font-medium">Status</th>
+                    <th class="px-4 py-3 text-right font-medium">Events</th>
+                    <th class="px-4 py-3 text-right font-medium">Picks</th>
+                    <th class="px-4 py-3 font-medium">Subject, or why not</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+                {% for d in page %}
+                    <tr>
+                        <td class="whitespace-nowrap px-4 py-2">
+                            {% if d.subscriber_id %}<a href="{% url 'mod_digest_subscriber' d.subscriber_id %}" class="underline hover:text-slate-900">{{ d.email }}</a>{% else %}{{ d.email }}{% endif %}
+                            {% if d.pk in left %}<span class="ml-1 text-xs text-amber-700">left from this email</span>{% endif %}
+                        </td>
+                        <td class="whitespace-nowrap px-4 py-2 {% if d.status == 'failed' %}font-medium text-red-700{% endif %}">
+                            {{ d.get_status_display }}{% if d.sent_at %} <span class="text-slate-400">{{ d.sent_at|date:"H:i" }}</span>{% endif %}
+                        </td>
+                        <td class="px-4 py-2 text-right">{{ d.event_count }}</td>
+                        <td class="px-4 py-2 text-right">{{ d.favorites_count|default:"" }}</td>
+                        <td class="px-4 py-2 text-slate-600">{{ d.detail|default:d.subject }}</td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="5" class="px-4 py-6 text-center text-slate-500">Nobody matches.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% include "digest/_pages.html" %}
+{% endblock %}

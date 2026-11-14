@@ -161,3 +161,102 @@ def link_user(user):
     if not email or Subscriber.objects.filter(user=user).exists():
         return
     Subscriber.objects.filter(email=email, user__isnull=True).update(user=user)
+
+
+# --- moderators ------------------------------------------------------------
+
+# A pending signup nobody confirmed is an address someone typed, perhaps not
+# their own; past this it is forgotten rather than kept indefinitely.
+FORGET_UNCONFIRMED_AFTER = timedelta(days=30)
+
+
+def _account_for(email):
+    from allauth.account.models import EmailAddress
+
+    row = (
+        EmailAddress.objects.filter(email__iexact=email, verified=True)
+        .select_related("user")
+        .first()
+    )
+    return row.user if row else None
+
+
+def moderator_subscribe(actor, email, note):
+    """Subscribe an address on someone's behalf, at once, without a link.
+
+    For a person who asked by phone, at a stall, by replying to an email.
+    The moderator is vouching for that request, so there is no confirmation
+    step — and the note saying how they asked is required, because it is
+    the consent record. Returns `(subscriber, changed)`; an address already
+    receiving is left alone.
+    """
+    from submissions.models import ModerationAction
+
+    email = normalize_email(email)
+    note = note.strip()
+    with transaction.atomic():
+        subscriber, _ = Subscriber.objects.select_for_update().get_or_create(
+            email=email, defaults={"source": Subscriber.Source.MODERATOR}
+        )
+        if subscriber.is_active:
+            return subscriber, False
+        subscriber.source = Subscriber.Source.MODERATOR
+        changed = ["source"]
+        if subscriber.user_id is None:
+            user = _account_for(email)
+            if user is not None and not Subscriber.objects.filter(user=user).exists():
+                subscriber.user = user
+                changed.append("user")
+        subscriber.save(update_fields=changed)
+        subscriber.activate(f"Added by {actor.display_name}: {note}")
+        ModerationAction.record(
+            actor, "weekly email: subscribed", detail=f"{email} — {note}"
+        )
+    return subscriber, True
+
+
+def moderator_unsubscribe(actor, subscriber, note):
+    """Stop the email for someone who asked outside the email's own link."""
+    from submissions.models import ModerationAction
+
+    if subscriber.unsubscribed_at:
+        return False
+    note = note.strip()
+    with transaction.atomic():
+        subscriber.deactivate(note=f"Removed by {actor.display_name}: {note}")
+        ModerationAction.record(
+            actor, "weekly email: unsubscribed", detail=f"{subscriber.email} — {note}"
+        )
+    return True
+
+
+def set_enabled(actor, on):
+    """The master switch, from the moderator page. Recorded, since it mails everyone."""
+    from core.models import SiteConfig
+    from submissions.models import ModerationAction
+
+    config = SiteConfig.load()
+    if config.digest_enabled == on:
+        return False
+    config.digest_enabled = on
+    config.save(update_fields=["digest_enabled"])
+    ModerationAction.record(
+        actor, "weekly email: switched on" if on else "weekly email: switched off"
+    )
+    return True
+
+
+def forget_unconfirmed(now=None):
+    """Delete signups never confirmed within `FORGET_UNCONFIRMED_AFTER`.
+
+    Only rows that never went anywhere: an address that once received the
+    email and left keeps its row, which is the record that it said stop.
+    """
+    cutoff = (now or timezone.now()) - FORGET_UNCONFIRMED_AFTER
+    stale = (
+        Subscriber.objects.pending()
+        .filter(created_at__lt=cutoff)
+        .exclude(confirmation_sent_at__gte=cutoff)
+    )
+    count, _ = stale.delete()
+    return count

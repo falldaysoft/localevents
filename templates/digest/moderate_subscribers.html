@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Weekly email subscribers — moderation{% endblock %}
+
+{% block content %}
+    {% include "moderation/_tabs.html" with section="digest" %}
+
+    <p class="mt-6 text-sm"><a href="{% url 'mod_digest' %}" class="text-slate-500 hover:text-slate-900">&larr; Weekly email</a></p>
+    <h1 class="mt-2 text-2xl font-semibold tracking-tight">Subscribers</h1>
+
+    <details class="card mt-6 max-w-2xl" {% if form.errors %}open{% endif %}>
+        <summary class="cursor-pointer font-semibold">Add someone who asked</summary>
+        <p class="mt-2 text-sm text-slate-500">
+            For a person who asked by phone, in person or by email. They start getting it at once, with no confirmation link,
+            so say how they asked — that note is the record of their consent.
+        </p>
+        <form method="post" class="mt-4 space-y-3">
+            {% csrf_token %}
+            {% for field in form %}
+                <div>
+                    <label for="{{ field.id_for_label }}" class="block text-sm font-medium">{{ field.label }}</label>
+                    <div class="mt-1">{{ field }}</div>
+                    {% for error in field.errors %}<p class="mt-1 text-xs text-red-600">{{ error }}</p>{% endfor %}
+                </div>
+            {% endfor %}
+            <button type="submit" class="btn-primary">Subscribe them</button>
+        </form>
+    </details>
+
+    <div class="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+        <a href="?status=active" class="{% if shown == 'active' %}font-semibold text-slate-900{% else %}text-slate-500 hover:text-slate-900{% endif %}">Receiving</a>
+        <a href="?status=pending" class="{% if shown == 'pending' %}font-semibold text-slate-900{% else %}text-slate-500 hover:text-slate-900{% endif %}">Yet to confirm</a>
+        <a href="?status=unsubscribed" class="{% if shown == 'unsubscribed' %}font-semibold text-slate-900{% else %}text-slate-500 hover:text-slate-900{% endif %}">Unsubscribed</a>
+        <a href="?status=all" class="{% if shown == 'all' %}font-semibold text-slate-900{% else %}text-slate-500 hover:text-slate-900{% endif %}">All</a>
+        <form method="get" class="ml-auto flex gap-2">
+            <input type="hidden" name="status" value="{{ shown }}">
+            <input type="search" name="q" value="{{ q }}" placeholder="Address" class="rounded-lg border border-slate-300 px-3 py-1.5 text-sm">
+            <button type="submit" class="btn-secondary">Find</button>
+        </form>
+    </div>
+
+    <div class="card mt-4 overflow-x-auto p-0">
+        <table class="w-full text-left text-sm">
+            <thead class="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                    <th class="px-4 py-3 font-medium">Address</th>
+                    <th class="px-4 py-3 font-medium">Status</th>
+                    <th class="px-4 py-3 font-medium">How</th>
+                    <th class="px-4 py-3 font-medium">Since</th>
+                    <th class="px-4 py-3 font-medium">Last sent</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+                {% for s in page %}
+                    <tr>
+                        <td class="whitespace-nowrap px-4 py-2">
+                            <a href="{% url 'mod_digest_subscriber' s.pk %}" class="underline hover:text-slate-900">{{ s.email }}</a>
+                            {% if s.user_id %}<span class="ml-1 text-xs text-slate-400">account</span>{% endif %}
+                        </td>
+                        <td class="whitespace-nowrap px-4 py-2">{% include "digest/_status.html" with subscriber=s %}</td>
+                        <td class="whitespace-nowrap px-4 py-2 text-slate-500">{{ s.get_source_display }}</td>
+                        <td class="whitespace-nowrap px-4 py-2 text-slate-500">{{ s.confirmed_at|default:s.created_at|date:"j M Y" }}</td>
+                        <td class="whitespace-nowrap px-4 py-2 text-slate-500">{{ s.last_sent_at|date:"j M Y"|default:"—" }}</td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="5" class="px-4 py-6 text-center text-slate-500">Nobody matches.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% include "digest/_pages.html" %}
+{% endblock %}

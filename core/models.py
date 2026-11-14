@@ -85,12 +85,14 @@ class SiteConfig(SingletonModel):
             "search pages. Featured and Listed events are not affected."
         ),
     )
-    # The weekly email. Off until an administrator turns it on, like
+    # The weekly email's master switch. Off until someone turns it on, like
     # enrichment: a deploy must never start mailing people by itself.
     digest_enabled = models.BooleanField(
         default=False,
-        verbose_name="send the weekly email",
-        help_text="Off: nothing is sent, though people can still sign up.",
+        verbose_name="weekly email on",
+        help_text="Off: nothing is sent, not even the rest of a run already "
+        "under way, and the signup form and links are hidden. Subscribers are "
+        "kept, and their unsubscribe links keep working.",
     )
     digest_weekday = models.PositiveSmallIntegerField(
         default=3,

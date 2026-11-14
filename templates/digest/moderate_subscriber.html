@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}{{ subscriber.email }} — weekly email — moderation{% endblock %}
+
+{% block content %}
+    {% include "moderation/_tabs.html" with section="digest" %}
+
+    <p class="mt-6 text-sm"><a href="{% url 'mod_digest_subscribers' %}" class="text-slate-500 hover:text-slate-900">&larr; Subscribers</a></p>
+    <h1 class="mt-2 flex flex-wrap items-center gap-3 text-2xl font-semibold tracking-tight">
+        {{ subscriber.email }} {% include "digest/_status.html" %}
+    </h1>
+    <p class="mt-2 text-sm text-slate-600">
+        {{ subscriber.get_source_display }}, {{ subscriber.created_at|date:"j M Y" }}.
+        {% if subscriber.user %}Linked to the account {{ subscriber.user.display_name }}, whose stars lead the email.{% elif subscriber.fingerprint %}Uses the stars from the device it signed up on.{% else %}No stars to draw on, so it gets the plain week.{% endif %}
+        {% if subscriber.unsubscribed_via %}Left from the email of {{ subscriber.unsubscribed_via.run.send_date|date:"j M Y" }}.{% endif %}
+    </p>
+
+    <div class="mt-6 grid gap-6 lg:grid-cols-2">
+        <div class="card">
+            <h2 class="font-semibold">Consent record</h2>
+            {% if subscriber.consent_note %}
+                <pre class="mt-3 whitespace-pre-wrap font-sans text-sm text-slate-600">{{ subscriber.consent_note }}</pre>
+            {% else %}
+                <p class="mt-3 text-sm text-slate-500">Nothing recorded yet.</p>
+            {% endif %}
+        </div>
+
+        <form method="post" class="card space-y-3">
+            {% csrf_token %}
+            {% if subscriber.is_active %}
+                <h2 class="font-semibold">Stop sending it</h2>
+                <p class="text-sm text-slate-500">For someone who asked to stop without using the link in the email.</p>
+                <input type="hidden" name="action" value="unsubscribe">
+            {% else %}
+                <h2 class="font-semibold">Start sending it</h2>
+                <p class="text-sm text-slate-500">They'll get it from the next email, with no confirmation link. Only for someone who asked you directly.</p>
+                <input type="hidden" name="action" value="subscribe">
+            {% endif %}
+            <label for="{{ form.note.id_for_label }}" class="block text-sm font-medium">{{ form.note.label }}</label>
+            {{ form.note }}
+            {% for error in form.note.errors %}<p class="text-xs text-red-600">{{ error }}</p>{% endfor %}
+            <button type="submit" class="{% if subscriber.is_active %}btn-secondary{% else %}btn-primary{% endif %}">
+                {% if subscriber.is_active %}Unsubscribe them{% else %}Subscribe them{% endif %}
+            </button>
+        </form>
+    </div>
+
+    <h2 class="mt-10 text-lg font-semibold">Emails</h2>
+    <div class="card mt-3 overflow-x-auto p-0">
+        <table class="w-full text-left text-sm">
+            <tbody class="divide-y divide-slate-100">
+                {% for d in deliveries %}
+                    <tr>
+                        <td class="whitespace-nowrap px-4 py-2"><a href="{% url 'mod_digest_run' d.run_id %}" class="underline hover:text-slate-900">{{ d.run.send_date|date:"D j M Y" }}</a></td>
+                        <td class="whitespace-nowrap px-4 py-2 {% if d.status == 'failed' %}font-medium text-red-700{% endif %}">{{ d.get_status_display }}</td>
+                        <td class="whitespace-nowrap px-4 py-2 text-slate-500">{{ d.event_count }} event{{ d.event_count|pluralize }}{% if d.favorites_count %}, {{ d.favorites_count }} of theirs{% endif %}</td>
+                        <td class="px-4 py-2 text-slate-600">{{ d.detail|default:d.subject }}</td>
+                    </tr>
+                {% empty %}
+                    <tr><td class="px-4 py-6 text-center text-slate-500">None sent yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endblock %}

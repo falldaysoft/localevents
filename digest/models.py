@@ -106,6 +106,13 @@ class Subscriber(models.Model):
             return "active"
         return "pending"
 
+    def _note(self, note, now):
+        if note:
+            stamp = timezone.localtime(now).strftime("%Y-%m-%d %H:%M")
+            self.consent_note = "\n".join(
+                filter(None, [self.consent_note, f"{stamp}: {note}"])
+            )
+
     def activate(self, note=""):
         """Confirmed and receiving, from now. Idempotent on an active row."""
         if self.is_active:
@@ -113,19 +120,16 @@ class Subscriber(models.Model):
         now = timezone.now()
         self.confirmed_at = now
         self.unsubscribed_at = None
-        if note:
-            stamp = timezone.localtime(now).strftime("%Y-%m-%d %H:%M")
-            self.consent_note = "\n".join(
-                filter(None, [self.consent_note, f"{stamp}: {note}"])
-            )
+        self._note(note, now)
         self.save(update_fields=["confirmed_at", "unsubscribed_at", "consent_note"])
 
-    def deactivate(self, via=None):
+    def deactivate(self, via=None, note=""):
         if self.unsubscribed_at:
             return
         self.unsubscribed_at = timezone.now()
         self.unsubscribed_via = via
-        self.save(update_fields=["unsubscribed_at", "unsubscribed_via"])
+        self._note(note, self.unsubscribed_at)
+        self.save(update_fields=["unsubscribed_at", "unsubscribed_via", "consent_note"])
 
 
 class DigestRun(models.Model):

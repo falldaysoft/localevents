@@ -10,5 +10,13 @@ from . import mod_views
 
 urlpatterns = [
     path("digest/", mod_views.overview, name="mod_digest"),
+    path("digest/switch/", mod_views.switch, name="mod_digest_switch"),
     path("digest/test/", mod_views.test_send, name="mod_digest_test"),
+    path("digest/runs/<int:pk>/", mod_views.run_detail, name="mod_digest_run"),
+    path("digest/subscribers/", mod_views.subscribers, name="mod_digest_subscribers"),
+    path(
+        "digest/subscribers/<int:pk>/",
+        mod_views.subscriber_detail,
+        name="mod_digest_subscriber",
+    ),
 ]

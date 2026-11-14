@@ -145,6 +145,7 @@ TEMPLATES = [
                 "core.context_processors.theme",
                 "accounts.context_processors.claim",
                 "content.context_processors.footer_pages",
+                "digest.context_processors.weekly_email",
                 "web.context_processors.viewer",
             ],
         },

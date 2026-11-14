@@ -14,6 +14,7 @@ from django.shortcuts import redirect, render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
+from core.models import site_config_for
 from events import interest
 
 from . import services
@@ -28,6 +29,12 @@ def signup(request):
     The visitor cookie is handed out here if the reader has none, because the
     email's "your weekend" section is built from that device's marks.
     """
+    if not site_config_for(request).digest_enabled:
+        # Switched off: nothing to join, and nothing saved from a stale form.
+        # Confirm and unsubscribe stay open — those links are already in
+        # people's inboxes.
+        return render(request, "digest/signup.html", {"closed": True})
+
     own_email = services.verified_email(request.user)
     own_subscription = (
         Subscriber.objects.filter(email=own_email).first() if own_email else None
@@ -123,6 +130,9 @@ def unsubscribe(request, token):
 def profile_toggle(request):
     """The switch on the profile and on /digest/ for a verified reader."""
     if request.POST.get("on") == "1":
+        if not site_config_for(request).digest_enabled:
+            messages.error(request, "The weekly email isn't being sent at the moment.")
+            return redirect("profile")
         subscriber = services.subscribe_user(
             request.user, fingerprint=interest.fingerprint(request) or ""
         )

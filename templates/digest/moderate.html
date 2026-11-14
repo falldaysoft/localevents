@@ -5,24 +5,95 @@
 {% block content %}
     {% include "moderation/_tabs.html" with section="digest" %}
 
-    <div class="mt-6">
-        <h1 class="text-2xl font-semibold tracking-tight">Weekly email</h1>
-        <p class="mt-2 max-w-2xl text-sm text-slate-600">
+    <div class="mt-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+            <h1 class="text-2xl font-semibold tracking-tight">Weekly email</h1>
+            <p class="mt-2 max-w-2xl text-sm text-slate-600">
+                {% if config.digest_enabled %}
+                    Sent every {{ weekday }} from {{ config.digest_hour|stringformat:"02d" }}:00.
+                    A reader whose email would list fewer than {{ config.digest_min_events }} event{{ config.digest_min_events|pluralize }} gets none that week.
+                {% else %}
+                    Switched off: nothing is sent, and the signup form and links are hidden.
+                {% endif %}
+                {% if user.is_staff %}<a href="{% url 'admin:core_siteconfig_changelist' %}" class="underline hover:text-slate-900">Change the schedule</a>.{% endif %}
+            </p>
+        </div>
+        <form method="post" action="{% url 'mod_digest_switch' %}" class="flex items-center gap-3">
+            {% csrf_token %}
             {% if config.digest_enabled %}
-                Sent every {{ weekday }} from {{ config.digest_hour|stringformat:"02d" }}:00 to {{ active_count }} subscriber{{ active_count|pluralize }}{% if pending_count %}, with {{ pending_count }} more yet to confirm{% endif %}.
-                A reader whose email would list fewer than {{ config.digest_min_events }} event{{ config.digest_min_events|pluralize }} gets none that week.
+                <span class="rounded-full bg-emerald-100 px-3 py-1 text-sm font-medium text-emerald-800">On</span>
+                <input type="hidden" name="on" value="0">
+                <button type="submit" class="btn-secondary">Switch off</button>
             {% else %}
-                Not being sent: it is switched off in the site settings. {{ active_count }} subscriber{{ active_count|pluralize }} so far{% if pending_count %}, {{ pending_count }} yet to confirm{% endif %}.
+                <span class="rounded-full bg-slate-200 px-3 py-1 text-sm font-medium text-slate-700">Off</span>
+                <input type="hidden" name="on" value="1">
+                <button type="submit" class="btn-primary">Switch on</button>
             {% endif %}
-            {% if user.is_staff %}<a href="{% url 'admin:core_siteconfig_changelist' %}" class="underline hover:text-slate-900">Change the schedule</a>.{% endif %}
-        </p>
+        </form>
     </div>
 
-    <div class="card mt-6 max-w-2xl">
+    <div class="mt-6 grid max-w-3xl grid-cols-1 gap-4 sm:grid-cols-3">
+        <a href="{% url 'mod_digest_subscribers' %}?status=active" class="card hover:border-slate-400">
+            <div class="text-2xl font-semibold">{{ active_count }}</div>
+            <div class="text-sm text-slate-500">subscriber{{ active_count|pluralize }}</div>
+        </a>
+        <a href="{% url 'mod_digest_subscribers' %}?status=pending" class="card hover:border-slate-400">
+            <div class="text-2xl font-semibold">{{ pending_count }}</div>
+            <div class="text-sm text-slate-500">yet to confirm</div>
+        </a>
+        <div class="card">
+            <div class="text-2xl font-semibold">{{ joined_count }}</div>
+            <div class="text-sm text-slate-500">joined since the last email</div>
+        </div>
+    </div>
+    <p class="mt-3 text-sm">
+        <a href="{% url 'mod_digest_subscribers' %}" class="underline hover:text-slate-900">Find or add a subscriber</a>
+    </p>
+
+    <h2 class="mt-10 text-lg font-semibold">What was sent</h2>
+    <div class="card mt-3 overflow-x-auto p-0">
+        <table class="w-full text-left text-sm">
+            <thead class="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                    <th class="px-4 py-3 font-medium">Week</th>
+                    <th class="px-4 py-3 text-right font-medium" title="Subscribers it went to, or tried to">Due</th>
+                    <th class="px-4 py-3 text-right font-medium">Sent</th>
+                    <th class="px-4 py-3 text-right font-medium" title="Unsubscribed before it went, or too few events">Skipped</th>
+                    <th class="px-4 py-3 text-right font-medium">Failed</th>
+                    <th class="px-4 py-3 text-right font-medium" title="Sent emails that led with the reader's own weekend picks">With picks</th>
+                    <th class="px-4 py-3 text-right font-medium" title="Average events per sent email">Events</th>
+                    <th class="px-4 py-3 text-right font-medium" title="Unsubscribed using this week's link">Left</th>
+                    <th class="px-4 py-3 text-right font-medium" title="Confirmed since the week before">Joined</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+                {% for run in runs %}
+                    <tr>
+                        <td class="whitespace-nowrap px-4 py-2">
+                            <a href="{% url 'mod_digest_run' run.pk %}" class="font-medium underline hover:text-slate-900">{{ run.send_date|date:"D j M Y" }}</a>
+                            {% if not run.finished_at %}<span class="ml-1 text-xs text-amber-700">sending · {{ run.waiting }} to go</span>{% endif %}
+                        </td>
+                        <td class="px-4 py-2 text-right">{{ run.total }}</td>
+                        <td class="px-4 py-2 text-right">{{ run.sent }}</td>
+                        <td class="px-4 py-2 text-right text-slate-500">{{ run.skipped }}</td>
+                        <td class="px-4 py-2 text-right {% if run.failed %}font-medium text-red-700{% else %}text-slate-500{% endif %}">{{ run.failed }}</td>
+                        <td class="px-4 py-2 text-right">{{ run.personal }}</td>
+                        <td class="px-4 py-2 text-right">{% if run.avg_events is not None %}{{ run.avg_events|floatformat:0 }}{% else %}—{% endif %}</td>
+                        <td class="px-4 py-2 text-right">{{ run.unsubscribes }}</td>
+                        <td class="px-4 py-2 text-right">{{ run.joined }}</td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="9" class="px-4 py-6 text-center text-slate-500">Nothing has been sent yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card mt-10 max-w-2xl">
         <h2 class="font-semibold">Test send</h2>
         <p class="mt-1 text-sm text-slate-500">
             Sends {{ user.email }} the email that would be built for you right now, with your own starred events,
-            marked [Test] in the subject. It isn't counted anywhere, and it's sent even in a quiet week.
+            marked [Test] in the subject. It isn't counted anywhere, and it's sent even in a quiet week or while the email is off.
         </p>
         <form method="post" action="{% url 'mod_digest_test' %}" class="mt-4">
             {% csrf_token %}

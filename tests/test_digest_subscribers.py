@@ -28,6 +28,15 @@ def fresh_rate_limit():
     cache.clear()
 
 
+@pytest.fixture(autouse=True)
+def switched_on(db):
+    from core.models import SiteConfig
+
+    config = SiteConfig.load()
+    config.digest_enabled = True
+    config.save()
+
+
 @pytest.fixture
 def post_signup(client, django_capture_on_commit_callbacks):
     def post(email, using=None):

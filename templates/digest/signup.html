@@ -3,7 +3,7 @@
 {% block title %}Weekly email — {{ SITE_NAME }}{% endblock %}
 {% block description %}What's on in the coming week, from {{ SITE_NAME }}, once a week by email.{% endblock %}
 
-{% block head %}{% endblock %}
+{% block head %}{% if closed %}<meta name="robots" content="noindex">{% endif %}{% endblock %}
 
 {% block content %}
     <h1 class="text-3xl font-semibold tracking-tight">The weekly email</h1>
@@ -12,7 +12,11 @@
         Every email has a link to stop them, and we use your address for nothing else.
     </p>
 
-    {% if own_email %}
+    {% if closed %}
+        <div class="card mt-8">
+            <p>The weekly email isn't being sent at the moment, so there's nothing to sign up for. Already getting it? The link at the bottom of any email still stops it.</p>
+        </div>
+    {% elif own_email %}
         <div class="card mt-8">
             {% if own_subscription.is_active %}
                 <p>The weekly email goes to <strong>{{ own_email }}</strong>.</p>

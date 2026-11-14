@@ -63,6 +63,8 @@
         </ul>
     </div>
 
+    {# Hidden while the email is switched off, except to someone receiving it, who can still stop it. #}
+    {% if WEEKLY_EMAIL_ON or digest_active %}
     <div id="digest" class="mt-4 card">
         <h2 class="font-semibold">Weekly email</h2>
         <div class="mt-4 flex items-center justify-between gap-4 text-sm">
@@ -85,6 +87,7 @@
             {% endif %}
         </div>
     </div>
+    {% endif %}
 
     {% if user.is_moderator %}
     <div id="api" class="mt-4 card">

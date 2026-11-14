@@ -1,0 +1,7 @@
+{% if page.has_other_pages %}
+    <nav class="mt-4 flex items-center gap-4 text-sm text-slate-500">
+        {% if page.has_previous %}<a href="?{% if shown %}status={{ shown }}&amp;{% endif %}{% if q %}q={{ q|urlencode }}&amp;{% endif %}page={{ page.previous_page_number }}" class="underline hover:text-slate-900">&larr; Earlier</a>{% endif %}
+        <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+        {% if page.has_next %}<a href="?{% if shown %}status={{ shown }}&amp;{% endif %}{% if q %}q={{ q|urlencode }}&amp;{% endif %}page={{ page.next_page_number }}" class="underline hover:text-slate-900">Later &rarr;</a>{% endif %}
+    </nav>
+{% endif %}

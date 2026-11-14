@@ -13,7 +13,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='siteconfig',
             name='digest_enabled',
-            field=models.BooleanField(default=False, help_text='Off: nothing is sent, though people can still sign up.', verbose_name='send the weekly email'),
+            field=models.BooleanField(default=False, help_text='Off: nothing is sent, not even the rest of a run already under way, and the signup form and links are hidden. Subscribers are kept, and their unsubscribe links keep working.', verbose_name='weekly email on'),
         ),
         migrations.AddField(
             model_name='siteconfig',

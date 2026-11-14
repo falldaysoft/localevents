@@ -26,6 +26,7 @@ class Command(BaseCommand):
             ("expire stale series", self.expire_series),
             ("send renewal reminders", self.send_renewal_reminders),
             ("send the weekly email", self.send_weekly_email),
+            ("forget unconfirmed weekly-email signups", self.forget_unconfirmed_signups),
         ]
 
         failures = 0
@@ -113,3 +114,15 @@ class Command(BaseCommand):
         run = start_due_run()
         if run is not None:
             self.stdout.write(f"  weekly email {run.send_date}")
+
+    def forget_unconfirmed_signups(self):
+        """Drop weekly-email signups nobody confirmed within 30 days.
+
+        An unconfirmed row is an address someone typed — possibly not their
+        own — and keeping it serves nothing once the link has expired.
+        """
+        from digest.services import forget_unconfirmed
+
+        count = forget_unconfirmed()
+        if count:
+            self.stdout.write(f"  forgot {count} unconfirmed signup(s)")

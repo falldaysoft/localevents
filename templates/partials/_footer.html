@@ -7,7 +7,7 @@
             {# owns, a footer link is usually somewhere else entirely.            #}
             <a href="{% url 'venue_list' %}" class="hover:text-slate-700">Venues</a>
             <a href="{% url 'category_list' %}" class="hover:text-slate-700">Categories</a>
-            <a href="{% url 'digest_signup' %}" class="hover:text-slate-700">Weekly email</a>
+            {% if WEEKLY_EMAIL_ON %}<a href="{% url 'digest_signup' %}" class="hover:text-slate-700">Weekly email</a>{% endif %}
             {% for page in FOOTER_PAGES %}
                 <a href="{{ page.get_absolute_url }}" class="hover:text-slate-700">{{ page.title }}</a>
             {% endfor %}

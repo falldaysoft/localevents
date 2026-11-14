@@ -47,8 +47,8 @@ def start_due_run(now=None):
     """Start this week's run if it is due and not started. Returns the run."""
     now = now or timezone.now()
     # Before the due check, so a run whose worker died late on sending day is
-    # still finished the morning after — or after the email is switched off,
-    # since the people in it were promised that week's.
+    # still finished the morning after. Switched off, the re-queued batch
+    # skips what is left rather than sending it (see `send_batch`).
     for unfinished in DigestRun.objects.filter(finished_at__isnull=True):
         requeue_stranded(unfinished, now)
 
@@ -156,7 +156,20 @@ def send_batch(run_id, delivery_ids):
     run = DigestRun.objects.filter(pk=run_id).first()
     if run is None:
         return
-    min_events = SiteConfig.load().digest_min_events
+    config = SiteConfig.load()
+    if not config.digest_enabled:
+        # The switch is how a moderator stops a run that has gone wrong —
+        # a broken template, the wrong week — so it holds mid-run. Skipped,
+        # not left waiting: a run resumed days later would send stale news.
+        run.deliveries.filter(
+            pk__in=delivery_ids, status=DigestDelivery.Status.PENDING
+        ).update(
+            status=DigestDelivery.Status.SKIPPED,
+            detail="The weekly email was switched off before this was sent.",
+        )
+        _finish_if_done(run)
+        return
+    min_events = config.digest_min_events
     now = timezone.now()
     bases = {}
     connection = get_connection()

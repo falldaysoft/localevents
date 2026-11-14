@@ -71,7 +71,7 @@ to click. Follow it with `manage.py verify_email you@example.com`, or use
 
 ## Layout
 
-Seven apps, split by who acts rather than by data:
+Eight apps, split by who acts rather than by data:
 
 - **`events`** — the domain: `Venue`, `Organizer`, `Category`, `Event`,
   `Occurrence`, `Interest`, plus `GeocodeThrottle` and the geocoding tasks.
@@ -90,6 +90,10 @@ Seven apps, split by who acts rather than by data:
 - **`web`** — public browse, filters, map geojson, `/healthz`.
 - **`accounts`** — custom `User` (email is the credential, username is only a
   display name), `/claim/`, profile, and `ApiToken` (made there, moderators only).
+- **`digest`** — the weekly email: `Subscriber`, `DigestRun`,
+  `DigestDelivery`; `content` (what one reader's email says), `sending` (when
+  and to whom), and moderator screens under `/moderate/digest/` from
+  `mod_urls.py`, split from its public `urls.py` the way `content` is.
 - **`core`** — the `SiteConfig` and `AIConfig` singletons, the CSP middleware,
   the housekeeping command run hourly from the VM's crontab.
 
@@ -575,6 +579,50 @@ carries `noindex`. The sitemap builds absolute URLs from `SITE_BASE_URL`,
 not the Sites table, whose unedited row says example.com. River's cards
 deliberately have no venue or category links inside them: the whole card is
 one stretched-link target, and a link beneath that overlay cannot be tapped.
+
+**The weekly email is personal, and nobody presses send.** Each reader's
+email is the front page's next seven days — built by the same
+`web.listing._listing`, so a weekly class appears once — with the events
+*they* starred that are on this weekend leading it under their own heading.
+Stars come from the account when the subscription is linked to one, and
+otherwise from the `visitor` cookie the signup form was posted from. The
+seven days depend only on the filter, so a batch builds them once per filter
+and lays each reader's stars over it (`digest/content.py`); per-reader
+categories (localevents.14.6) arrive as a different filter from
+`content.filter_for` and nothing else changes.
+
+Hourly housekeeping calls `sending.start_due_run`, which on the configured
+local day and from the configured hour creates that day's `DigestRun`
+(unique on the date, which is how a sender claims the week) and a
+`DigestDelivery` per active subscriber, then queues batches of 50. A
+delivery leaves PENDING only under a row lock, so a batch run twice sends
+nothing twice; a reader who left since the run began is skipped, as is one
+whose email would list fewer than `digest_min_events`; a failure is recorded
+on its row and the batch carries on; a batch lost with its worker is
+re-queued after 30 minutes. `SiteConfig.digest_enabled` is the master
+switch and holds mid-run — switched off, what is left is *skipped*, not left
+waiting, because a run resumed days later would send stale news — and it
+also hides the footer link, the signup form and the profile card. Confirm
+and unsubscribe links keep working whatever the switch says, since they are
+already in people's inboxes. Moderators can flip it on `/moderate/digest/`
+(logged as a `ModerationAction`), see each run's figures and every
+recipient, send themselves a `[Test]` copy that is counted nowhere, and
+subscribe or unsubscribe someone who asked by phone or in person — with a
+required note, because for those people the note *is* the consent record.
+
+Joining is double opt-in, and nothing changes on a GET: mail scanners open
+every link, so the confirm and unsubscribe pages each POST from a button.
+The form answers "check your inbox" whatever the address's state, so it
+cannot reveal who subscribes, and posting an active address changes
+nothing about it. Every email carries RFC 8058 one-click unsubscribe
+(`List-Unsubscribe` + `List-Unsubscribe-Post`, a `csrf_exempt` POST guarded
+by the per-subscriber token), with `?d=<delivery>` so the log can say which
+week someone left from — believed only when that delivery was theirs.
+`DigestMessage` lets headers run to 998 characters, because Python's email
+policy otherwise RFC 2047-encodes a long unsubscribe URL into something
+providers will not parse; the first real run caught that. Unconfirmed
+signups are deleted after 30 days. `manage.py preview_digest EMAIL` prints
+a reader's email without sending or saving anything.
 
 **`/healthz` must not touch the database.** A database that hangs rather than
 refusing would otherwise fail the container healthcheck, and Docker would

@@ -26,12 +26,13 @@ Last updated after the multi-day work that followed Phase 4.
 | browse pages by whole days (`?from=`), replacing the 120-card cap; featured capped at 3 beyond 30 days | done | this commit |
 | event submissions by email: IMAP poll, AI triage, `/moderate/inbox/` | done | this commit |
 | mail servers in the admin (`MailConfig`), Test buttons for SMTP and IMAP | done | this commit |
+| weekly email: signup, per-reader content, sending, moderator screens, master switch (localevents.14.1–14.4) | done | this commit |
 | 5 — feed importers | **next** | |
 | 6 — outbound feeds (ICS/RSS/JSON) | not started | |
 | 7 — interest button, My events | done | this commit |
 | 8 — series lifecycle, reusability docs | not started | |
 
-697 tests passing. `make check` clean.
+773 tests passing. `make check` clean.
 
 Phase 7 landed in two halves: the `Interest` model, the Rising ranking and the
 promotion action with Phase 4, because the mod queue is where they are read;
@@ -83,6 +84,16 @@ viewer's stars to everyone.
   header, so it actually runs where Alpine could not.
 
 ## Not verified
+
+- **The weekly email has never left through a real relay.** A full run went
+  through housekeeping, the database worker and the console backend on a copy
+  of the dev database, which is what caught the encoded `List-Unsubscribe`.
+  Still unproven (localevents.14.5): rendering in Gmail and Apple Mail
+  including dark mode, Gmail's own unsubscribe button posting back to us,
+  DKIM/SPF alignment of bulk mail from the relay, and spam placement. An
+  instance also needs `SiteConfig.postal_address` set before switching it on —
+  CASL requires a mailing address in commercial email, and the footer prints
+  it.
 
 - **The agent API has only been exercised locally.** Token → curl → categories,
   a dry run and a 401 against a local runserver, plus 26 tests. Not yet used
