@@ -189,3 +189,16 @@ def render_for(subscriber, now=None, base=None, unsubscribe_url=None):
         favorites_count=len(favorites),
         event_ids=event_ids,
     )
+
+
+def render_default(now=None):
+    """The email a reader with no stars gets this week: the run's record.
+
+    Its unsubscribe link goes to the signup page, as a test copy to a
+    non-subscriber does, because a stored copy belongs to nobody.
+    """
+    from .models import Subscriber
+
+    return render_for(
+        Subscriber(), now=now, unsubscribe_url=absolute_url(reverse("digest_signup"))
+    )

@@ -14,6 +14,7 @@ one; a message deliberately sent from anywhere else is left alone.
 """
 
 import logging
+from email.utils import formataddr, parseaddr
 
 from django.conf import settings
 from django.core.mail import get_connection
@@ -21,6 +22,18 @@ from django.core.mail.backends.base import BaseEmailBackend
 from django.core.mail.backends.smtp import EmailBackend as SMTPBackend
 
 logger = logging.getLogger("core.mail")
+
+
+def with_site_name(address):
+    """`noreply@host` becomes `Site Name <noreply@host>`; a named one is kept.
+
+    Without a display name an inbox lists the site's mail as "noreply",
+    which is what the weekly email's first real delivery looked like.
+    """
+    name, addr = parseaddr(address)
+    if name or not addr:
+        return address
+    return formataddr((settings.SITE_NAME, addr))
 
 
 def _config():
@@ -75,12 +88,11 @@ class ConfiguredEmailBackend(BaseEmailBackend):
         self.open()
         try:
             sender = self.config.resolved_from_email() if self.config else None
-            if sender:
-                for message in email_messages:
-                    if message.from_email in (
-                        settings.DEFAULT_FROM_EMAIL, settings.SERVER_EMAIL
-                    ):
-                        message.from_email = sender
+            for message in email_messages:
+                if message.from_email in (
+                    settings.DEFAULT_FROM_EMAIL, settings.SERVER_EMAIL
+                ):
+                    message.from_email = with_site_name(sender or message.from_email)
             return self.connection.send_messages(email_messages)
         finally:
             if opened_here:

@@ -8,7 +8,7 @@ each such change carries a note and lands in the moderation log; and a
 signup nobody confirmed is forgotten after 30 days.
 """
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
 from django.core import mail
@@ -256,13 +256,20 @@ def test_a_moderator_subscribes_someone_who_asked(client, moderator):
 
 
 @pytest.mark.django_db
-def test_a_note_is_required(client, moderator):
+def test_a_note_is_optional_and_who_and_when_are_kept_anyway(client, moderator):
     client.force_login(moderator)
 
     response = client.post(reverse("mod_digest_subscribers"), {"email": "a@example.com"})
 
-    assert response.status_code == 400
-    assert not Subscriber.objects.exists()
+    reader = Subscriber.objects.get()
+    assert response.status_code == 302
+    assert reader.is_active
+    assert reader.consent_note.endswith(f"Added by {moderator.display_name}.")
+
+    client.post(reverse("mod_digest_subscriber", args=[reader.pk]), {"action": "unsubscribe"})
+    reader.refresh_from_db()
+    assert reader.status == "unsubscribed"
+    assert reader.consent_note.endswith(f"Removed by {moderator.display_name}.")
 
 
 @pytest.mark.django_db
@@ -296,10 +303,6 @@ def test_a_moderator_unsubscribes_and_resubscribes(client, moderator):
     reader = subscriber("a@example.com")
     client.force_login(moderator)
     url = reverse("mod_digest_subscriber", args=[reader.pk])
-
-    assert client.post(url, {"action": "unsubscribe"}).status_code == 400
-    reader.refresh_from_db()
-    assert reader.is_active
 
     client.post(url, {"action": "unsubscribe", "note": "phoned to stop"})
     reader.refresh_from_db()
@@ -368,3 +371,34 @@ def test_unconfirmed_signups_are_forgotten_after_30_days():
         asked_again.email, left.email, fresh.email,
     }
     assert not Subscriber.objects.filter(pk=stale.pk).exists()
+
+
+@pytest.mark.django_db
+def test_a_runs_stored_email_opens_for_moderators_only(client, moderator, django_user_model):
+    run = DigestRun.objects.create(
+        send_date=date(2026, 11, 19), subject="What's on this week",
+        text="Plain week\n", html="<html><body><p>Plain week</p></body></html>",
+        event_count=4,
+    )
+    url = reverse("mod_digest_run_email", args=[run.pk])
+
+    reader = django_user_model.objects.create_user(
+        username="reader", email="reader@example.com", password="pw"
+    )
+    client.force_login(reader)
+    assert client.get(url).status_code == 403
+
+    client.force_login(moderator)
+    assert b"<p>Plain week</p>" in client.get(url).content
+    text = client.get(url + "?text")
+    assert text["Content-Type"].startswith("text/plain") and text.content == b"Plain week\n"
+    assert url.encode() in client.get(reverse("mod_digest_run", args=[run.pk])).content
+
+
+@pytest.mark.django_db
+def test_a_run_with_no_stored_copy_has_no_link_and_404s(client, moderator):
+    run = DigestRun.objects.create(send_date=date(2026, 11, 19))
+    client.force_login(moderator)
+    url = reverse("mod_digest_run_email", args=[run.pk])
+    assert client.get(url).status_code == 404
+    assert url.encode() not in client.get(reverse("mod_digest_run", args=[run.pk])).content

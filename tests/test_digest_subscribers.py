@@ -315,6 +315,7 @@ def test_the_profile_switch_turns_it_on_and_off(client, verified_user):
     client.post(reverse("digest_profile_toggle"), {"on": "0"})
     subscriber.refresh_from_db()
     assert subscriber.status == "unsubscribed"
+    assert subscriber.consent_note.endswith("Turned off on their profile.")
 
 
 @pytest.mark.django_db

@@ -137,16 +137,24 @@ def subscribe_user(user, fingerprint=""):
     return subscriber
 
 
-def unsubscribe(subscriber, delivery_id=None):
+def unsubscribe(subscriber, delivery_id=None, note="Unsubscribed by the link in an email."):
     """Stop the email, noting which week's email the link came from.
 
     The delivery id rides in the link's query string, so it is only believed
-    when it names a delivery that was actually sent to this subscriber.
+    when it names a delivery that was actually sent to this subscriber. The
+    note goes on the consent record, which otherwise ends at the last time
+    someone said yes and reads as if they never said stop.
     """
     via = None
     if delivery_id and str(delivery_id).isdigit():
-        via = subscriber.deliveries.filter(pk=int(delivery_id)).first()
-    subscriber.deactivate(via=via)
+        via = (
+            subscriber.deliveries.filter(pk=int(delivery_id))
+            .select_related("run")
+            .first()
+        )
+    if via is not None:
+        note = f"Unsubscribed by the link in the email of {via.run.send_date:%Y-%m-%d}."
+    subscriber.deactivate(via=via, note=note)
 
 
 def link_user(user):
@@ -181,13 +189,17 @@ def _account_for(email):
     return row.user if row else None
 
 
-def moderator_subscribe(actor, email, note):
+def _by(verb, actor, note):
+    return f"{verb} by {actor.display_name}: {note}" if note else f"{verb} by {actor.display_name}."
+
+
+def moderator_subscribe(actor, email, note=""):
     """Subscribe an address on someone's behalf, at once, without a link.
 
     For a person who asked by phone, at a stall, by replying to an email.
     The moderator is vouching for that request, so there is no confirmation
-    step — and the note saying how they asked is required, because it is
-    the consent record. Returns `(subscriber, changed)`; an address already
+    step. The consent record says who added them and when, plus the
+    moderator's note on how they asked if there is one. Returns `(subscriber, changed)`; an address already
     receiving is left alone.
     """
     from submissions.models import ModerationAction
@@ -208,14 +220,14 @@ def moderator_subscribe(actor, email, note):
                 subscriber.user = user
                 changed.append("user")
         subscriber.save(update_fields=changed)
-        subscriber.activate(f"Added by {actor.display_name}: {note}")
+        subscriber.activate(_by("Added", actor, note))
         ModerationAction.record(
-            actor, "weekly email: subscribed", detail=f"{email} — {note}"
+            actor, "weekly email: subscribed", detail=" — ".join(filter(None, [email, note]))
         )
     return subscriber, True
 
 
-def moderator_unsubscribe(actor, subscriber, note):
+def moderator_unsubscribe(actor, subscriber, note=""):
     """Stop the email for someone who asked outside the email's own link."""
     from submissions.models import ModerationAction
 
@@ -223,9 +235,11 @@ def moderator_unsubscribe(actor, subscriber, note):
         return False
     note = note.strip()
     with transaction.atomic():
-        subscriber.deactivate(note=f"Removed by {actor.display_name}: {note}")
+        subscriber.deactivate(note=_by("Removed", actor, note))
         ModerationAction.record(
-            actor, "weekly email: unsubscribed", detail=f"{subscriber.email} — {note}"
+            actor,
+            "weekly email: unsubscribed",
+            detail=" — ".join(filter(None, [subscriber.email, note])),
         )
     return True
 

@@ -26,13 +26,13 @@ Last updated after the multi-day work that followed Phase 4.
 | browse pages by whole days (`?from=`), replacing the 120-card cap; featured capped at 3 beyond 30 days | done | this commit |
 | event submissions by email: IMAP poll, AI triage, `/moderate/inbox/` | done | this commit |
 | mail servers in the admin (`MailConfig`), Test buttons for SMTP and IMAP | done | this commit |
-| weekly email: signup, per-reader content, sending, moderator screens, master switch (localevents.14.1–14.4) | done | this commit |
+| weekly email: signup, per-reader content, sending, moderator screens, master switch, each run's plain copy kept (localevents.14.1–14.5) | done | this commit |
 | 5 — feed importers | **next** | |
 | 6 — outbound feeds (ICS/RSS/JSON) | not started | |
 | 7 — interest button, My events | done | this commit |
 | 8 — series lifecycle, reusability docs | not started | |
 
-773 tests passing. `make check` clean.
+778 tests passing. `make check` clean.
 
 Phase 7 landed in two halves: the `Interest` model, the Rising ranking and the
 promotion action with Phase 4, because the mod queue is where they are read;
@@ -85,15 +85,28 @@ viewer's stars to everyone.
 
 ## Not verified
 
-- **The weekly email has never left through a real relay.** A full run went
-  through housekeeping, the database worker and the console backend on a copy
-  of the dev database, which is what caught the encoded `List-Unsubscribe`.
-  Still unproven (localevents.14.5): rendering in Gmail and Apple Mail
-  including dark mode, Gmail's own unsubscribe button posting back to us,
-  DKIM/SPF alignment of bulk mail from the relay, and spam placement. An
-  instance also needs `SiteConfig.postal_address` set before switching it on —
-  CASL requires a mailing address in commercial email, and the footer prints
-  it.
+- **The weekly email has been through the real relay once, as a test copy.**
+  On 14 November 2026 (localevents.14.5) a moderator test send from
+  production went through the SES relay to a Google Workspace inbox and was
+  read back raw. Proven: it lands in the inbox (Gmail's Updates tab, not
+  spam); DKIM passes as `brantevents.org`, which aligns with From, so DMARC
+  passes even though SPF passes only for the SES bounce domain; the DKIM
+  signature covers `List-Unsubscribe` and `List-Unsubscribe-Post`, which
+  Gmail requires before it trusts one-click; the unsubscribe URL arrives as
+  one readable line. The exact POST a provider's button makes
+  (`List-Unsubscribe=One-Click`, no cookie) was sent from outside to the
+  live URL and unsubscribed the address. Two things that run found and that
+  are now fixed: the From line had no display name, so the inbox said
+  "noreply" (`core.mail.with_site_name` now adds `SITE_NAME` to every bare
+  site sender), and an unsubscribe left no line on the consent record.
+  Still unproven: how the HTML looks in Gmail and Apple Mail, light and
+  dark; Gmail's own button being pressed (Gmail may not offer it to a new,
+  low-volume sender at all); a real weekly run rather than a test copy.
+  **brantevents has no `SiteConfig.postal_address`, by choice** (14
+  November 2026): the owner won't publish a home address, and a free
+  listing of community events is arguably not a commercial message under
+  CASL. The footer simply omits the line. If that changes, a PO box is the
+  usual answer, and it goes in that admin field — no code change.
 
 - **The agent API has only been exercised locally.** Token → curl → categories,
   a dry run and a 401 against a local runserver, plus 26 tests. Not yet used

@@ -14,6 +14,7 @@ here call the configured backend by name.
 import imaplib
 
 import pytest
+from django.conf import settings
 from django.core import mail
 from django.core.mail import EmailMessage, get_connection
 from django.urls import reverse
@@ -80,8 +81,16 @@ def save(**fields):
 def test_with_nothing_saved_mail_goes_where_the_environment_says(fake_smtp):
     send()
     [sent] = mail.outbox
-    assert sent.from_email == "noreply@env.example"
+    assert sent.from_email == f"{settings.SITE_NAME} <noreply@env.example>"
     assert fake_smtp["kwargs"] is None
+
+
+@pytest.mark.django_db
+def test_a_bare_sender_gets_the_site_name_and_a_named_one_keeps_its_own():
+    # Seen live: a bare address shows in the inbox as "noreply".
+    save(from_email="hello@saved.example")
+    send(from_email="noreply@env.example")
+    assert mail.outbox[0].from_email == f"{settings.SITE_NAME} <hello@saved.example>"
 
 
 @pytest.mark.django_db

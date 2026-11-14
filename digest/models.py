@@ -146,6 +146,14 @@ class DigestRun(models.Model):
     # Active subscribers when the run began, for the log's trend line; the
     # run's own deliveries are the people it actually covered.
     active_subscribers = models.PositiveIntegerField(default=0)
+    # The week's email as a reader with no stars got it, kept so "what did we
+    # send that week?" has an answer after the events have changed or gone.
+    # Rendered when the run starts; each reader's own copy is not kept, since
+    # it is this plus their picks, which the delivery row counts.
+    subject = models.CharField(max_length=300, blank=True)
+    text = models.TextField(blank=True)
+    html = models.TextField(blank=True)
+    event_count = models.PositiveIntegerField(default=0)
 
     class Meta:
         ordering = ["-send_date"]

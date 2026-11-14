@@ -61,11 +61,13 @@ def start_due_run(now=None):
     if existing is not None:
         return existing
 
+    record = _default_copy(now)
     try:
         with transaction.atomic():
             run = DigestRun.objects.create(
                 send_date=send_date,
                 active_subscribers=Subscriber.objects.active().count(),
+                **record,
             )
             DigestDelivery.objects.bulk_create(
                 DigestDelivery(run=run, subscriber=s, email=s.email)
@@ -81,6 +83,26 @@ def start_due_run(now=None):
         _finish_if_done(run)
     transaction.on_commit(lambda: _enqueue(run.pk, ids))
     return run
+
+
+def _default_copy(now):
+    """The run's stored copy of the plain email, or nothing if it won't build.
+
+    A record of the week is worth having and not worth missing the week for:
+    anything that breaks the plain render would break every reader's too, and
+    that is reported per delivery, where someone will see it.
+    """
+    try:
+        digest = content.render_default(now)
+    except Exception:
+        logger.exception("weekly email %s: could not keep a copy", now.date())
+        return {}
+    return {
+        "subject": digest.subject[:300],
+        "text": digest.text,
+        "html": digest.html,
+        "event_count": digest.event_count,
+    }
 
 
 def _enqueue(run_id, ids):

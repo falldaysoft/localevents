@@ -10,6 +10,7 @@ or taken off.
 from django.contrib import messages
 from django.core.cache import cache
 from django.core.paginator import Paginator
+from django.http import Http404, HttpResponse
 from django.db.models import Count
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
@@ -149,6 +150,23 @@ def run_detail(request, pk):
             total=sum(counts.values()),
         ),
     )
+
+
+@moderator_required
+def run_email(request, pk):
+    """The week's plain email as it was stored when the run began.
+
+    Served as a page of its own rather than framed, since the site forbids
+    framing; it is the template's own output, so it carries nothing a reader
+    typed that the template did not already escape. `?text` gives the
+    plain-text part.
+    """
+    run = get_object_or_404(DigestRun, pk=pk)
+    if not run.html:
+        raise Http404("No copy was kept for this run.")
+    if "text" in request.GET:
+        return HttpResponse(run.text, content_type="text/plain; charset=utf-8")
+    return HttpResponse(run.html)
 
 
 SUBSCRIBER_FILTERS = {

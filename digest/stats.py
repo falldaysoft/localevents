@@ -16,7 +16,7 @@ Status = DigestDelivery.Status
 def run_log(limit=26):
     """The latest runs, newest first, each with its figures attached."""
     runs = list(
-        DigestRun.objects.annotate(
+        DigestRun.objects.defer("text", "html").annotate(
             total=Count("deliveries"),
             sent=Count("deliveries", filter=Q(deliveries__status=Status.SENT)),
             skipped=Count("deliveries", filter=Q(deliveries__status=Status.SKIPPED)),

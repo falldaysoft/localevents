@@ -13,6 +13,7 @@ urlpatterns = [
     path("digest/switch/", mod_views.switch, name="mod_digest_switch"),
     path("digest/test/", mod_views.test_send, name="mod_digest_test"),
     path("digest/runs/<int:pk>/", mod_views.run_detail, name="mod_digest_run"),
+    path("digest/runs/<int:pk>/email/", mod_views.run_email, name="mod_digest_run_email"),
     path("digest/subscribers/", mod_views.subscribers, name="mod_digest_subscribers"),
     path(
         "digest/subscribers/<int:pk>/",

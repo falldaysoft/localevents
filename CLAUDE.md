@@ -606,9 +606,13 @@ also hides the footer link, the signup form and the profile card. Confirm
 and unsubscribe links keep working whatever the switch says, since they are
 already in people's inboxes. Moderators can flip it on `/moderate/digest/`
 (logged as a `ModerationAction`), see each run's figures and every
-recipient, send themselves a `[Test]` copy that is counted nowhere, and
-subscribe or unsubscribe someone who asked by phone or in person — with a
-required note, because for those people the note *is* the consent record.
+recipient, open the plain email the run kept (`DigestRun.html`/`text`,
+rendered for a reader with no stars when the run starts — a record of what
+went out after the events themselves have changed; a copy that fails to
+build is logged and never stops the week), send themselves a `[Test]` copy that is counted nowhere, and
+subscribe or unsubscribe someone who asked by phone or in person. The
+consent record names the moderator and the time either way; a note on how
+they asked is optional.
 
 Joining is double opt-in, and nothing changes on a GET: mail scanners open
 every link, so the confirm and unsubscribe pages each POST from a button.

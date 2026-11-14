@@ -11,6 +11,12 @@
         Started {{ run.started_at|date:"H:i" }}{% if run.finished_at %}, finished {{ run.finished_at|date:"j M, H:i" }}{% else %}, still sending{% endif %}.
         {{ run.active_subscribers }} subscriber{{ run.active_subscribers|pluralize }} when it began.
     </p>
+    {% if run.html %}
+        <p class="mt-2 text-sm text-slate-600">
+            The plain email, as someone with no starred events got it: <a href="{% url 'mod_digest_run_email' run.pk %}" target="_blank" rel="noopener" class="font-medium underline hover:text-slate-900">&ldquo;{{ run.subject }}&rdquo;</a>
+            ({{ run.event_count }} event{{ run.event_count|pluralize }}; <a href="{% url 'mod_digest_run_email' run.pk %}?text" target="_blank" rel="noopener" class="underline hover:text-slate-900">text version</a>).
+        </p>
+    {% endif %}
 
     <div class="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
         <a href="?" class="{% if not shown %}font-semibold text-slate-900{% else %}text-slate-500 hover:text-slate-900{% endif %}">All {{ total }}</a>

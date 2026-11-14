@@ -267,6 +267,10 @@ def test_one_click_unsubscribe_records_which_email_it_came_from(config, start, w
     reader.refresh_from_db()
     assert reader.status == "unsubscribed"
     assert reader.unsubscribed_via == delivery
+    # The consent record says when they said stop, not only when they said yes.
+    assert reader.consent_note.endswith(
+        f"Unsubscribed by the link in the email of {delivery.run.send_date:%Y-%m-%d}."
+    )
 
 
 @pytest.mark.django_db
@@ -364,3 +368,48 @@ def test_the_moderator_page_shows_the_schedule(client, moderator, config):
     assert response.status_code == 200
     assert b"Thursday" in response.content
     assert b"Send me a test" in response.content
+
+
+# --- the run's own copy ------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_a_run_keeps_the_plain_email_without_anyones_stars(config, start):
+    from events.models import Interest
+
+    # Dated from the run's own start, which is what the stored copy is built at.
+    hall = Venue.objects.create(name="Community Hall", city="Anytown")
+    for i, title in enumerate(["Lantern Walk", "Craft Fair", "Choir Concert"]):
+        event = Event.objects.create(
+            title=title, venue=hall, status=Event.Status.PUBLISHED,
+            prominence=Event.Prominence.LISTED,
+        )
+        Occurrence.objects.create(
+            event=event, start=THURSDAY_8AM.replace(hour=19) + timedelta(days=i)
+        )
+    reader = subscriber("a@example.com", fingerprint="device")
+    Interest.objects.create(event=Event.objects.get(title="Craft Fair"), fingerprint="device")
+
+    run = start()
+
+    run.refresh_from_db()
+    assert "Lantern Walk" in run.html and "Lantern Walk" in run.text
+    assert run.event_count == 3
+    assert run.subject and not run.subject.startswith("This weekend")
+    # The stored copy belongs to nobody, so it carries nobody's unsubscribe link.
+    assert reader.token not in run.html
+    assert reverse("digest_signup") in run.text
+
+
+@pytest.mark.django_db
+def test_a_copy_that_will_not_build_does_not_stop_the_week(config, start, week, monkeypatch):
+    def broken(now=None):
+        raise RuntimeError("template gone")
+
+    monkeypatch.setattr(content, "render_default", broken)
+    subscriber("a@example.com")
+
+    run = start()
+
+    assert run.html == ""
+    assert run.deliveries.count() == 1

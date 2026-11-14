@@ -152,7 +152,7 @@ def profile_toggle(request):
             else getattr(request.user, "digest_subscription", None)
         )
         if subscriber is not None:
-            services.unsubscribe(subscriber)
+            services.unsubscribe(subscriber, note="Turned off on their profile.")
         messages.success(request, "You won't get the weekly email any more.")
     back = request.POST.get("next")
     return redirect("digest_signup" if back == "digest" else "profile")

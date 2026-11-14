@@ -11,8 +11,8 @@
     <details class="card mt-6 max-w-2xl" {% if form.errors %}open{% endif %}>
         <summary class="cursor-pointer font-semibold">Add someone who asked</summary>
         <p class="mt-2 text-sm text-slate-500">
-            For a person who asked by phone, in person or by email. They start getting it at once, with no confirmation link,
-            so say how they asked — that note is the record of their consent.
+            For a person who asked by phone, in person or by email. They start getting it at once, with no confirmation link.
+            Saying how they asked is optional, but it's the best answer if anyone later asks why they were on the list.
         </p>
         <form method="post" class="mt-4 space-y-3">
             {% csrf_token %}

@@ -20,12 +20,14 @@ _INPUT = "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
 class NoteForm(forms.Form):
     """A moderator's change to someone's subscription, and how they asked.
 
-    The note is required because it is the consent record: "asked at the
-    library stall, 12 Nov" is what answers a complaint months later.
+    Optional: who made the change and when are recorded either way, and a
+    note like "asked at the library stall, 12 Nov" adds how, which is what
+    answers a complaint months later.
     """
 
     note = forms.CharField(
         max_length=200,
+        required=False,
         label="How did they ask?",
         widget=forms.TextInput(
             attrs={"class": _INPUT, "placeholder": "e.g. asked by phone, 12 Nov"}
