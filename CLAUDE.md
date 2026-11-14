@@ -175,7 +175,7 @@ listing keeps its date and appears in full wherever a reader has asked a
 narrower question (a venue page, a category page, any active filter, the
 HTMX fragment included), and on the front page only within
 `SiteConfig.quiet_horizon_days`, folded under its day as "+3 more" in a
-`<details>`. `web.views._listing` takes the horizon as a parameter and only
+`<details>`. `web.listing._listing` takes the horizon as a parameter and only
 `index` passes one, so the venue and category pages cannot drift from the
 front page by accident. The horizon is applied in SQL inside `EventFilter.quiet`
 rather than by dropping rows after the slice. The values are integers sorted
@@ -187,7 +187,7 @@ front page", and Quiet is where a moderator *demotes* to.
 **A browse page is a run of whole days, not a count of cards.** The front
 page took the first 120 cards and stopped, and on a busy instance that meant
 everything past about the fourth week was silently absent — no "more", no
-hint. `web.views._listing` now ends a page between two days once it has
+hint. `web.listing._listing` now ends a page between two days once it has
 spent about `PAGE_CARDS` cards, and a "Later — from Sat 7 November" link
 carries on with `?from=<date>`. Days rather than page numbers because the
 river theme groups by day (a numbered break would split a day and print its
@@ -516,7 +516,7 @@ plain site rather than a 500 on every page.
 **The `river` theme groups by day, and that is why featured listings sit
 above the list rather than in it.** `main_feed` is ordered by `-prominence,
 next_start`, so grouping it directly would emit the same date twice and print
-a featured event under a day heading weeks from its own. `web.views` splits
+a featured event under a day heading weeks from its own. `web.listing` splits
 the tiers first and only day-groups the remainder — `_group_by_day` walks a
 single date-ordered run rather than building a lookup, which is correct only
 because that split has already happened. Each day carries two buckets,
@@ -566,7 +566,7 @@ URL without going through `enrichment.fetcher` — that includes feed importers.
 pages.** `/?venue=…` and `/?category=…` are near-copies of `/` to a crawler,
 so robots.txt disallows `/?` and `/venues/<slug>/` and `/categories/<slug>/`
 are the indexable form of the same views, built on the same
-`web.views._listing` as the front page so collapsing and tier-splitting
+`web.listing._listing` as the front page so collapsing and tier-splitting
 cannot drift. A venue page 404s unless the venue has hosted at least one
 *published* event: venues are created at submission, before review, and a
 page for one would publish a rejected submitter's address. A venue or

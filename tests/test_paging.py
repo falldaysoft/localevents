@@ -18,16 +18,16 @@ from django.urls import reverse
 from django.utils import timezone
 
 from events.models import Category, Event, Occurrence, Venue
-from web import views
+from web import listing
 
 
 @pytest.fixture(autouse=True)
 def small_pages(request, monkeypatch):
-    monkeypatch.setattr(views, "PAGE_CARDS", 3)
+    monkeypatch.setattr(listing, "PAGE_CARDS", 3)
     # The rest-of-the-week floor would put every few-day fixture on one page,
     # so it is off unless a test asks for it.
     if "week_floor" not in request.fixturenames:
-        monkeypatch.setattr(views, "_first_page_floor", lambda today: today)
+        monkeypatch.setattr(listing, "_first_page_floor", lambda today: today)
 
 
 @pytest.fixture
@@ -302,11 +302,11 @@ def test_a_featured_listing_past_the_cap_joins_the_day_list(client, make):
     ],
 )
 def test_the_first_page_floor(today, floor, week_floor):
-    assert views._first_page_floor(today) == floor
+    assert listing._first_page_floor(today) == floor
 
 
 def test_the_first_page_runs_to_the_floor_however_busy(client, make, week_floor):
-    floor = views._first_page_floor(timezone.localdate())
+    floor = listing._first_page_floor(timezone.localdate())
     span = (floor - timezone.localdate()).days
     for day in range(1, span + 3):
         make(f"Day {day} morning", day)
@@ -319,7 +319,7 @@ def test_the_first_page_runs_to_the_floor_however_busy(client, make, week_floor)
 
 
 def test_a_later_page_has_no_floor(client, make, week_floor):
-    start = views._first_page_floor(timezone.localdate())
+    start = listing._first_page_floor(timezone.localdate())
     offset = (start - timezone.localdate()).days
     for day in range(offset, offset + 3):
         make(f"Day {day} morning", day)

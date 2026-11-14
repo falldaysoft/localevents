@@ -1,4 +1,4 @@
-Someone — hopefully you — asked for {{ site_name }}'s weekly email to be sent to this address.
+Someone — hopefully you — asked for the weekly email from {{ site_name }} to be sent to this address.
 
 To start receiving it, open this link and press the button:
 

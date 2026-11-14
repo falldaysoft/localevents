@@ -1,0 +1,5 @@
+{% load event_dates %}<tr><td style="padding:10px 0;border-top:1px solid #e2e8f0;">
+<a href="{{ base_url }}{% url 'event_detail' e.slug %}" style="font-size:16px;font-weight:600;color:#0f172a;text-decoration:none;">{% if e.pk in marked and not in_favorites %}<span style="color:#d97706;" title="You starred this">&#9733;</span> {% endif %}{{ e.title }}</a>
+<div style="margin-top:2px;font-size:14px;color:#475569;">{% occurrence_when e.next_start e.next_end %}{% if e.is_series %} &middot; weekly{% endif %}{% if e.venue %} &middot; {{ e.venue.name }}{% endif %}{% if e.is_free %} &middot; Free{% endif %}</div>
+{% if e.summary and show_summary %}<div style="margin-top:4px;font-size:14px;color:#334155;">{{ e.summary }}</div>{% endif %}
+</td></tr>

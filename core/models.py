@@ -44,6 +44,14 @@ class SiteConfig(SingletonModel):
         help_text="Shown above the submission form. What belongs here, what doesn't.",
     )
     code_of_conduct = models.TextField(blank=True)
+    # Canada's anti-spam law wants a mailing address in every commercial
+    # email, and a weekly listing that includes paid events is close enough
+    # to commercial that it is not worth arguing. A place, so it lives here.
+    postal_address = models.TextField(
+        blank=True,
+        help_text="Printed at the foot of the weekly email. A mailing "
+        "address for whoever runs the site.",
+    )
     footer_links = models.JSONField(
         default=list,
         blank=True,

@@ -1,0 +1,46 @@
+{% autoescape off %}{% load event_dates %}{{ site_name }} — what's on this week
+{% if favorites %}
+
+YOUR WEEKEND
+Events you starred that are on this weekend.
+{% for e in favorites %}
+* {{ e.title }}
+  {% occurrence_when e.next_start e.next_end %}{% if e.venue %} · {{ e.venue.name }}{% endif %}
+  {{ base_url }}{% url 'event_detail' e.slug %}
+{% endfor %}{% endif %}{% if featured %}
+
+FEATURED
+{% for e in featured %}
+{% if e.pk in marked %}★ {% endif %}{{ e.title }}
+  {% occurrence_when e.next_start e.next_end %}{% if e.venue %} · {{ e.venue.name }}{% endif %}
+{% if e.summary %}  {{ e.summary }}
+{% endif %}  {{ base_url }}{% url 'event_detail' e.slug %}
+{% endfor %}{% endif %}{% for day in days %}
+
+{{ day.date|date:"l j F"|upper }}{% if day.rel %} · {{ day.rel|upper }}{% endif %}
+{% for e in day.events %}
+{% if e.pk in marked %}★ {% endif %}{{ e.title }}
+  {% occurrence_when e.next_start e.next_end %}{% if e.is_series %} · weekly{% endif %}{% if e.venue %} · {{ e.venue.name }}{% endif %}
+  {{ base_url }}{% url 'event_detail' e.slug %}
+{% endfor %}{% if day.quiet %}
+Also: {% for e in day.quiet %}{% if e.pk in marked %}★ {% endif %}{{ e.title }}{% if not forloop.last %} · {% endif %}{% endfor %}
+{% endif %}{% endfor %}{% if more_count %}
+
+…and {{ more_count }} more this week: {{ week_url }}
+{% endif %}{% if programs %}
+
+EVERY WEEK
+{% for e in programs %}- {% if e.pk in marked %}★ {% endif %}{{ e.title }}{% if e.venue %} · {{ e.venue.name }}{% endif %}
+{% endfor %}{% if more_programs %}…and {{ more_programs }} more regular programs on the site.
+{% endif %}{% endif %}{% if not favorites and not featured and not days and not programs %}
+
+Nothing is listed for the coming week yet. {{ site_url }}
+{% endif %}
+
+--
+You're getting this because you signed up for the weekly email from {{ site_name }}.
+Star events on the site and the ones on that weekend come first here.
+Unsubscribe: {{ unsubscribe_url }}
+{{ site_name }} · {{ contact_email }}{% if postal_address %}
+{{ postal_address }}{% endif %}
+{% endautoescape %}
