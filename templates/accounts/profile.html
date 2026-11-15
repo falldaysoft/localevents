@@ -69,16 +69,16 @@
         <h2 class="font-semibold">Weekly email</h2>
         <div class="mt-4 flex items-center justify-between gap-4 text-sm">
             {% if not digest_email %}
-                <p class="text-slate-500">Verify your email address to get what's on each week, with the events you've starred first.</p>
+                <p class="text-slate-500">Verify your email address and we can send you the week ahead, with anything you've starred at the top.</p>
             {% elif digest_active %}
-                <p class="text-slate-500">What's on each week goes to {{ digest_email }}, with the events you've starred first.</p>
+                <p class="text-slate-500">You're getting the week ahead at {{ digest_email }}, with anything you've starred at the top.</p>
                 <form method="post" action="{% url 'digest_profile_toggle' %}" class="shrink-0">
                     {% csrf_token %}
                     <input type="hidden" name="on" value="0">
                     <button type="submit" class="btn-secondary">Turn off</button>
                 </form>
             {% else %}
-                <p class="text-slate-500">Get what's on each week at {{ digest_email }}, with the events you've starred first.</p>
+                <p class="text-slate-500">Get the week ahead by email at {{ digest_email }}, with anything you've starred at the top.</p>
                 <form method="post" action="{% url 'digest_profile_toggle' %}" class="shrink-0">
                     {% csrf_token %}
                     <input type="hidden" name="on" value="1">
