@@ -17,6 +17,10 @@
     {% comment %}
         Filters drive an HTMX GET that swaps only #results. The form pushes the
         URL so a filtered view stays shareable and the back button works.
+
+        The search box is live: it refetches 300ms after typing pauses, and
+        hx-sync replaces an in-flight request so a slow reply for "con" cannot
+        land after the one for "concert".
     {% endcomment %}
     <form id="filters"
           hx-get="{% url 'index' %}"
@@ -24,11 +28,13 @@
           hx-select="#results"
           hx-swap="outerHTML"
           hx-push-url="true"
-          hx-trigger="change, search"
+          hx-trigger="change, search, input changed delay:300ms from:#filters-q"
+          hx-sync="this:replace"
           class="card mb-6 space-y-4">
 
         <div class="flex flex-wrap items-center gap-3">
-            <input type="search" name="q" value="{{ filters.query }}"
+            <input id="filters-q" type="search" name="q" value="{{ filters.query }}"
+                   autocomplete="off"
                    placeholder="Search events, venues, organizers"
                    class="min-w-56 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm">
 
@@ -148,9 +154,9 @@
             }
 
             load();
-            document.getElementById('filters').addEventListener('change', function () {
-                setTimeout(load, 50);
-            });
+            // Reload after every filter request, not on 'change': live search
+            // fires while typing, which never raises a change event.
+            document.getElementById('filters').addEventListener('htmx:afterRequest', load);
         })();
     </script>
 {% endblock %}

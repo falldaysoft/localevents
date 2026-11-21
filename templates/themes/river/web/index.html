@@ -31,6 +31,10 @@
         Filters drive an HTMX GET that swaps only #results. The form pushes the
         URL so a filtered view stays shareable and the back button works.
 
+        The search box is live: it refetches 300ms after typing pauses, and
+        hx-sync replaces an in-flight request so a slow reply for "con" cannot
+        land after the one for "concert".
+
         Everything past the search box lives in a <details> — Alpine cannot run
         under this site's CSP, and on a phone an always-open panel of eleven
         category chips pushed the first listing below the fold.
@@ -41,9 +45,11 @@
           hx-select="#results"
           hx-swap="outerHTML"
           hx-push-url="true"
-          hx-trigger="change, search">
+          hx-trigger="change, search, input changed delay:300ms from:#filters-q"
+          hx-sync="this:replace">
         <div class="le-filters__inner">
-            <input type="search" name="q" value="{{ filters.query }}"
+            <input id="filters-q" type="search" name="q" value="{{ filters.query }}"
+                   autocomplete="off"
                    aria-label="Search events, venues, organizers"
                    placeholder="Search events, venues, organizers">
 
@@ -189,9 +195,9 @@
             }
 
             load();
-            document.getElementById('filters').addEventListener('change', function () {
-                setTimeout(load, 50);
-            });
+            // Reload after every filter request, not on 'change': live search
+            // fires while typing, which never raises a change event.
+            document.getElementById('filters').addEventListener('htmx:afterRequest', load);
         })();
     </script>
 {% endblock %}
