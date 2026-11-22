@@ -1,0 +1,6 @@
+{% autoescape off %}A paid promotion has stopped early because its event was taken off the site: {{ order.description }}, booked {{ order.starts_on|date:"j M" }} to {{ order.ends_on|date:"j M Y" }} by {{ order.buyer.email }} for {{ order.total|default:order.amount }} {{ order.currency|upper }}.
+
+Nothing has been refunded. If the buyer is owed some or all of it, refund it in the Stripe dashboard and the order will be marked refunded. Putting the event back up does not restart the promotion.
+
+{{ review_url }}
+{% endautoescape %}

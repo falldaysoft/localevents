@@ -11,7 +11,7 @@ Events you starred that are on this weekend.
 
 FEATURED
 {% for e in featured %}
-{% if e.pk in marked %}★ {% endif %}{{ e.title }}
+{% if e.pk in marked %}★ {% endif %}{{ e.title }}{% if e.is_sponsored %} [Sponsored]{% endif %}
   {% occurrence_when e.next_start e.next_end %}{% if e.venue %} · {{ e.venue.name }}{% endif %}
 {% if e.summary %}  {{ e.summary }}
 {% endif %}  {{ base_url }}{% url 'event_detail' e.slug %}

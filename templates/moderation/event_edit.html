@@ -31,6 +31,13 @@
         {% if event.submitted_by %} by {{ event.submitted_by.display_name }}{% endif %}
     </p>
 
+    {% if placements %}
+        <div class="mt-4 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
+            This listing has a paid promotion{% for order in placements %} (<a href="{% url 'mod_sponsor' order.pk %}" class="underline">{{ order.starts_on|date:"j M" }}–{{ order.ends_on|date:"j M" }}</a>){% endfor %}.
+            Changing its status away from published stops it early; refund it in Stripe if it's owed.
+        </div>
+    {% endif %}
+
     {% if form.non_field_errors %}
         <div class="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
             {{ form.non_field_errors }}

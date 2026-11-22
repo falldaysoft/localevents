@@ -1,0 +1,4 @@
+{% autoescape off %}The card hold on a sponsorship of “{{ event.title|default:order.description }}” runs out {{ order.hold_expires_at|date:"D j M, H:i" }}. After that it can't be approved, and the buyer is told it lapsed.
+
+{{ review_url }}
+{% endautoescape %}

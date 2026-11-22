@@ -57,6 +57,9 @@
             <h2 class="le-section__title">Submitted</h2>
             <p style="padding-top:6px;font-size:13.5px;color:var(--ink-2)">Everything you have sent in, and where it got to.</p>
             {% include "submissions/_mine_list.html" %}
+            {% if user.sponsor_orders.exists %}
+                <p style="margin-top:14px;font-size:14px"><a href="{% url 'sponsor_orders' %}">Your sponsorships</a></p>
+            {% endif %}
         </section>
     {% endif %}
 {% endblock %}

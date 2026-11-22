@@ -107,6 +107,7 @@ INSTALLED_APPS = [
     "enrichment",
     "events",
     "moderation",
+    "sponsors",
     "submissions",
     "web",
 ]
@@ -159,6 +160,19 @@ DATABASES = {
         default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}" if DEBUG else None,
     )
 }
+
+# SQLite (local development) serialises writers, and its defaults turn that
+# into "database is locked" the moment the worker and a request write at once —
+# which a Stripe webhook arriving mid-request reliably does. IMMEDIATE takes
+# the write lock when a transaction begins instead of upgrading halfway (the
+# upgrade is what fails without waiting), the timeout lets a writer queue, and
+# WAL lets readers carry on beside it.
+if DATABASES["default"].get("ENGINE", "").endswith("sqlite3"):
+    DATABASES["default"].setdefault("OPTIONS", {}).update({
+        "transaction_mode": "IMMEDIATE",
+        "timeout": 20,
+        "init_command": "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;",
+    })
 
 # An unreachable database must fail fast, not hang. libpq waits indefinitely by
 # default, so a stalled server — a wedged volume under it, say — blocks the
@@ -408,7 +422,9 @@ SECURE_CSP = {
     "connect-src": [CSP.SELF, "https://nominatim.openstreetmap.org"],
     "frame-ancestors": [CSP.NONE],
     "base-uri": [CSP.SELF],
-    "form-action": [CSP.SELF],
+    # Stripe Checkout: the promote form POSTs here and is redirected there,
+    # and Chrome applies form-action to the redirect as well as the form.
+    "form-action": [CSP.SELF, "https://checkout.stripe.com"],
 }
 
 

@@ -56,6 +56,9 @@
             <h2 class="text-xl font-semibold tracking-tight">Submitted</h2>
             <p class="mt-1 text-sm text-slate-500">Everything you have sent in, and where it got to.</p>
             {% include "submissions/_mine_list.html" %}
+            {% if user.sponsor_orders.exists %}
+                <p class="mt-4 text-sm"><a href="{% url 'sponsor_orders' %}" class="underline">Your sponsorships</a></p>
+            {% endif %}
         </section>
     {% endif %}
 {% endblock %}

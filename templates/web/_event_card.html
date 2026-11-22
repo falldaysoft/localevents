@@ -37,6 +37,10 @@
         </div>
 
         <div class="flex shrink-0 flex-col items-end gap-1">
+            {% if event.is_sponsored %}
+                {# Paid placement, said plainly. Never mistaken for an editor's pick. #}
+                <span class="chip bg-sky-50 text-sky-800" title="A paid placement. The listing itself was reviewed like any other.">Sponsored</span>
+            {% endif %}
             {% comment %}
                 Only reachable now that a span stays in the feed while it runs.
                 It is the most useful thing a card can say, so it goes first.

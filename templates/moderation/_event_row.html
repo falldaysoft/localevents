@@ -18,6 +18,7 @@
                 {% endif %}
                 {% if event.venue %}&middot; {{ event.venue.name }}{% endif %}
                 {% if event.is_series %}&middot; repeats{% endif %}
+                {% if event.sponsored_until %}&middot; <span class="chip bg-sky-50 text-sky-800" title="A paid promotion runs until {{ event.sponsored_until|date:'j M' }}">Sponsored to {{ event.sponsored_until|date:"j M" }}</span>{% endif %}
                 &middot; <a href="{% url 'mod_event_edit' event.pk %}" class="underline hover:text-slate-900">Edit</a>
             </p>
         </div>
@@ -56,13 +57,13 @@
             {% if event.status == 'published' %}
                 <form method="post" action="{% url 'mod_event_unpublish' event.pk %}"
                       hx-post="{% url 'mod_event_unpublish' event.pk %}" hx-target="closest li" hx-swap="outerHTML"
-                      hx-confirm="Take “{{ event.title }}” off the site?">
+                      hx-confirm="Take “{{ event.title }}” off the site?{% if event.sponsored_until %} It has a paid promotion until {{ event.sponsored_until|date:'j M' }}, which will stop; refund it in Stripe if it's owed.{% endif %}">
                     {% csrf_token %}
                     <button type="submit" class="chip hover:bg-slate-200">Unpublish</button>
                 </form>
                 <form method="post" action="{% url 'mod_event_unpublish' event.pk %}"
                       hx-post="{% url 'mod_event_unpublish' event.pk %}" hx-target="closest li" hx-swap="outerHTML"
-                      hx-confirm="Take “{{ event.title }}” off the site as a duplicate?">
+                      hx-confirm="Take “{{ event.title }}” off the site as a duplicate?{% if event.sponsored_until %} It has a paid promotion until {{ event.sponsored_until|date:'j M' }}, which will stop; refund it in Stripe if it's owed.{% endif %}">
                     {% csrf_token %}
                     <input type="hidden" name="duplicate" value="1">
                     <button type="submit" class="chip hover:bg-slate-200">Duplicate</button>

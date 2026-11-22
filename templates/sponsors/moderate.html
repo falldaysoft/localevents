@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Sponsorships — {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+    {% include "moderation/_tabs.html" with section='sponsors' %}
+
+    <h1 class="mt-6 text-2xl font-semibold tracking-tight">Sponsorships</h1>
+    <p class="mt-1 text-sm text-slate-500">
+        Each request holds the buyer's card for about a week. Approve to charge
+        it, reject to release it. Prices and limits are in the
+        <a href="{% url 'admin:sponsors_sponsorconfig_change' 1 %}" class="underline">admin</a>.
+    </p>
+
+    <div class="mt-4 flex gap-4 text-sm">
+        {% for key, label in views %}
+            <a href="?view={{ key }}" class="{% if key == view %}font-semibold text-slate-900{% else %}text-slate-500 hover:text-slate-900{% endif %}">{{ label }}</a>
+        {% endfor %}
+    </div>
+
+    {% if orders %}
+        <ul class="mt-4 space-y-3">
+            {% for order in orders %}
+                <li class="card flex flex-wrap items-baseline justify-between gap-3">
+                    <div>
+                        <a href="{% url 'mod_sponsor' order.pk %}" class="font-medium hover:underline">{{ order.description }}</a>
+                        <p class="mt-0.5 text-sm text-slate-500">
+                            {{ order.starts_on|date:"D j M" }} – {{ order.ends_on|date:"D j M" }}
+                            &middot; {{ order.total|default:order.amount }} {{ order.currency|upper }}
+                            &middot; {{ order.buyer.email }}
+                            {% if not order.livemode %}&middot; <span class="text-amber-700">test mode</span>{% endif %}
+                        </p>
+                        {% if order.status == "awaiting_review" %}
+                            <p class="mt-0.5 text-xs {% if order.hold_urgent %}font-semibold text-red-700{% else %}text-slate-400{% endif %}">
+                                Hold runs out in {{ order.hold_expires_at|timeuntil }}
+                            </p>
+                        {% endif %}
+                    </div>
+                    {% include "sponsors/_status.html" %}
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <div class="card mt-4 text-sm text-slate-600">Nothing here.</div>
+    {% endif %}
+{% endblock %}

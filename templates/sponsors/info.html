@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Sponsor — {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+    <div class="mx-auto max-w-xl">
+        <h1 class="text-3xl font-semibold tracking-tight">Sponsor a listing</h1>
+        <p class="mt-2 text-slate-600">
+            Put your event in front of more people. Every listing on
+            {{ SITE_NAME }} is checked by an editor, and sponsorships are too.
+        </p>
+
+        <div class="card mt-6 space-y-2">
+            <h2 class="text-lg font-semibold">Promote an event</h2>
+            <p class="text-sm text-slate-600">
+                Your event sits at the top of the listings, and in the featured
+                section of the weekly email, for up to {{ config.promote_max_days }} days before it happens.
+                It is marked <span class="chip bg-sky-50 text-sky-800">Sponsored</span>, and
+                only {{ config.promote_daily_slots }} event{{ config.promote_daily_slots|pluralize }} can be promoted on any one day.
+            </p>
+            <p class="text-sm font-medium">
+                {{ config.promote_price }} {{ config.currency|upper }}{% if config.automatic_tax %} plus applicable tax{% endif %}
+            </p>
+            <p class="text-sm text-slate-600">
+                Find your event on the site and press <em>Promote this event</em>.
+                It has to be listed first — <a href="{% url 'submit' %}" class="underline">add it</a> if it isn't.
+            </p>
+        </div>
+
+        <div class="card mt-4 space-y-2 text-sm text-slate-600">
+            <h2 class="text-base font-semibold text-slate-900">How it works</h2>
+            <p>You pay by card through Stripe. Your card is authorised, not charged.</p>
+            <p>An editor reviews the request, usually within a couple of days.
+               If it's approved, the card is charged and the promotion runs.
+               If not, the hold is released and nothing is taken.</p>
+            <p>You can withdraw a request at any time before it's decided.</p>
+        </div>
+    </div>
+{% endblock %}

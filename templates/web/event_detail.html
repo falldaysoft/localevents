@@ -143,6 +143,11 @@
                     </a>
                 {% endif %}
             </div>
+            {% if can_promote %}
+                <p class="text-center text-sm text-slate-500">
+                    <a href="{% url 'sponsor_promote' event.slug %}" class="underline hover:text-slate-800">Promote this event</a>
+                </p>
+            {% endif %}
         </aside>
     </article>
 

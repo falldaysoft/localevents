@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% load event_dates %}
+
+{% block title %}Promote “{{ event.title }}” — {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+    <div class="mx-auto max-w-xl">
+        <p class="text-sm text-slate-500"><a href="{% url 'event_detail' event.slug %}" class="underline">{{ event.title }}</a></p>
+        <h1 class="mt-1 text-3xl font-semibold tracking-tight">Promote this event</h1>
+        <p class="mt-2 text-slate-600">
+            It goes to the top of the listings and into the weekly email's
+            featured section, marked <span class="chip bg-sky-50 text-sky-800">Sponsored</span>,
+            for up to {{ config.promote_max_days }} days, ending with its last date.
+            <a href="{% url 'sponsor_info' %}" class="underline">How sponsorship works</a>.
+        </p>
+
+        {% if not_yours %}
+            <div class="card mt-6 text-sm text-slate-600">{{ not_yours }} <a href="{% url 'sponsor_info' %}" class="underline">How sponsorship works</a>.</div>
+        {% elif not last_day %}
+            <div class="card mt-6 text-sm text-slate-600">This event has no dates still to come, so there is nothing to promote.</div>
+        {% else %}
+            <form method="post" class="card mt-6 space-y-4">
+                {% csrf_token %}
+                {% if form.non_field_errors %}
+                    <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{{ form.non_field_errors }}</div>
+                {% endif %}
+
+                {% include "submissions/_field.html" with field=form.starts_on %}
+
+                {% if window %}
+                    <p class="text-sm text-slate-600">
+                        Runs <strong>{{ window.0|date:"D j M" }}</strong> to <strong>{{ window.1|date:"D j M Y" }}</strong>
+                        — the event's last date is {{ last_day|date:"D j M" }}.
+                    </p>
+                {% endif %}
+
+                {% include "submissions/_field.html" with field=form.note %}
+
+                <p class="text-lg font-semibold">
+                    {{ config.promote_price }} {{ config.currency|upper }}
+                    {% if config.automatic_tax %}<span class="text-sm font-normal text-slate-500">plus applicable tax</span>{% endif %}
+                </p>
+
+                <label class="flex items-start gap-2 text-sm">
+                    {{ form.agree }}
+                    <span>{{ form.agree.label }}</span>
+                </label>
+                {% if form.agree.errors %}<p class="text-sm text-red-700">Please tick the box to carry on.</p>{% endif %}
+
+                <button type="submit" class="btn-primary w-full">Continue to payment</button>
+                <p class="text-center text-xs text-slate-500">You'll pay on Stripe's secure page, then come back here.</p>
+            </form>
+        {% endif %}
+    </div>
+{% endblock %}

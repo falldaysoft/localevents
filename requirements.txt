@@ -30,6 +30,12 @@ pydantic>=2.0
 # every mailbox provider records a DMARC result on what it delivers.
 dkimpy>=1.1
 
+# Payments for sponsorships. Keys are set in the admin, not here.
+stripe>=17.0,<18  # Pinned to a major: the webhook endpoint is made in its API version.
+# Encrypts the stored Stripe keys (sponsors.crypto). Already here through
+# allauth[mfa], named so removing passkeys cannot take it away silently.
+cryptography>=42
+
 # LLM client. Lazy-imported, and pointed at any OpenAI-compatible endpoint —
 # OpenRouter by default. Configured in the admin, not here.
 openai>=1.0

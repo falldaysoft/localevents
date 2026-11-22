@@ -71,7 +71,7 @@ to click. Follow it with `manage.py verify_email you@example.com`, or use
 
 ## Layout
 
-Eight apps, split by who acts rather than by data:
+Nine apps, split by who acts rather than by data:
 
 - **`events`** — the domain: `Venue`, `Organizer`, `Category`, `Event`,
   `Occurrence`, `Interest`, plus `GeocodeThrottle` and the geocoding tasks.
@@ -94,6 +94,10 @@ Eight apps, split by who acts rather than by data:
   `DigestDelivery`; `content` (what one reader's email says), `sending` (when
   and to whom), and moderator screens under `/moderate/digest/` from
   `mod_urls.py`, split from its public `urls.py` the way `content` is.
+- **`sponsors`** — paid placements: `SponsorConfig` (prices, limits, the
+  Stripe keys) and `SponsorOrder`; `payments` (the only module that talks to
+  Stripe), `services` (every state change), buyer pages under `/sponsor/` and
+  the queue under `/moderate/sponsors/` from `mod_urls.py`.
 - **`core`** — the `SiteConfig` and `AIConfig` singletons, the CSP middleware,
   the housekeeping command run hourly from the VM's crontab.
 
@@ -627,6 +631,63 @@ policy otherwise RFC 2047-encodes a long unsubscribe URL into something
 providers will not parse; the first real run caught that. Unconfirmed
 signups are deleted after 30 days. `manage.py preview_digest EMAIL` prints
 a reader's email without sending or saving anything.
+
+**A sponsorship is a card hold until a moderator says yes.** Promote an
+event (localevents.19) sells placement, never admission: only a published
+listing can be promoted, and the buyer goes to hosted Stripe Checkout with
+`capture_method=manual`, so their card is authorised and nothing is taken.
+Approving on `/moderate/sponsors/` captures it; rejecting, withdrawing or
+letting it run out releases it, so there are no refunds and no lost refund
+fees. A hold lasts about seven days, so an order lapses after six
+(`HOLD_DAYS`), housekeeping mails moderators two days before, and the queue
+sorts by that deadline. The webhook and the buyer's return page both call
+`services.sync_checkout`, which locks the row so the "received" mail goes
+once whichever arrives first. **No Stripe call runs inside a database
+transaction**: the first local test charged a card, then hit SQLite's
+"database is locked" and rolled the decision back. Every decision is now
+claimed (`PROCESSING`, with `pending_status`, the moderator and the note
+committed), then Stripe is called, then `services.finish` applies the status,
+audit row and mail; a refused Stripe call un-claims, and an interrupted finish
+is completed by the webhook or by housekeeping after `STUCK_AFTER`. The test
+fakes for Stripe assert there is no open savepoint when they are called.
+**A Stripe error is not proof that nothing happened.** Cancel is refused for
+a payment already *captured* and for one the stored key cannot see, as well
+as for one already cancelled, so `_release` asks the intent's status before
+calling anything released; a capture whose reply was lost is checked the
+same way before the claim is undone. Taking every refusal as "released" told
+a buyer nothing was charged while their card had been. For the same reason
+housekeeping abandons a checkout only on Stripe's word, and a buyer
+withdrawing an order still marked "checkout" first has it brought up to
+date, since they may have paid. Approving locks the `SponsorConfig` row so
+two approvals cannot both pass the daily limit; deciding needs the
+`sponsors.approve_sponsororder` permission (superusers have it), and only the
+event's submitter or its organiser's owner may buy a promotion. Saving a
+different secret key forgets the webhook (and removes the old endpoint after
+the save commits), and an order paid in the other mode is refused rather than
+released with a key that cannot see it. When Stripe gives no answer at all and
+its status cannot be read, the claim is *kept*, not undone
+(`OutcomeUnknown`): undoing it lost the moderator and the note, and a cancel
+that had landed came back as "lapsed". One event holds at most one promotion
+on any day, checked at checkout and at approval. An event leaving the site by
+any path (a `post_save`/`pre_delete` signal in `sponsors/signals.py`) stops
+its running placement as `STOPPED`, with an audit row and a mail to
+moderators saying to refund in Stripe if it is owed; nothing is refunded
+automatically, and republishing does not restart it.
+A running promotion joins the pinned featured
+listings in `web.listing._listing` *after* the editor's own picks, marked
+`is_sponsored`, which every template that shows it (both themes' cards, the
+weekly email in HTML and text) prints as "Sponsored". It is read through the
+reader's own filter, so it never shows on a page it does not match.
+`promote_daily_slots` keeps paid placements rare; it is checked at checkout
+and again at approval. The Stripe secret key and webhook secret live in
+`SponsorConfig`, superuser-only, encrypted with a key derived from
+`SECRET_KEY` (`sponsors.crypto`) so a database dump alone does not open the
+Stripe account; rotating `SECRET_KEY` means pasting them in again. The admin's
+"Set up the webhook" button creates the endpoint through the API and stores
+its secret, which Stripe shows only at creation. Prices go to Stripe inline
+(`price_data`), so each instance keeps its own price list even on a shared
+Stripe account. Tests replace `sponsors.payments`; the webhook signature is
+checked for real.
 
 **`/healthz` must not touch the database.** A database that hangs rather than
 refusing would otherwise fail the container healthcheck, and Docker would
