@@ -14,13 +14,25 @@ from .models import SponsorOrder
 Status = SponsorOrder.Status
 
 VIEWS = {
-    "review": ("Awaiting review", lambda qs, today: qs.awaiting_review().order_by("hold_expires_at")),
+    "review": (
+        "Awaiting review",
+        lambda qs, today: qs.filter(
+            status__in=[Status.AWAITING_REVIEW, Status.PROCESSING]
+        ).order_by("hold_expires_at"),
+    ),
     "running": (
         "Running and booked",
         lambda qs, today: qs.filter(status=Status.APPROVED, ends_on__gte=today).order_by("starts_on"),
     ),
     "all": ("All", lambda qs, today: qs.exclude(status=Status.CHECKOUT)[:200]),
 }
+
+
+UNFINISHED = (
+    "Stripe has done its part, but the record could not be saved just now. "
+    "It will finish by itself within the hour, with your decision as made. "
+    "There is no need to press the button again."
+)
 
 
 def _chrome(request, **extra):
@@ -82,9 +94,12 @@ def approve(request, pk):
     form = DecisionForm(request.POST)
     note = form.cleaned_data["note"] if form.is_valid() else ""
     try:
-        services.approve(order, request.user, note=note)
+        order = services.approve(order, request.user, note=note)
     except services.SponsorError as exc:
         messages.error(request, str(exc))
+        return redirect("mod_sponsor", pk=pk)
+    if order.status == Status.PROCESSING:
+        messages.warning(request, UNFINISHED)
         return redirect("mod_sponsor", pk=pk)
     messages.success(request, "Approved and charged. The buyer has been told.")
     return redirect("mod_sponsors")
@@ -97,9 +112,12 @@ def reject(request, pk):
     form = DecisionForm(request.POST)
     note = form.cleaned_data["note"] if form.is_valid() else ""
     try:
-        services.reject(order, request.user, note)
+        order = services.reject(order, request.user, note)
     except services.SponsorError as exc:
         messages.error(request, str(exc))
+        return redirect("mod_sponsor", pk=pk)
+    if order.status == Status.PROCESSING:
+        messages.warning(request, UNFINISHED)
         return redirect("mod_sponsor", pk=pk)
     messages.success(request, "Rejected. The hold is released and the buyer has been told.")
     return redirect("mod_sponsors")

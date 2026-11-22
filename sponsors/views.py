@@ -5,6 +5,7 @@ from datetime import timedelta
 
 import stripe
 from django.contrib import messages
+from django.db import DatabaseError
 from django.contrib.auth.decorators import login_required
 from django.http import Http404, HttpResponse, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
@@ -154,7 +155,7 @@ def webhook(request):
         return HttpResponseBadRequest("bad signature")
     try:
         services.handle_webhook(event)
-    except (stripe.StripeError, payments.NotConfigured):
+    except (stripe.StripeError, payments.NotConfigured, DatabaseError):
         # A 500 asks Stripe to deliver it again later, which is the point.
         logger.exception("webhook %s could not be applied", event.id)
         return HttpResponse(status=500)

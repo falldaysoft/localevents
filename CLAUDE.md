@@ -642,7 +642,14 @@ fees. A hold lasts about seven days, so an order lapses after six
 (`HOLD_DAYS`), housekeeping mails moderators two days before, and the queue
 sorts by that deadline. The webhook and the buyer's return page both call
 `services.sync_checkout`, which locks the row so the "received" mail goes
-once whichever arrives first. A running promotion joins the pinned featured
+once whichever arrives first. **No Stripe call runs inside a database
+transaction**: the first local test charged a card, then hit SQLite's
+"database is locked" and rolled the decision back. Every decision is now
+claimed (`PROCESSING`, with `pending_status`, the moderator and the note
+committed), then Stripe is called, then `services.finish` applies the status,
+audit row and mail; a refused Stripe call un-claims, and an interrupted finish
+is completed by the webhook or by housekeeping after `STUCK_AFTER`. The test
+fakes for Stripe assert there is no open savepoint when they are called. A running promotion joins the pinned featured
 listings in `web.listing._listing` *after* the editor's own picks, marked
 `is_sponsored`, which every template that shows it (both themes' cards, the
 weekly email in HTML and text) prints as "Sponsored". It is read through the

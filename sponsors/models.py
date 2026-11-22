@@ -148,8 +148,18 @@ class SponsorOrderQuerySet(models.QuerySet):
         return self.filter(
             status__in=[
                 SponsorOrder.Status.AWAITING_REVIEW,
+                SponsorOrder.Status.PROCESSING,
                 SponsorOrder.Status.APPROVED,
             ]
+        )
+
+    def approved_or_approving(self):
+        return self.filter(
+            models.Q(status=SponsorOrder.Status.APPROVED)
+            | models.Q(
+                status=SponsorOrder.Status.PROCESSING,
+                pending_status=SponsorOrder.Status.APPROVED,
+            )
         )
 
     def overlapping(self, first, last):
@@ -172,6 +182,10 @@ class SponsorOrder(models.Model):
         CHECKOUT = "checkout", "At checkout"
         # Card held; a moderator decides.
         AWAITING_REVIEW = "awaiting_review", "Awaiting review"
+        # A decision is recorded and its Stripe call is under way, or was
+        # interrupted; `pending_status` says where it is heading. See the
+        # "Money calls" note in services.py.
+        PROCESSING = "processing", "Being processed"
         # Charged. Runs between starts_on and ends_on.
         APPROVED = "approved", "Approved"
         REJECTED = "rejected", "Not accepted"
@@ -189,6 +203,10 @@ class SponsorOrder(models.Model):
     )
     status = models.CharField(
         max_length=20, choices=Status.choices, default=Status.CHECKOUT
+    )
+    pending_status = models.CharField(
+        max_length=20, choices=Status.choices, blank=True,
+        help_text="While processing: the status the decision is heading to.",
     )
     buyer = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT,

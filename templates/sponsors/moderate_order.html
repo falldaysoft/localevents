@@ -11,6 +11,12 @@
         {% include "sponsors/_status.html" %}
     </div>
     {% if not order.livemode %}<p class="mt-1 text-sm text-amber-700">Test mode: no real card is involved.</p>{% endif %}
+    {% if order.status == "processing" %}
+        <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            Being processed: heading to <strong>{{ order.get_pending_status_display|lower }}</strong>{% if order.decided_by %}, decided by {{ order.decided_by.display_name }}{% endif %}.
+            Stripe's notification, or the hourly housekeeping, finishes it. Nothing more to press.
+        </div>
+    {% endif %}
 
     <div class="mt-6 grid gap-6 lg:grid-cols-3">
         <dl class="card grid grid-cols-3 gap-y-2 text-sm lg:col-span-2">

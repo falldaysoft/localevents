@@ -15,6 +15,8 @@
                 <p>Payment hasn't been completed. If you closed the payment page, you can start again from the event.</p>
             {% elif order.status == "awaiting_review" %}
                 <p>Thanks — your card is authorised for {{ order.total|default:order.amount }} {{ order.currency|upper }} but <strong>not charged</strong>. An editor will review it soon. You'll be charged only if it's approved.</p>
+            {% elif order.status == "processing" %}
+                <p>A decision has been made and is being completed. You'll get an email in a few minutes.</p>
             {% elif order.status == "approved" %}
                 <p>Approved. Your card was charged {{ order.total|default:order.amount }} {{ order.currency|upper }}; Stripe emailed the receipt.</p>
             {% elif order.status == "rejected" %}

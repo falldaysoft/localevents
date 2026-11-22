@@ -14,7 +14,9 @@ from datetime import timedelta
 from decimal import Decimal
 
 import pytest
+import stripe
 from django.core import mail
+from django.db import OperationalError, connection
 from django.urls import reverse
 from django.utils import timezone
 
@@ -72,17 +74,30 @@ class Calls(list):
     """The calls made, plus `state`: what the fake Stripe will report."""
 
 
+def outside_transactions():
+    """A Stripe call made inside a transaction can charge a card and then be
+    rolled back out of the record. Under pytest-django the test itself is the
+    outermost atomic block, so any savepoint means code opened one."""
+    assert not connection.savepoint_ids, "Stripe was called inside a transaction"
+
+
 @pytest.fixture
 def stripe_calls(monkeypatch):
     """A fake Stripe that records what was asked of it."""
     calls = Calls()
-    state = {"intent_status": "requires_capture", "session_status": "complete"}
+    state = {"intent_status": "requires_capture", "session_status": "complete", "fail": set()}
+
+    def maybe_fail(name):
+        outside_transactions()
+        if name in state["fail"]:
+            raise stripe.APIConnectionError("Stripe is unreachable")
 
     def create_checkout(order, config=None):
         calls.append(("checkout", order.pk))
         return f"cs_test_{order.pk}", f"https://checkout.stripe.com/c/pay/cs_test_{order.pk}"
 
     def read_checkout(session_id):
+        maybe_fail("read")
         calls.append(("read", session_id))
         return {
             "session_status": state["session_status"],
@@ -95,14 +110,17 @@ def stripe_calls(monkeypatch):
         }
 
     def capture(intent_id):
+        maybe_fail("capture")
         calls.append(("capture", intent_id))
         return "succeeded"
 
     def release(intent_id):
+        maybe_fail("release")
         calls.append(("release", intent_id))
         return "canceled"
 
     def expire_checkout(session_id):
+        maybe_fail("expire")
         calls.append(("expire", session_id))
         return "expired"
 
@@ -111,6 +129,7 @@ def stripe_calls(monkeypatch):
     monkeypatch.setattr(payments, "capture", capture)
     monkeypatch.setattr(payments, "release", release)
     monkeypatch.setattr(payments, "expire_checkout", expire_checkout)
+    monkeypatch.setattr(payments, "read_intent_status", lambda intent_id: state["intent_status"])
     calls.state = state
     return calls
 
@@ -579,3 +598,119 @@ def test_the_moderator_tabs_count_orders_awaiting_review(held_order, moderator):
     from moderation.services import queue_counts
 
     assert queue_counts(moderator)["sponsors"] == 1
+
+
+# --- a decision interrupted ----------------------------------------------------
+#
+# Found in the first local test: SQLite reported "database is locked" after
+# Stripe had captured the payment, the decision rolled back, and the webhook
+# later marked the order approved with nobody's name on it and no mail.
+
+
+def test_a_record_that_fails_after_the_charge_is_finished_by_the_webhook(
+    client, held_order, moderator, stripe_calls, monkeypatch,
+    django_capture_on_commit_callbacks,
+):
+    real_finish = services.finish
+
+    def locked(order):
+        raise OperationalError("database is locked")
+
+    monkeypatch.setattr(services, "finish", locked)
+    order = services.approve(held_order, moderator, note="Enjoy!")
+    assert order.status == Status.PROCESSING
+    assert order.pending_status == Status.APPROVED
+    assert order.decided_by == moderator
+    assert ("capture", held_order.stripe_payment_intent_id) in stripe_calls
+
+    monkeypatch.setattr(services, "finish", real_finish)
+    payload = stripe_event("payment_intent.succeeded", {
+        "id": held_order.stripe_payment_intent_id, "object": "payment_intent", "metadata": {},
+    })
+    with django_capture_on_commit_callbacks(execute=True):
+        assert post_webhook(client, payload).status_code == 200
+    order.refresh_from_db()
+    assert order.status == Status.APPROVED
+    assert order.decided_by == moderator
+    action = ModerationAction.objects.get(action="sponsor_approved")
+    assert action.actor == moderator
+    assert mail.outbox[0].to == ["organiser@example.com"]
+    assert "Enjoy!" in mail.outbox[0].body
+
+
+def test_the_moderator_is_told_the_charge_went_through(client, held_order, moderator, stripe_calls, monkeypatch):
+    monkeypatch.setattr(services, "finish", lambda order: (_ for _ in ()).throw(OperationalError("locked")))
+    client.force_login(moderator)
+    response = client.post(reverse("mod_sponsor_approve", args=[held_order.pk]), follow=True)
+    assert b"no need to press the button again" in response.content
+    assert b"Being processed" in response.content
+
+
+def test_a_refused_capture_leaves_the_order_as_it_was(held_order, moderator, stripe_calls):
+    stripe_calls.state["fail"].add("capture")
+    with pytest.raises(services.SponsorError, match="would not take the payment"):
+        services.approve(held_order, moderator, note="Enjoy!")
+    held_order.refresh_from_db()
+    assert held_order.status == Status.AWAITING_REVIEW
+    assert held_order.decided_by is None and held_order.decision_note == ""
+    assert not ModerationAction.objects.exists()
+
+
+def test_a_refused_release_leaves_the_order_as_it_was(held_order, moderator, stripe_calls):
+    stripe_calls.state["fail"].add("release")
+    with pytest.raises(services.SponsorError, match="would not release"):
+        services.reject(held_order, moderator, "Not a fit.")
+    held_order.refresh_from_db()
+    assert held_order.status == Status.AWAITING_REVIEW
+
+
+def test_a_capture_made_in_the_stripe_dashboard_is_recorded_and_announced(
+    client, held_order, django_capture_on_commit_callbacks
+):
+    payload = stripe_event("payment_intent.succeeded", {
+        "id": held_order.stripe_payment_intent_id, "object": "payment_intent", "metadata": {},
+    })
+    with django_capture_on_commit_callbacks(execute=True):
+        post_webhook(client, payload)
+    held_order.refresh_from_db()
+    assert held_order.status == Status.APPROVED
+    action = ModerationAction.objects.get(action="sponsor_approved")
+    assert action.actor is None
+    assert "outside the queue" in action.detail
+    assert mail.outbox[0].to == ["organiser@example.com"]
+
+
+def test_housekeeping_finishes_a_decision_stripe_completed(
+    held_order, moderator, stripe_calls, monkeypatch
+):
+    monkeypatch.setattr(services, "finish", lambda order: (_ for _ in ()).throw(OperationalError("locked")))
+    services.approve(held_order, moderator)
+    monkeypatch.undo()  # Restores finish, and the fake Stripe with it.
+    monkeypatch.setattr(payments, "read_intent_status", lambda intent_id: "succeeded")
+    later = timezone.now() + services.STUCK_AFTER + timedelta(minutes=1)
+    assert services.housekeeping(now=later)["settled"] == 1
+    held_order.refresh_from_db()
+    assert held_order.status == Status.APPROVED
+    assert ModerationAction.objects.get(action="sponsor_approved").actor == moderator
+
+
+def test_housekeeping_undoes_a_claim_whose_capture_never_happened(held_order, moderator):
+    SponsorOrder.objects.filter(pk=held_order.pk).update(
+        status=Status.PROCESSING, pending_status=Status.APPROVED, decided_by=moderator,
+    )
+    from unittest import mock
+
+    with mock.patch.object(payments, "read_intent_status", return_value="requires_capture"):
+        services.housekeeping(now=timezone.now() + services.STUCK_AFTER + timedelta(minutes=1))
+    held_order.refresh_from_db()
+    assert held_order.status == Status.AWAITING_REVIEW
+    assert held_order.decided_by is None
+
+
+def test_a_refund_is_written_to_the_log(client, running):
+    payload = stripe_event("charge.refunded", {
+        "id": "ch_1", "object": "charge", "refunded": True,
+        "payment_intent": running.stripe_payment_intent_id,
+    })
+    post_webhook(client, payload)
+    assert ModerationAction.objects.filter(action="sponsor_refunded").exists()
