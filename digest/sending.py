@@ -209,8 +209,11 @@ def send_batch(run_id, delivery_ids):
 def _send_one(pk, now, min_events, bases, connection):
     Status = DigestDelivery.Status
     with transaction.atomic():
+        # `of=("self",)`: `subscriber` is nullable, so the join is an outer
+        # one, and Postgres refuses FOR UPDATE on its nullable side. SQLite
+        # ignores FOR UPDATE, so only a Postgres run catches this.
         delivery = (
-            DigestDelivery.objects.select_for_update()
+            DigestDelivery.objects.select_for_update(of=("self",))
             .select_related("subscriber")
             .filter(pk=pk, status=Status.PENDING)
             .first()
