@@ -66,10 +66,14 @@ def create_checkout(order, config=None):
     detail = reverse("sponsor_order", args=[order.pk])
     params = {
         "mode": "payment",
-        # Cards only. Other methods Checkout would offer (Klarna, for one)
-        # hold an uncaptured payment for a different length of time, and the
-        # whole review window is built on a card's roughly seven days.
-        "payment_method_types": ["card"],
+        # Which methods Checkout offers is managed in the Stripe Dashboard
+        # (Settings → Payment methods); Stripe now refuses
+        # `payment_method_types` on session create, so checkout failed for
+        # everyone with it. The review window is built on a card's roughly
+        # seven-day hold, so the buy-now-pay-later methods, which hold an
+        # uncaptured payment differently, are excluded here as well. Keep
+        # the Dashboard to cards. ("link" is not a valid value to exclude.)
+        "excluded_payment_method_types": ["klarna", "affirm", "afterpay_clearpay"],
         "line_items": [{
             "quantity": 1,
             "price_data": {

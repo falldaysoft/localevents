@@ -294,7 +294,10 @@ def test_checkout_asks_stripe_to_hold_not_charge(config, event, buyer, monkeypat
     )
     payments.create_checkout(order, config)
     assert seen["payment_intent_data"]["capture_method"] == "manual"
-    assert seen["payment_method_types"] == ["card"]
+    # Stripe refuses payment_method_types on a Checkout Session now; sending
+    # it broke every checkout against the real API while these fakes passed.
+    assert "payment_method_types" not in seen
+    assert set(seen["excluded_payment_method_types"]) == {"klarna", "affirm", "afterpay_clearpay"}
     assert seen["line_items"][0]["price_data"]["unit_amount"] == 2500
     assert seen["line_items"][0]["price_data"]["currency"] == "cad"
     assert seen["automatic_tax"] == {"enabled": True}
