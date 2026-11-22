@@ -426,7 +426,13 @@ def event_list(moderator, *, view="upcoming", tier=None, query="", sort="date", 
         )
 
     ordering = {
-        "date": [F("next_start").asc(nulls_last=True), "-last_start", "title"],
+        # nulls_last spelled out on both: SQLite and Postgres disagree on
+        # where NULL sorts, and a listing with no dates at all belongs last.
+        "date": [
+            F("next_start").asc(nulls_last=True),
+            F("last_start").desc(nulls_last=True),
+            "title",
+        ],
         "title": ["title"],
         "venue": ["venue__name", F("next_start").asc(nulls_last=True)],
         "tier": ["-prominence", F("next_start").asc(nulls_last=True)],
