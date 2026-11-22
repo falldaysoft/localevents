@@ -106,9 +106,16 @@ def event_detail(request, slug):
                 _schema_org(event, occurrences), ensure_ascii=False
             ),
             "site_config": SiteConfig.load(),
+            "can_promote": _sponsorships_on_sale(),
             **_viewer(request),
         },
     )
+
+
+def _sponsorships_on_sale():
+    from sponsors.models import SponsorConfig
+
+    return SponsorConfig.load().on_sale
 
 
 @require_POST

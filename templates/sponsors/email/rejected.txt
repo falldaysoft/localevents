@@ -1,0 +1,12 @@
+{% autoescape off %}Thanks for offering to sponsor “{{ event.title|default:order.description }}” on {{ site_name }}. We weren't able to accept it this time.
+
+{{ order.decision_note }}
+
+Nothing was charged: the hold on your card has been released. Depending on your bank it can take a few days to disappear from your statement.
+
+Your order: {{ order_url }}
+
+Questions? Reply to this message or write to {{ contact_email }}.
+
+— {{ site_name }}
+{% endautoescape %}

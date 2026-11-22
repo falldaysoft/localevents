@@ -769,6 +769,14 @@
   line-height: 1.35;
 }
 
+/* A paid placement reads differently from the editor's pick at a glance:
+   an outline rather than the filled peach star. */
+[data-theme="river"] .le-feature__kicker--sponsored {
+  background: transparent;
+  color: var(--peach);
+  box-shadow: inset 0 0 0 1.5px var(--peach);
+}
+
 [data-theme="river"] .le-feature h3 {
   font-family: var(--font-display);
   font-weight: 800;

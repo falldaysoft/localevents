@@ -580,6 +580,10 @@ def queue_counts(moderator):
     rows["refreshes"] = EventRefresh.objects.awaiting_review().count()
     # And a third: mail triage would not queue is only seen if it is counted.
     rows["inbox"] = InboundEmail.objects.needs_a_look().count()
+    # And sponsorships, each of which is on a card-hold clock.
+    from sponsors.models import SponsorOrder
+
+    rows["sponsors"] = SponsorOrder.objects.awaiting_review().count()
     return rows
 
 

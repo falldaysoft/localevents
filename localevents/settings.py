@@ -107,6 +107,7 @@ INSTALLED_APPS = [
     "enrichment",
     "events",
     "moderation",
+    "sponsors",
     "submissions",
     "web",
 ]
@@ -408,7 +409,9 @@ SECURE_CSP = {
     "connect-src": [CSP.SELF, "https://nominatim.openstreetmap.org"],
     "frame-ancestors": [CSP.NONE],
     "base-uri": [CSP.SELF],
-    "form-action": [CSP.SELF],
+    # Stripe Checkout: the promote form POSTs here and is redirected there,
+    # and Chrome applies form-action to the redirect as well as the form.
+    "form-action": [CSP.SELF, "https://checkout.stripe.com"],
 }
 
 

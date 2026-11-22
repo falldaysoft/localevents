@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Sponsorship — {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+    <div class="mx-auto max-w-xl">
+        <p class="text-sm text-slate-500"><a href="{% url 'sponsor_orders' %}" class="underline">Your sponsorships</a></p>
+        <div class="mt-1 flex flex-wrap items-baseline justify-between gap-3">
+            <h1 class="text-2xl font-semibold tracking-tight">{{ order.description }}</h1>
+            {% include "sponsors/_status.html" %}
+        </div>
+
+        <div class="card mt-6 space-y-2 text-sm">
+            {% if order.status == "checkout" %}
+                <p>Payment hasn't been completed. If you closed the payment page, you can start again from the event.</p>
+            {% elif order.status == "awaiting_review" %}
+                <p>Thanks — your card is authorised for {{ order.total|default:order.amount }} {{ order.currency|upper }} but <strong>not charged</strong>. An editor will review it soon. You'll be charged only if it's approved.</p>
+            {% elif order.status == "approved" %}
+                <p>Approved. Your card was charged {{ order.total|default:order.amount }} {{ order.currency|upper }}; Stripe emailed the receipt.</p>
+            {% elif order.status == "rejected" %}
+                <p>This one wasn't accepted, and nothing was charged.</p>
+            {% elif order.status == "withdrawn" %}
+                <p>You withdrew this request. Nothing was charged.</p>
+            {% elif order.status == "lapsed" %}
+                <p>This request wasn't reviewed before the hold on your card ran out. Nothing was charged.</p>
+            {% elif order.status == "refunded" %}
+                <p>This sponsorship was refunded.</p>
+            {% else %}
+                <p>Payment wasn't completed. Nothing was charged.</p>
+            {% endif %}
+            {% if order.decision_note %}
+                <p class="whitespace-pre-line rounded-lg bg-slate-50 p-3">{{ order.decision_note }}</p>
+            {% endif %}
+        </div>
+
+        <dl class="card mt-4 grid grid-cols-3 gap-y-2 text-sm">
+            {% if order.event %}
+                <dt class="text-slate-500">Event</dt>
+                <dd class="col-span-2">{% if order.event.status == "published" %}<a href="{% url 'event_detail' order.event.slug %}" class="underline">{{ order.event.title }}</a>{% else %}{{ order.event.title }}{% endif %}</dd>
+            {% endif %}
+            <dt class="text-slate-500">Runs</dt>
+            <dd class="col-span-2">{{ order.starts_on|date:"D j M" }} – {{ order.ends_on|date:"D j M Y" }}</dd>
+            <dt class="text-slate-500">Price</dt>
+            <dd class="col-span-2">{{ order.amount }} {{ order.currency|upper }}{% if order.tax_amount %} + {{ order.tax_amount }} tax{% endif %}</dd>
+            {% if order.buyer_note %}
+                <dt class="text-slate-500">Your note</dt>
+                <dd class="col-span-2 whitespace-pre-line">{{ order.buyer_note }}</dd>
+            {% endif %}
+        </dl>
+
+        {% if order.status == "awaiting_review" or order.status == "checkout" %}
+            {% if order.buyer_id == user.pk %}
+                <details class="mt-8 text-sm text-slate-600">
+                    <summary class="cursor-pointer underline hover:text-slate-800">Withdraw this request</summary>
+                    <form method="post" action="{% url 'sponsor_order_withdraw' order.pk %}" class="card mt-3 space-y-3">
+                        {% csrf_token %}
+                        <p>Withdrawing releases the hold on your card. Nothing is charged.</p>
+                        <button type="submit" class="btn-secondary">Withdraw it</button>
+                    </form>
+                </details>
+            {% endif %}
+        {% endif %}
+    </div>
+{% endblock %}

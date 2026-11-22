@@ -1,0 +1,15 @@
+{% autoescape off %}Good news — your sponsorship of “{{ event.title|default:order.description }}” is approved.
+
+It runs from {{ order.starts_on|date:"D j M" }} to {{ order.ends_on|date:"D j M Y" }}, marked "Sponsored" at the top of the listings and in the weekly email. Your card has now been charged {{ order.total|default:order.amount }} {{ order.currency|upper }}; Stripe sends the receipt separately.
+{% if order.decision_note %}
+A note from the editor:
+
+{{ order.decision_note }}
+{% endif %}
+{% if event_url %}The listing: {{ event_url }}
+{% endif %}Your order: {{ order_url }}
+
+Questions? Reply to this message or write to {{ contact_email }}.
+
+— {{ site_name }}
+{% endautoescape %}

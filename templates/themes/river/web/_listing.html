@@ -12,7 +12,11 @@
     <article class="le-feature"
              {% for category in event.categories.all|slice:":1" %}style="--spine: var(--cat-{{ category.slug }}, var(--river))"{% endfor %}>
         <div class="le-feature__txt">
-            <span class="le-feature__kicker">&#9733; Featured</span>
+            {% if event.is_sponsored %}
+                <span class="le-feature__kicker le-feature__kicker--sponsored" title="A paid placement. The listing itself was reviewed like any other.">Sponsored</span>
+            {% else %}
+                <span class="le-feature__kicker">&#9733; Featured</span>
+            {% endif %}
             <h3><a href="{% url 'event_detail' event.slug %}">{{ event.title }}</a></h3>
             <p class="le-when">
                 {% if event.next_start %}

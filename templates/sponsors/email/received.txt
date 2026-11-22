@@ -1,0 +1,11 @@
+{% autoescape off %}Thanks — we've received your request to promote “{{ event.title|default:order.description }}” on {{ site_name }}.
+
+Your card has been authorised for {{ order.total|default:order.amount }} {{ order.currency|upper }} but not charged. An editor looks at every sponsorship before it runs; you are charged only if it is approved, and if it isn't, the hold is released and nothing is taken.
+
+Requested run: {{ order.starts_on|date:"D j M" }} to {{ order.ends_on|date:"D j M Y" }}
+
+You'll hear from us within a few days. You can check on it, or withdraw it, here:
+{{ order_url }}
+
+— {{ site_name }}
+{% endautoescape %}

@@ -1,0 +1,19 @@
+{% extends "admin/change_form.html" %}
+
+{% block object-tools %}
+    {# Outside the change form: these are their own POSTs, and they use what is saved. #}
+    <div style="display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; margin:0 0 1rem;">
+        <form method="post" action="{% url 'admin:sponsors_sponsorconfig_test' %}">
+            {% csrf_token %}
+            <button type="submit" class="button">Test the Stripe key</button>
+        </form>
+        <form method="post" action="{% url 'admin:sponsors_sponsorconfig_webhook' %}">
+            {% csrf_token %}
+            <button type="submit" class="button">Set up the webhook</button>
+        </form>
+        <span style="color:var(--body-quiet-color);">
+            Both use the saved key — save first. The webhook will point at {{ webhook_url }},
+            so this site must be reachable there from the internet.
+        </span>
+    </div>
+{% endblock %}

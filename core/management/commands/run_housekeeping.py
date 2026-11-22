@@ -27,6 +27,7 @@ class Command(BaseCommand):
             ("send renewal reminders", self.send_renewal_reminders),
             ("send the weekly email", self.send_weekly_email),
             ("forget unconfirmed weekly-email signups", self.forget_unconfirmed_signups),
+            ("tidy sponsorship orders", self.tidy_sponsorships),
         ]
 
         failures = 0
@@ -126,3 +127,19 @@ class Command(BaseCommand):
         count = forget_unconfirmed()
         if count:
             self.stdout.write(f"  forgot {count} unconfirmed signup(s)")
+
+    def tidy_sponsorships(self):
+        """Close abandoned checkouts, release holds that ran out, warn first.
+
+        The webhook does most of this as it happens; this is the backstop for
+        a delivery that never arrived, and the only thing that notices a hold
+        is about to run out, because nothing at Stripe's end happens then.
+        """
+        from sponsors.services import housekeeping
+
+        done = housekeeping()
+        if any(done.values()):
+            self.stdout.write(
+                "  sponsorships: {abandoned} abandoned, {lapsed} lapsed, "
+                "{warned} warned".format(**done)
+            )

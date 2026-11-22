@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}Your sponsorships — {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+    <div class="mx-auto max-w-2xl">
+        <h1 class="text-3xl font-semibold tracking-tight">Your sponsorships</h1>
+        {% if orders %}
+            <ul class="mt-6 space-y-3">
+                {% for order in orders %}
+                    <li class="card flex flex-wrap items-baseline justify-between gap-3">
+                        <div>
+                            <a href="{% url 'sponsor_order' order.pk %}" class="font-medium hover:underline">{{ order.description }}</a>
+                            <p class="mt-0.5 text-sm text-slate-500">{{ order.starts_on|date:"D j M" }} – {{ order.ends_on|date:"D j M Y" }}</p>
+                        </div>
+                        {% include "sponsors/_status.html" %}
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <div class="card mt-6 text-sm text-slate-600">
+                Nothing yet. To promote an event, open its page and press <em>Promote this event</em>.
+            </div>
+        {% endif %}
+    </div>
+{% endblock %}

@@ -1,0 +1,7 @@
+{% autoescape off %}Your request to sponsor “{{ event.title|default:order.description }}” on {{ site_name }} wasn't reviewed in time, and the hold on your card has run out. Sorry about that.
+
+Nothing was charged. If you'd still like to sponsor it, you're welcome to start again from the listing{% if event_url %}:
+{{ event_url }}{% else %}.{% endif %}
+
+— {{ site_name }}
+{% endautoescape %}

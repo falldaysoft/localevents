@@ -10,11 +10,13 @@ urlpatterns = [
     # is <int:pk>, which cannot match "pages" or "media".
     path("moderate/", include("content.mod_urls")),
     path("moderate/", include("digest.mod_urls")),
+    path("moderate/", include("sponsors.mod_urls")),
     # Bearer-token JSON for agents. Mounted apart from the form routes so the
     # prefix and the access rule line up, as moderation's do.
     path("api/", include("submissions.api_urls")),
     path("", include("submissions.urls")),
     path("", include("digest.urls")),
+    path("", include("sponsors.urls")),
     path("", include("content.urls")),
     path("", include("web.urls")),
 ]

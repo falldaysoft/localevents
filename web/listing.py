@@ -106,6 +106,28 @@ def _pinned_featured(featured, now):
     return pinned
 
 
+def _sponsored(filters, now):
+    """Events with a paid promotion running today, as this page would show them.
+
+    Read through the same filter as everything else, so a promoted concert
+    does not appear on the family page or a venue it is not at — a sponsor
+    buys placement among the listings a reader asked for, not a way out of
+    their question. Any tier qualifies: the editor has already decided the
+    listing belongs on the site, and the promotion is what moves it up.
+    """
+    from sponsors.services import promoted_event_ids
+
+    ids = promoted_event_ids(now)
+    if not ids:
+        return []
+    events = list(
+        filters.apply(Event.objects.published().filter(pk__in=ids), now).order_by("next_start")
+    )
+    for event in events:
+        event.is_sponsored = True
+    return events
+
+
 def _first_page_floor(today):
     """The earliest day the first page may end before: past this week's Sunday.
 
@@ -153,10 +175,17 @@ def _listing(filters, now, quiet_horizon_days=None, start=None, paged=True):
     until = None
     if quiet_horizon_days is not None:
         until = now + timedelta(days=quiet_horizon_days)
-    quiet_all = filters.quiet(now, until=until)
+    # Paid promotions sit with the featured listings, after the editor's own
+    # picks and labelled as sponsored, and leave the date run like them.
+    sponsored = _sponsored(filters, now)
+    sponsored_ids = [e.pk for e in sponsored]
+    quiet_all = filters.quiet(now, until=until).exclude(pk__in=sponsored_ids)
     featured = _pinned_featured(
-        filters.main_feed(now).filter(prominence=Event.Prominence.FEATURED), now
-    )
+        filters.main_feed(now)
+        .filter(prominence=Event.Prominence.FEATURED)
+        .exclude(pk__in=sponsored_ids),
+        now,
+    ) + sponsored
     listed_all = (
         filters.main_feed(now)
         .exclude(pk__in=[e.pk for e in featured])
@@ -194,7 +223,9 @@ def _listing(filters, now, quiet_horizon_days=None, start=None, paged=True):
     first_page = start is None
     if not first_page:
         featured = []
-    programs = list(filters.programs(now)) if first_page else []
+    programs = (
+        list(filters.programs(now).exclude(pk__in=sponsored_ids)) if first_page else []
+    )
 
     # Folded or not, a quiet listing sits under its own day. Merged by date
     # with the listed run so `_group_by_day` sees one ordered walk; `sorted`

@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% load event_dates %}
+
+{% block title %}Sponsorship #{{ order.pk }} — {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+    {% include "moderation/_tabs.html" with section='sponsors' %}
+
+    <div class="mt-6 flex flex-wrap items-baseline justify-between gap-3">
+        <h1 class="text-2xl font-semibold tracking-tight">{{ order.description }}</h1>
+        {% include "sponsors/_status.html" %}
+    </div>
+    {% if not order.livemode %}<p class="mt-1 text-sm text-amber-700">Test mode: no real card is involved.</p>{% endif %}
+
+    <div class="mt-6 grid gap-6 lg:grid-cols-3">
+        <dl class="card grid grid-cols-3 gap-y-2 text-sm lg:col-span-2">
+            <dt class="text-slate-500">Event</dt>
+            <dd class="col-span-2">
+                {% if order.event %}
+                    {% if order.event.status == "published" %}
+                        <a href="{% url 'event_detail' order.event.slug %}" class="underline">{{ order.event.title }}</a>
+                    {% else %}
+                        {{ order.event.title }} <span class="chip">{{ order.event.get_status_display }}</span>
+                    {% endif %}
+                    &middot; <a href="{% url 'mod_event_edit' order.event.pk %}" class="underline">edit</a>
+                {% else %}—{% endif %}
+            </dd>
+            <dt class="text-slate-500">Runs</dt>
+            <dd class="col-span-2">{{ order.starts_on|date:"D j M" }} – {{ order.ends_on|date:"D j M Y" }} ({{ order.days }} day{{ order.days|pluralize }})</dd>
+            <dt class="text-slate-500">Buyer</dt>
+            <dd class="col-span-2">{{ order.buyer.display_name }} &lt;{{ order.buyer.email }}&gt;</dd>
+            <dt class="text-slate-500">Amount</dt>
+            <dd class="col-span-2">{{ order.amount }} {{ order.currency|upper }}{% if order.tax_amount %} + {{ order.tax_amount }} tax = {{ order.total }}{% endif %}</dd>
+            {% if order.status == "awaiting_review" %}
+                <dt class="text-slate-500">Hold runs out</dt>
+                <dd class="col-span-2 {% if order.hold_urgent %}font-semibold text-red-700{% endif %}">{{ order.hold_expires_at|date:"D j M, H:i" }} (in {{ order.hold_expires_at|timeuntil }})</dd>
+            {% endif %}
+            {% if order.buyer_note %}
+                <dt class="text-slate-500">Their note</dt>
+                <dd class="col-span-2 whitespace-pre-line">{{ order.buyer_note }}</dd>
+            {% endif %}
+            {% if order.decided_at %}
+                <dt class="text-slate-500">Decided</dt>
+                <dd class="col-span-2">{{ order.decided_at|date:"j M Y, H:i" }}{% if order.decided_by %} by {{ order.decided_by.display_name }}{% endif %}</dd>
+            {% endif %}
+            {% if order.decision_note %}
+                <dt class="text-slate-500">Note to buyer</dt>
+                <dd class="col-span-2 whitespace-pre-line">{{ order.decision_note }}</dd>
+            {% endif %}
+            {% if order.stripe_payment_intent_id %}
+                <dt class="text-slate-500">Stripe</dt>
+                <dd class="col-span-2"><a href="https://dashboard.stripe.com/{% if not order.livemode %}test/{% endif %}payments/{{ order.stripe_payment_intent_id }}" class="underline" rel="noopener" target="_blank">{{ order.stripe_payment_intent_id }}</a></dd>
+            {% endif %}
+        </dl>
+
+        <div class="space-y-4">
+            {% if order.status == "awaiting_review" %}
+                {% if full_days %}
+                    <div class="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                        Already at the daily limit on {% for day in full_days %}{{ day|date:"D j M" }}{% if not forloop.last %}, {% endif %}{% endfor %}.
+                    </div>
+                {% endif %}
+                <form method="post" action="{% url 'mod_sponsor_approve' order.pk %}" class="card space-y-3">
+                    {% csrf_token %}
+                    <label class="block text-sm font-medium" for="approve-note">Note to the buyer (optional)</label>
+                    <textarea id="approve-note" name="note" rows="2" class="w-full rounded-lg border border-slate-300 px-3 py-2"></textarea>
+                    <button type="submit" class="btn-primary w-full">Approve and charge</button>
+                </form>
+                <form method="post" action="{% url 'mod_sponsor_reject' order.pk %}" class="card space-y-3">
+                    {% csrf_token %}
+                    <label class="block text-sm font-medium" for="reject-note">Why not (sent to the buyer)</label>
+                    <textarea id="reject-note" name="note" rows="3" required class="w-full rounded-lg border border-slate-300 px-3 py-2"></textarea>
+                    <button type="submit" class="btn-secondary w-full">Reject and release the hold</button>
+                </form>
+            {% endif %}
+
+            {% if others %}
+                <div class="card text-sm">
+                    <h2 class="font-semibold">Other promotions in these dates</h2>
+                    <ul class="mt-2 space-y-1">
+                        {% for other in others %}
+                            <li><a href="{% url 'mod_sponsor' other.pk %}" class="underline">{{ other.description }}</a>
+                                <span class="text-slate-500">{{ other.starts_on|date:"j M" }}–{{ other.ends_on|date:"j M" }} &middot; {{ other.get_status_display }}</span></li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+{% endblock %}

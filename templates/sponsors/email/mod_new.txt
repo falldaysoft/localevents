@@ -1,0 +1,11 @@
+{% autoescape off %}{{ order.buyer.email }} wants to sponsor “{{ event.title|default:order.description }}”.
+
+Run: {{ order.starts_on|date:"D j M" }} to {{ order.ends_on|date:"D j M Y" }}
+Held on their card: {{ order.total|default:order.amount }} {{ order.currency|upper }}
+{% if order.buyer_note %}
+Their note:
+{{ order.buyer_note }}
+{% endif %}
+The card hold runs out {{ order.hold_expires_at|date:"D j M, H:i" }}. Approve to charge it, reject to release it:
+{{ review_url }}
+{% endautoescape %}
