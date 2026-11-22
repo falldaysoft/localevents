@@ -1,6 +1,7 @@
 from django import forms
 from django.conf import settings
 from django.contrib import admin, messages
+from django.db import transaction
 from django.shortcuts import redirect
 from django.urls import path, reverse
 
@@ -64,7 +65,15 @@ class SponsorConfigForm(forms.ModelForm):
             config.stripe_account_name = ""
         elif self.cleaned_data.get("stripe_secret_key"):
             new_key = self.cleaned_data["stripe_secret_key"]
-            if new_key != config.stripe_secret_key:
+            old_key = config.stripe_secret_key
+            if new_key != old_key:
+                old_endpoint = config.stripe_webhook_endpoint_id
+                if old_key and old_endpoint:
+                    # After the save commits, never inside it: no Stripe call
+                    # runs in a transaction.
+                    transaction.on_commit(
+                        lambda: payments.delete_webhook(old_key, old_endpoint)
+                    )
                 # A different key is usually a different mode or account, and
                 # the stored webhook belongs to the old one: keeping it would
                 # look ready while no event ever arrived.

@@ -245,7 +245,14 @@ def _listing(filters, now, quiet_horizon_days=None, start=None, paged=True):
         "program_count": len(programs),
         # The whole answer, not this page of it: "212 events" is what tells a
         # reader there is a "Later" worth pressing.
-        "result_count": filters.main_feed(now).count() + quiet_all.count(),
+        # Promoted listings are counted once, whatever their tier: a Quiet or
+        # Background one is in neither run, and was left out of the count
+        # while its card sat at the top of the page.
+        "result_count": (
+            filters.main_feed(now).exclude(pk__in=sponsored_ids).count()
+            + quiet_all.count()
+            + len(sponsored)
+        ),
         "page_from": start,
         "next_from": next_from,
     }

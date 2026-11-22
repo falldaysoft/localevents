@@ -15,6 +15,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.conf import settings
+from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
 
@@ -80,11 +81,11 @@ class SponsorConfig(SingletonModel):
         help_text="Before tax, for one promotion.",
     )
     promote_max_days = models.PositiveSmallIntegerField(
-        default=14,
+        default=14, validators=[MinValueValidator(1)],
         verbose_name="promote an event: longest run (days)",
     )
     promote_daily_slots = models.PositiveSmallIntegerField(
-        default=2,
+        default=2, validators=[MinValueValidator(1)],
         verbose_name="promote an event: promotions per day",
         help_text="How many sponsored events may run on the same day. Keeps "
         "paid placements rare enough to leave room for your own picks.",
@@ -197,6 +198,9 @@ class SponsorOrder(models.Model):
         LAPSED = "lapsed", "Lapsed"
         # Approved, charged, then refunded from the Stripe dashboard.
         REFUNDED = "refunded", "Refunded"
+        # Approved and charged, then the event left the site, so the
+        # placement stopped early. Refunded or not is the editor's call.
+        STOPPED = "stopped", "Stopped early"
 
     product = models.CharField(
         max_length=20, choices=Product.choices, default=Product.PROMOTE_EVENT

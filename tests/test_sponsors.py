@@ -333,12 +333,23 @@ def test_an_unpublished_event_cannot_be_promoted(config, event, buyer, stripe_ca
     assert not stripe_calls
 
 
+def other_event():
+    """A second published listing, so a test about the daily limit is not
+    caught first by the one-promotion-per-event rule."""
+    other = Event.objects.create(
+        title="Craft Fair", status=Event.Status.PUBLISHED,
+        prominence=Event.Prominence.LISTED,
+    )
+    Occurrence.objects.create(event=other, start=timezone.now() + timedelta(days=5))
+    return other
+
+
 def test_full_days_are_refused_before_anyone_pays(config, event, buyer, stripe_calls):
     config.promote_daily_slots = 1
     config.save()
     today = timezone.localdate()
     SponsorOrder.objects.create(
-        buyer=buyer, event=event, starts_on=today, ends_on=today + timedelta(days=3),
+        buyer=buyer, event=other_event(), starts_on=today, ends_on=today + timedelta(days=3),
         currency="cad", amount=Decimal("25"), status=Status.AWAITING_REVIEW,
     )
     with pytest.raises(services.SponsorError, match="taken"):
@@ -514,7 +525,7 @@ def test_approval_respects_the_daily_limit(held_order, moderator, buyer, stripe_
     config.promote_daily_slots = 1
     config.save()
     SponsorOrder.objects.create(
-        buyer=buyer, event=held_order.event, starts_on=held_order.starts_on,
+        buyer=buyer, event=other_event(), starts_on=held_order.starts_on,
         ends_on=held_order.ends_on, currency="cad", amount=Decimal("25"),
         status=Status.APPROVED,
     )
@@ -720,14 +731,12 @@ def test_housekeeping_finishes_a_decision_stripe_completed(
     assert ModerationAction.objects.get(action="sponsor_approved").actor == moderator
 
 
-def test_housekeeping_undoes_a_claim_whose_capture_never_happened(held_order, moderator):
+def test_housekeeping_undoes_a_claim_whose_capture_never_happened(held_order, moderator, monkeypatch):
     SponsorOrder.objects.filter(pk=held_order.pk).update(
         status=Status.PROCESSING, pending_status=Status.APPROVED, decided_by=moderator,
     )
-    from unittest import mock
-
-    with mock.patch.object(payments, "read_intent_status", return_value="requires_capture"):
-        services.housekeeping(now=timezone.now() + services.STUCK_AFTER + timedelta(minutes=1))
+    monkeypatch.setattr(payments, "read_intent_status", lambda intent_id: "requires_capture")
+    services.housekeeping(now=timezone.now() + services.STUCK_AFTER + timedelta(minutes=1))
     held_order.refresh_from_db()
     assert held_order.status == Status.AWAITING_REVIEW
     assert held_order.decided_by is None
@@ -1015,3 +1024,237 @@ def test_9_approving_a_charge_needs_its_own_permission(
     helper.user_permissions.add(Permission.objects.get(codename="approve_sponsororder"))
     helper = django_user_model.objects.get(pk=helper.pk)  # Drop the permission cache.
     assert services.approve(held_order, helper).status == Status.APPROVED
+
+
+# --- review notes, round two -------------------------------------------------
+
+
+def test_r2_1_an_order_whose_event_was_deleted_cannot_be_approved(
+    held_order, moderator, stripe_calls
+):
+    Event.objects.filter(pk=held_order.event_id).delete()
+    held_order.refresh_from_db()
+    assert held_order.event_id is None
+    with pytest.raises(services.SponsorError, match="no longer published"):
+        services.approve(held_order, moderator)
+    assert not any(call[0] == "capture" for call in stripe_calls)
+
+
+def test_r2_2_a_reject_whose_reply_was_lost_is_still_a_rejection(
+    held_order, moderator, stripe_calls
+):
+    # The cancel landed; its reply did not.
+    stripe_calls.state["fail"].add("release")
+    stripe_calls.state["intent_status"] = "canceled"
+    order = services.reject(held_order, moderator, "Not a fit")
+    assert order.status == Status.REJECTED
+    assert order.decided_by == moderator
+    assert order.decision_note == "Not a fit"
+
+
+def test_r2_2_a_reject_stripe_cannot_answer_for_is_kept_and_finished_by_the_webhook(
+    client, held_order, moderator, stripe_calls, django_capture_on_commit_callbacks
+):
+    stripe_calls.state["fail"].update({"release", "intent"})
+    order = services.reject(held_order, moderator, "Not a fit")
+    # Not undone: nobody knows yet whether the hold is gone.
+    assert order.status == Status.PROCESSING
+    assert order.pending_status == Status.REJECTED
+    assert order.decided_by == moderator
+    payload = stripe_event("payment_intent.canceled", {
+        "id": held_order.stripe_payment_intent_id, "object": "payment_intent",
+    })
+    with django_capture_on_commit_callbacks(execute=True):
+        post_webhook(client, payload)
+    order.refresh_from_db()
+    assert order.status == Status.REJECTED
+    assert order.decision_note == "Not a fit"
+    assert [m.subject for m in mail.outbox if "lapsed" in m.subject.lower()] == []
+    assert any("About your sponsorship request" in m.subject for m in mail.outbox)
+
+
+def test_r2_2_an_approve_stripe_cannot_answer_for_is_settled_later(
+    held_order, moderator, stripe_calls, monkeypatch
+):
+    stripe_calls.state["fail"].update({"capture", "intent"})
+    order = services.approve(held_order, moderator)
+    assert order.status == Status.PROCESSING
+    stripe_calls.state["fail"].clear()
+    stripe_calls.state["intent_status"] = "succeeded"
+    services.housekeeping(now=timezone.now() + services.STUCK_AFTER + timedelta(minutes=1))
+    order.refresh_from_db()
+    assert order.status == Status.APPROVED
+    assert order.decided_by == moderator
+
+
+def test_r2_3_the_same_event_cannot_be_bought_twice_for_the_same_days(
+    held_order, buyer, stripe_calls
+):
+    with pytest.raises(services.SponsorError, match="already"):
+        services.start_promotion(held_order.event, buyer, held_order.starts_on)
+
+
+def test_r2_3_two_orders_for_one_event_cannot_both_be_approved(
+    held_order, moderator, buyer, stripe_calls
+):
+    twin = SponsorOrder.objects.create(
+        buyer=buyer, event=held_order.event, starts_on=held_order.starts_on,
+        ends_on=held_order.ends_on, currency="cad", amount=Decimal("25"),
+        status=Status.AWAITING_REVIEW, stripe_payment_intent_id="pi_twin",
+        hold_expires_at=timezone.now() + timedelta(days=5),
+    )
+    services.approve(held_order, moderator)
+    with pytest.raises(services.SponsorError, match="already"):
+        services.approve(twin, moderator)
+    assert ("capture", "pi_twin") not in stripe_calls
+
+
+@pytest.mark.parametrize("how", ["unpublish", "duplicate", "edit", "delete"])
+def test_r2_4_taking_down_a_promoted_event_stops_the_placement_and_says_so(
+    running, moderator, django_capture_on_commit_callbacks, how
+):
+    from moderation import services as mod_services
+
+    mail.outbox.clear()
+    event = running.event
+    with django_capture_on_commit_callbacks(execute=True):
+        if how == "unpublish":
+            mod_services.unpublish(event, moderator)
+        elif how == "duplicate":
+            mod_services.unpublish(event, moderator, duplicate=True)
+        elif how == "edit":
+            event.status = Event.Status.UNPUBLISHED
+            event.save()
+        else:
+            event.delete()
+    running.refresh_from_db()
+    assert running.status == Status.STOPPED
+    action = ModerationAction.objects.get(action="sponsor_stopped")
+    assert "Refund" in action.detail or "refund" in action.detail
+    assert any("Stopped" in m.subject for m in mail.outbox)
+
+
+def test_r2_4_the_events_screen_warns_before_taking_down_a_promoted_event(
+    client, running, moderator
+):
+    client.force_login(moderator)
+    page = client.get(reverse("mod_events")).content.decode()
+    assert "paid promotion" in page
+    page = client.get(reverse("mod_event_edit", args=[running.event_id])).content.decode()
+    assert "paid promotion" in page
+
+
+def test_r2_4_a_refund_after_stopping_is_recorded(client, running, moderator):
+    from moderation import services as mod_services
+
+    mod_services.unpublish(running.event, moderator)
+    payload = stripe_event("charge.refunded", {
+        "id": "ch_1", "object": "charge", "refunded": True,
+        "payment_intent": running.stripe_payment_intent_id,
+    })
+    post_webhook(client, payload)
+    running.refresh_from_db()
+    assert running.status == Status.REFUNDED
+
+
+@pytest.mark.parametrize("tier", ["QUIET", "BACKGROUND"])
+def test_r2_5_a_promoted_quiet_or_background_listing_is_counted(running, tier):
+    Event.objects.filter(pk=running.event_id).update(prominence=getattr(Event.Prominence, tier))
+    result = _listing(EventFilter(), timezone.now())
+    assert [e.title for e in result["featured"]] == ["Harvest Supper"]
+    assert result["result_count"] == 1
+
+
+def test_r2_6_a_new_key_removes_the_old_webhook_endpoint(
+    config, monkeypatch, django_capture_on_commit_callbacks
+):
+    removed = []
+    monkeypatch.setattr(payments, "delete_webhook", lambda key, endpoint: removed.append((key, endpoint)))
+    config.stripe_webhook_endpoint_id = "we_old"
+    config.save()
+    form = SponsorConfigForm(
+        data={"currency": "cad", "promote_price": "25.00", "promote_max_days": 14,
+              "promote_daily_slots": 2, "enabled": "on",
+              "stripe_secret_key": "sk_test_rolled5678"},
+        instance=config,
+    )
+    assert form.is_valid(), form.errors
+    with django_capture_on_commit_callbacks(execute=True):
+        form.save()
+    assert removed == [("sk_test_abcd1234", "we_old")]
+
+
+def test_r2_7_a_failed_webhook_setup_keeps_the_old_one(config, monkeypatch):
+    deleted = []
+
+    class Endpoints:
+        def create(self, params):
+            raise stripe.APIConnectionError("Stripe is unreachable")
+
+        def delete(self, endpoint_id):
+            deleted.append(endpoint_id)
+
+    class Client:
+        class v1:
+            webhook_endpoints = Endpoints()
+
+    monkeypatch.setattr(payments, "_client", lambda config=None: Client())
+    config.stripe_webhook_endpoint_id = "we_old"
+    config.save()
+    with pytest.raises(stripe.APIConnectionError):
+        payments.set_up_webhook(config)
+    config = SponsorConfig.objects.get(pk=1)
+    assert config.stripe_webhook_endpoint_id == "we_old"
+    assert config.stripe_webhook_secret == WEBHOOK_SECRET
+    assert deleted == []
+
+
+def test_r2_7_a_new_webhook_replaces_the_old_one_after_it_exists(config, monkeypatch):
+    calls = []
+
+    class Endpoints:
+        def create(self, params):
+            calls.append("create")
+
+            class Endpoint:
+                id, secret = "we_new", "whsec_new"
+            return Endpoint()
+
+        def delete(self, endpoint_id):
+            calls.append(("delete", endpoint_id))
+
+    class Client:
+        class v1:
+            webhook_endpoints = Endpoints()
+
+    monkeypatch.setattr(payments, "_client", lambda config=None: Client())
+    config.stripe_webhook_endpoint_id = "we_old"
+    config.save()
+    payments.set_up_webhook(config)
+    assert calls == ["create", ("delete", "we_old")]
+    assert SponsorConfig.objects.get(pk=1).stripe_webhook_secret == "whsec_new"
+
+
+def test_r2_8_the_last_day_is_the_latest_end_not_the_latest_start(db):
+    tz = timezone.get_current_timezone()
+    today = timezone.localdate()
+    friday = today + timedelta(days=(4 - today.weekday()) % 7 + 7)
+    at = lambda day, hour: timezone.make_aware(  # noqa: E731
+        timezone.datetime.combine(day, timezone.datetime.min.time()).replace(hour=hour), tz
+    )
+    event = Event.objects.create(title="Fair", status=Event.Status.PUBLISHED)
+    Occurrence.objects.create(event=event, start=at(friday, 18), end=at(friday + timedelta(days=2), 17))
+    Occurrence.objects.create(event=event, start=at(friday + timedelta(days=1), 10))
+    assert services.last_upcoming_day(event) == friday + timedelta(days=2)
+    # `now` is honoured: after the fair there is nothing left.
+    assert services.last_upcoming_day(event, now=at(friday + timedelta(days=3), 12)) is None
+
+
+@pytest.mark.parametrize("field", ["promote_max_days", "promote_daily_slots"])
+def test_r2_9_zero_days_or_slots_is_refused(config, field):
+    data = {"currency": "cad", "promote_price": "25.00", "promote_max_days": 14,
+            "promote_daily_slots": 2, "enabled": "on"}
+    data[field] = 0
+    form = SponsorConfigForm(data=data, instance=config)
+    assert not form.is_valid()
+    assert field in form.errors

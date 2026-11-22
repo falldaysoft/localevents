@@ -30,6 +30,7 @@ MODERATOR_SUBJECTS = {
     "hold_ending": "[{site}] Decide soon: the card hold on {order} is ending",
     "withdrawn": "[{site}] Withdrawn by the buyer: {order}",
     "charged_after_release": "[{site}] Charged after it was closed: {order}",
+    "stopped": "[{site}] Stopped early, event taken down: {order}",
 }
 
 

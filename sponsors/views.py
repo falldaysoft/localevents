@@ -139,11 +139,14 @@ def order_return(request, pk):
 def order_withdraw(request, pk):
     order = _own_order(request, pk)
     try:
-        services.withdraw(order, request.user)
+        order = services.withdraw(order, request.user)
     except services.SponsorError as exc:
         messages.error(request, str(exc))
     else:
-        messages.success(request, "Withdrawn. Nothing was charged.")
+        if order.status == SponsorOrder.Status.PROCESSING:
+            messages.info(request, "Withdrawing. Stripe is slow to answer; this page will update once it has.")
+        else:
+            messages.success(request, "Withdrawn. Nothing was charged.")
     return redirect("sponsor_order", pk=order.pk)
 
 

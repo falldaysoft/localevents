@@ -1,3 +1,4 @@
 {% if order.status == "awaiting_review" %}<span class="chip bg-amber-50 text-amber-800">Awaiting review</span>
 {% elif order.status == "approved" %}{% if order.is_running %}<span class="chip bg-emerald-100 text-emerald-800">Running</span>{% else %}<span class="chip bg-emerald-50 text-emerald-800">Approved</span>{% endif %}
+{% elif order.status == "stopped" %}<span class="chip bg-red-50 text-red-800">Stopped early</span>
 {% else %}<span class="chip">{{ order.get_status_display }}</span>{% endif %}

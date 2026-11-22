@@ -8,6 +8,7 @@ the Stripe dashboard, so each instance's prices live in its own admin and two
 sites can share one Stripe account without sharing a price list.
 """
 
+import logging
 from datetime import datetime, timezone as dt_timezone
 from decimal import Decimal
 
@@ -16,6 +17,8 @@ from django.conf import settings
 from django.urls import reverse
 
 from .models import SponsorConfig
+
+logger = logging.getLogger("sponsors")
 
 # The events the webhook endpoint is subscribed to. Adding one here does not
 # reach an endpoint already made; press "Set up the webhook" again.
@@ -192,11 +195,9 @@ def set_up_webhook(config):
     """
     client = _client(config)
     url = absolute_url(reverse("sponsor_webhook"))
-    if config.stripe_webhook_endpoint_id:
-        try:
-            client.v1.webhook_endpoints.delete(config.stripe_webhook_endpoint_id)
-        except stripe.InvalidRequestError:
-            pass  # Already gone, deleted in the dashboard.
+    old = config.stripe_webhook_endpoint_id
+    # The new one first: deleting first and then failing to create left the
+    # site on sale with a stored secret for an endpoint that no longer existed.
     endpoint = client.v1.webhook_endpoints.create(params={
         "url": url,
         "enabled_events": WEBHOOK_EVENTS,
@@ -207,4 +208,23 @@ def set_up_webhook(config):
     config.stripe_webhook_endpoint_id = endpoint.id
     config.stripe_webhook_secret = endpoint.secret
     config.save(update_fields=["stripe_webhook_endpoint_id", "stripe_webhook_secret_enc"])
+    if old and old != endpoint.id:
+        try:
+            client.v1.webhook_endpoints.delete(old)
+        except stripe.InvalidRequestError:
+            pass  # Already gone, deleted in the dashboard.
     return url
+
+
+def delete_webhook(key, endpoint_id):
+    """Remove an endpoint this site made, with the key it was made under.
+
+    Used when a new secret key is saved: the old endpoint would otherwise go
+    on delivering events signed with a secret this site has forgotten, each
+    refused as forged, until Stripe gives up on it. Best effort — a revoked
+    key cannot delete anything, and then the dashboard is the way.
+    """
+    try:
+        stripe.StripeClient(key).v1.webhook_endpoints.delete(endpoint_id)
+    except stripe.StripeError:
+        logger.warning("could not remove old webhook endpoint %s", endpoint_id, exc_info=True)

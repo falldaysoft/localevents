@@ -381,6 +381,8 @@ def annotated_events(moderator, now=None):
     `next_start` is the soonest live occurrence or null; `last_start` is the
     final date it ever had, for the past and removed rows.
     """
+    from sponsors.models import SponsorOrder
+
     now = now or timezone.now()
     soonest = (
         Occurrence.objects.filter(
@@ -389,11 +391,22 @@ def annotated_events(moderator, now=None):
         .order_by("start")
         .values("start")[:1]
     )
+    # A paid promotion running or booked, so the row can warn before a
+    # Unpublish or Duplicate stops it.
+    sponsored_until = (
+        SponsorOrder.objects.filter(
+            event=OuterRef("pk"), status=SponsorOrder.Status.APPROVED,
+            ends_on__gte=timezone.localdate(now),
+        )
+        .order_by("-ends_on")
+        .values("ends_on")[:1]
+    )
     return (
         Event.objects.select_related("venue", "organizer")
         .annotate(
             next_start=Subquery(soonest),
             last_start=Max("occurrences__start"),
+            sponsored_until=Subquery(sponsored_until),
             moderator_interested=Exists(
                 Interest.objects.filter(event=OuterRef("pk"), user=moderator)
             ),

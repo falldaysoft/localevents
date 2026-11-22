@@ -33,9 +33,28 @@ class AlreadyCharged(SponsorError):
     """A release was asked for, and Stripe had already taken the money."""
 
 
+class OutcomeUnknown(SponsorError):
+    """Stripe was asked and did not answer, and cannot be asked what happened.
+
+    The claim is left in place rather than undone: the call may have landed,
+    and the webhook or housekeeping finishes the order with the moderator and
+    the note intact once Stripe can say. Undoing it lost both, and a cancel
+    that had landed then came back as "lapsed" with an apology for not
+    deciding in time.
+    """
+
+
 # Everything a call into `payments` can raise that means "Stripe did not do
 # it": a refusal, an outage, or no readable key to ask with.
 STRIPE_FAILURES = (stripe.StripeError, payments.NotConfigured)
+
+
+def _definite(exc):
+    """A refusal, as opposed to silence: Stripe answered and did nothing."""
+    return isinstance(exc, (
+        stripe.InvalidRequestError, stripe.CardError, stripe.AuthenticationError,
+        stripe.PermissionError, payments.NotConfigured,
+    ))
 
 
 def _stripe_said(exc):
@@ -93,11 +112,16 @@ NOT_YOURS = (
 
 
 def last_upcoming_day(event, now=None):
-    occurrences = list(event.upcoming_occurrences())
-    if not occurrences:
-        return None
-    last = occurrences[-1]
-    return timezone.localtime(last.end or last.start).date()
+    """The last day the event is on: the latest *end*, not the latest start.
+
+    Occurrences come in start order, so the last one can be a Saturday
+    session inside a Friday-to-Sunday span.
+    """
+    days = [
+        timezone.localtime(o.end or o.start).date()
+        for o in event.upcoming_occurrences(now)
+    ]
+    return max(days, default=None)
 
 
 def promote_window(event, starts_on, config=None, now=None):
@@ -143,6 +167,18 @@ def full_days(first, last, config=None, exclude=None, approved_only=False):
     return full
 
 
+def _same_event_booked(event, first, last, exclude=None, approved_only=False):
+    """One placement per event per day: a second order for the same days
+    would charge twice for one card and take a second slot from everyone."""
+    orders = SponsorOrder.objects.filter(
+        event=event, product=SponsorOrder.Product.PROMOTE_EVENT
+    ).overlapping(first, last)
+    orders = orders.approved_or_approving() if approved_only else orders.holding_a_slot()
+    if exclude is not None:
+        orders = orders.exclude(pk=exclude)
+    return orders.exists()
+
+
 def promoted_event_ids(now=None):
     """Events with an approved promotion running today."""
     day = timezone.localdate(now)
@@ -168,6 +204,11 @@ def start_promotion(event, buyer, starts_on, note="", now=None):
     if not may_promote(event, buyer):
         raise SponsorError(NOT_YOURS)
     first, last = promote_window(event, starts_on, config, now)
+    if _same_event_booked(event, first, last):
+        raise SponsorError(
+            "This event already has a promotion booked or awaiting review on "
+            "some of those days. Try a start date after it ends."
+        )
     full = full_days(first, last, config)
     if full:
         listed = ", ".join(day.strftime("%a %-d %b") for day in full)
@@ -249,6 +290,9 @@ def withdraw(order, buyer):
     order = _claim(order.pk, Status.WITHDRAWN, check=check)
     try:
         _release_or_unclaim(order)
+    except OutcomeUnknown:
+        order.refresh_from_db()
+        return order
     except AlreadyCharged as exc:
         raise SponsorError(
             "This order has already been approved and charged, so it can't be "
@@ -417,6 +461,8 @@ def _finish_quietly(order):
 def _release_or_unclaim(order):
     try:
         _release(order)
+    except OutcomeUnknown:
+        raise  # Kept claimed: see OutcomeUnknown.
     except AlreadyCharged:
         # The money was taken, so the placement is owed: record it as
         # approved, as a capture made in the dashboard is, and say so.
@@ -474,8 +520,15 @@ def approve(order, moderator, note=""):
         SponsorConfig.objects.select_for_update().filter(pk=1).first()
         if o.ends_on < timezone.localdate():
             raise SponsorError("Its run has already ended. Reject it to release the hold.")
-        if o.event_id and not promotable(o.event):
+        # A deleted event leaves `event` empty (SET_NULL), and a charge for
+        # a placement with nothing to place is the one thing never owed.
+        if not o.event_id or not promotable(o.event):
             raise SponsorError("The event is no longer published. Reject it, or republish the event first.")
+        if _same_event_booked(o.event, o.starts_on, o.ends_on, exclude=o.pk, approved_only=True):
+            raise SponsorError(
+                "This event is already promoted on some of these days by another "
+                "order. Reject this one to release its hold."
+            )
         full = full_days(
             max(o.starts_on, timezone.localdate()), o.ends_on,
             exclude=o.pk, approved_only=True,
@@ -493,8 +546,15 @@ def approve(order, moderator, note=""):
     except STRIPE_FAILURES as exc:
         # An error is not proof that nothing happened: a capture whose reply
         # was lost on the way back has charged the card. Ask before undoing.
-        if _intent_status_or_none(order) == "succeeded":
+        status = _intent_status_or_none(order)
+        if status == "succeeded":
             return _finish_quietly(order)
+        if status is None and not _definite(exc):
+            # No answer either way: leave it claimed for the webhook or
+            # housekeeping, which the queue shows as being processed.
+            logger.warning("sponsor order %s: capture outcome unknown", order.pk)
+            order.refresh_from_db()
+            return order
         _unclaim(order)
         raise SponsorError(f"Stripe would not take the payment: {_stripe_said(exc)}") from exc
     if status != "succeeded":
@@ -515,7 +575,11 @@ def reject(order, moderator, reason):
         _check_stripe(o)
 
     order = _claim(order.pk, Status.REJECTED, moderator=moderator, note=reason, check=check)
-    _release_or_unclaim(order)
+    try:
+        _release_or_unclaim(order)
+    except OutcomeUnknown:
+        order.refresh_from_db()
+        return order
     return _finish_quietly(order)
 
 
@@ -542,8 +606,9 @@ def _release(order):
         return
     try:
         payments.release(intent)
-    except stripe.InvalidRequestError as exc:
-        status = _intent_status_or_none(order)
+    except STRIPE_FAILURES as exc:
+        # A refusal or a lost reply alike: ask what the payment now is.
+        status = None if isinstance(exc, payments.NotConfigured) else _intent_status_or_none(order)
         if status == "canceled":
             logger.info("payment %s was already released", intent)
             return
@@ -553,8 +618,11 @@ def _release(order):
                 "by an earlier approval), so this is now recorded as approved. "
                 "Refund it in Stripe if it shouldn't run."
             ) from exc
-        raise SponsorError(f"Stripe would not release the hold: {_stripe_said(exc)}") from exc
-    except STRIPE_FAILURES as exc:
+        if status is None and not _definite(exc):
+            raise OutcomeUnknown(
+                "Stripe didn't answer, so it isn't known yet whether the hold "
+                "was released. It will finish by itself once Stripe replies."
+            ) from exc
         raise SponsorError(f"Stripe would not release the hold: {_stripe_said(exc)}") from exc
 
 
@@ -687,7 +755,7 @@ def handle_webhook(event):
         elif kind == "charge.refunded" and obj.get("refunded"):
             with transaction.atomic():
                 order = _locked(order.pk)
-                if order.status == Status.APPROVED:
+                if order.status in (Status.APPROVED, Status.STOPPED):
                     order.status = Status.REFUNDED
                     order.save(update_fields=["status", "updated_at"])
                     ModerationAction.record(
@@ -777,6 +845,52 @@ def housekeeping(now=None):
         done["warned"] += 1
 
     return done
+
+
+# ---------------------------------------------------------------------------
+# When the event goes away
+# ---------------------------------------------------------------------------
+
+
+def live_placements(event):
+    """Approved promotions of `event` that are running or still to run."""
+    if event is None or event.pk is None:
+        return SponsorOrder.objects.none()
+    return SponsorOrder.objects.filter(
+        event=event, status=Status.APPROVED, ends_on__gte=timezone.localdate()
+    )
+
+
+def stop_placements(event, *, deleted=False):
+    """Stop the paid placements of an event that has left the site.
+
+    Called whenever an event is saved in any status but published, and
+    before one is deleted, so every way down (Unpublish, Duplicate, the edit
+    form's status, the admin) is covered. The placement could not show
+    anyway; what this adds is that the order stops saying "Running" and a
+    person hears that someone paid for it. Whether that is owed back is the
+    editor's call — a listing taken down for breaking the rules is not the
+    same as a hall that cancelled — so nothing is refunded here: the audit
+    row and the moderators' mail say to refund it in Stripe if it is owed,
+    and a refund made there is recorded by the webhook as usual.
+    """
+    stopped = []
+    with transaction.atomic():
+        orders = live_placements(event).select_for_update(of=("self",))
+        for order in orders:
+            order.status = Status.STOPPED
+            order.save(update_fields=["status", "updated_at"])
+            why = "deleted" if deleted else event.get_status_display().lower()
+            ModerationAction.record(
+                None, "sponsor_stopped", event=None if deleted else event,
+                detail=(
+                    f"{order}: refund in Stripe if owed. “{event.title}” was {why}, "
+                    f"so its paid placement ({order.starts_on:%-d %b}–{order.ends_on:%-d %b}) stopped."
+                ),
+            )
+            _mail_moderators(order, "stopped")
+            stopped.append(order)
+    return stopped
 
 
 # ---------------------------------------------------------------------------

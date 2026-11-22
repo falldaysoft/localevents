@@ -555,10 +555,15 @@ def event_edit(request, pk):
         form = EventEditForm(instance=event)
         dates = ModeratorOccurrenceFormSet(prefix="dates", initial=_date_rows(event))
 
+    from sponsors.services import live_placements
+
     return render(
         request,
         "moderation/event_edit.html",
-        _chrome(request, event=event, form=form, dates=dates),
+        _chrome(
+            request, event=event, form=form, dates=dates,
+            placements=list(live_placements(event)),
+        ),
     )
 
 
