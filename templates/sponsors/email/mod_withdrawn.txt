@@ -1,0 +1,4 @@
+{% autoescape off %}{{ order.buyer.email }} withdrew their request to sponsor “{{ event.title|default:order.description }}” before it was decided. The hold on their card has been released, and there is nothing to do.
+
+{{ review_url }}
+{% endautoescape %}

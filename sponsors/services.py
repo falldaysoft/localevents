@@ -297,6 +297,12 @@ def finish(order):
                 detail=f"{order}: {order.decision_note}",
             )
             _mail_buyer(order, "rejected")
+        elif outcome == Status.WITHDRAWN:
+            ModerationAction.record(
+                order.buyer, "sponsor_withdrawn", event=order.event,
+                detail=f"{order}: withdrawn by the buyer; hold released",
+            )
+            _mail_moderators(order, "withdrawn")
         elif outcome == Status.LAPSED:
             ModerationAction.record(
                 None, "sponsor_lapsed", event=order.event,

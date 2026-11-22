@@ -28,6 +28,7 @@ BUYER_SUBJECTS = {
 MODERATOR_SUBJECTS = {
     "new": "[{site}] Sponsorship to review: {order}",
     "hold_ending": "[{site}] Decide soon: the card hold on {order} is ending",
+    "withdrawn": "[{site}] Withdrawn by the buyer: {order}",
 }
 
 

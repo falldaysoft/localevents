@@ -278,6 +278,7 @@ def test_checkout_asks_stripe_to_hold_not_charge(config, event, buyer, monkeypat
     )
     payments.create_checkout(order, config)
     assert seen["payment_intent_data"]["capture_method"] == "manual"
+    assert seen["payment_method_types"] == ["card"]
     assert seen["line_items"][0]["price_data"]["unit_amount"] == 2500
     assert seen["line_items"][0]["price_data"]["currency"] == "cad"
     assert seen["automatic_tax"] == {"enabled": True}
@@ -361,12 +362,18 @@ def test_someone_else_cannot_see_your_order(client, held_order, django_user_mode
     assert client.get(reverse("sponsor_order", args=[held_order.pk])).status_code == 404
 
 
-def test_the_buyer_can_withdraw_and_the_hold_is_released(client, held_order, buyer, stripe_calls):
+def test_the_buyer_can_withdraw_and_the_hold_is_released(
+    client, held_order, buyer, moderator, stripe_calls, django_capture_on_commit_callbacks
+):
     client.force_login(buyer)
-    client.post(reverse("sponsor_order_withdraw", args=[held_order.pk]))
+    with django_capture_on_commit_callbacks(execute=True):
+        client.post(reverse("sponsor_order_withdraw", args=[held_order.pk]))
     held_order.refresh_from_db()
     assert held_order.status == Status.WITHDRAWN
     assert ("release", held_order.stripe_payment_intent_id) in stripe_calls
+    assert ModerationAction.objects.get(action="sponsor_withdrawn").actor == buyer
+    assert [m.to for m in mail.outbox] == [["editor@example.com"]]
+    assert "Withdrawn by the buyer" in mail.outbox[0].subject
 
 
 # --- the webhook -------------------------------------------------------------

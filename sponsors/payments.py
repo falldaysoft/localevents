@@ -65,6 +65,10 @@ def create_checkout(order, config=None):
     detail = reverse("sponsor_order", args=[order.pk])
     params = {
         "mode": "payment",
+        # Cards only. Other methods Checkout would offer (Klarna, for one)
+        # hold an uncaptured payment for a different length of time, and the
+        # whole review window is built on a card's roughly seven days.
+        "payment_method_types": ["card"],
         "line_items": [{
             "quantity": 1,
             "price_data": {
