@@ -7,6 +7,7 @@ waiting on a form. The submitter sees a "reading the page" state that polls.
 
 import logging
 
+from django.db import transaction
 from django.tasks import task
 
 from enrichment.pipeline import enrich_text, enrich_url
@@ -57,7 +58,7 @@ def enrich_submission(submission_id):
             "details below yourself."
         )
         submission.status = Submission.Status.AWAITING_SUBMITTER
-        submission.save()
+        _park(submission)
         return
 
     submission.draft = (
@@ -68,7 +69,27 @@ def enrich_submission(submission_id):
     submission.enrichment_failed = result.failed
     submission.enrichment_message = result.message[:300]
     submission.status = Submission.Status.AWAITING_SUBMITTER
-    submission.save()
+    _park(submission)
+
+
+def _park(submission):
+    """Save the finished read, unless its owner withdrew it meanwhile.
+
+    A read takes minutes, and withdrawing is allowed while it runs. A plain
+    save at the end would write AWAITING_SUBMITTER over WITHDRAWN and put the
+    submission back in its owner's list as if they had never taken it back.
+    """
+    with transaction.atomic():
+        current = (
+            Submission.objects.select_for_update()
+            .filter(pk=submission.pk)
+            .values_list("status", flat=True)
+            .first()
+        )
+        if current in (None, Submission.Status.WITHDRAWN):
+            return False
+        submission.save()
+    return True
 
 
 @task()

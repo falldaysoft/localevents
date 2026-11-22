@@ -157,7 +157,7 @@ def approve(request, pk):
             categories=form.cleaned_data["categories"],
             note=form.cleaned_data["note"],
         )
-    except services.NothingToApprove as exc:
+    except (services.AlreadyDecided, services.NothingToApprove) as exc:
         messages.error(request, str(exc))
         return redirect("mod_submission", pk=pk)
 
@@ -231,7 +231,11 @@ def reject(request, pk):
         messages.error(request, "A rejection needs a reason.")
         return redirect("mod_submission", pk=pk)
 
-    services.reject(submission, request.user, reason=form.cleaned_data["reason"])
+    try:
+        services.reject(submission, request.user, reason=form.cleaned_data["reason"])
+    except services.Withdrawn as exc:
+        messages.error(request, str(exc))
+        return redirect("mod_submission", pk=pk)
     messages.success(request, "Declined, and the submitter has been told why.")
     return redirect("mod_queue")
 
@@ -246,7 +250,11 @@ def request_info(request, pk):
         messages.error(request, "Write the question you want to ask.")
         return redirect("mod_submission", pk=pk)
 
-    services.request_info(submission, request.user, body=form.cleaned_data["body"])
+    try:
+        services.request_info(submission, request.user, body=form.cleaned_data["body"])
+    except services.Withdrawn as exc:
+        messages.error(request, str(exc))
+        return redirect("mod_submission", pk=pk)
     messages.success(request, "Asked. It's back with the submitter now.")
     return redirect("mod_queue")
 

@@ -41,7 +41,7 @@ from events.models import Category, Event
 
 from .forms import MAX_OCCURRENCE_ROWS, EventDraftForm, OccurrenceFormSet
 from .models import Submission, SubmissionMessage, SubmissionQuota
-from .services import save_event_from_draft
+from .services import CannotWithdraw, save_event_from_draft, withdraw
 from .sources import advice_for
 from .tasks import enrich_submission
 
@@ -164,6 +164,10 @@ def index(request):
              "does": "Send the whole listing for a submission waiting on you: "
              "after a page read ('awaiting_submitter') or a moderator's "
              "question ('info_requested', answer in 'note'). Otherwise 409."},
+            {"method": "POST", "url": submit + "<id>/withdraw/",
+             "does": "Take back a submission no moderator has decided on "
+             "yet, with an optional {reason}. It leaves the queue and is "
+             "never published. 409 once approved or rejected."},
         ],
         "workflows": {
             "you_read_the_page": "POST the listing to the submit URL with "
@@ -422,6 +426,36 @@ def submission_detail(request, pk):
 
     return JsonResponse({"submission": _submission_json(submission)})
 
+
+@token_required("POST")
+def withdraw_submission(request, pk):
+    """Take back a submission no moderator has decided on yet.
+
+    The body is optional: {"reason": "..."} is kept as the decision note.
+    """
+    submission = Submission.objects.filter(pk=pk, submitted_by=request.user).first()
+    if submission is None:
+        return _error(404, "No submission of yours has that id.")
+    try:
+        payload = json.loads(request.body or b"{}")
+    except (ValueError, UnicodeDecodeError):
+        return _error(400, "The body must be JSON.")
+    if not isinstance(payload, dict):
+        return _error(400, "The body must be a JSON object.")
+    unknown = sorted(set(payload) - {"reason"})
+    if unknown:
+        return _error(
+            400, f"Unknown fields: {', '.join(unknown)}.", accepted=["reason"]
+        )
+    reason = payload.get("reason", "")
+    if not isinstance(reason, str):
+        return _error(400, "'reason' must be a string.")
+    try:
+        withdraw(submission, request.user, reason=reason)
+    except CannotWithdraw as exc:
+        submission.refresh_from_db()
+        return _error(409, str(exc), submission=_submission_json(submission))
+    return JsonResponse({"submission": _submission_json(submission)})
 
 def _payload(request):
     """The request body as a dict, or a 400 saying what is wrong with it."""

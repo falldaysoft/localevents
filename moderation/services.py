@@ -62,6 +62,7 @@ def approve(submission, moderator, *, prominence, listing_type, categories=None,
     collapsed series card or fifty individual listings is not their call, and
     neither is whether it belongs on the front page.
     """
+    _refuse_if_withdrawn(submission)
     event = submission.event
     if event is None:
         raise NothingToApprove(
@@ -115,6 +116,29 @@ class AlreadyDecided(Exception):
     """
 
 
+class Withdrawn(AlreadyDecided):
+    """Raised when the submitter took the submission back.
+
+    The review screen hides its decision forms once a submission is closed,
+    but a tab opened before the submitter withdrew still shows them.
+    """
+
+
+def _refuse_if_withdrawn(submission):
+    """Lock the row and re-read its status before deciding on it.
+
+    Locked so a submitter's Withdraw and a moderator's decision cannot both
+    land: whichever commits second sees the first.
+    """
+    current = (
+        Submission.objects.select_for_update()
+        .values_list("status", flat=True)
+        .get(pk=submission.pk)
+    )
+    if current == Submission.Status.WITHDRAWN:
+        raise Withdrawn("The submitter withdrew this submission.")
+
+
 def quick_approve(submission, moderator, tier=None):
     """Publish an agent's submission from its queue row, with no form between.
 
@@ -151,6 +175,7 @@ def reject(submission, moderator, *, reason):
     arbitrary, and the person on the other end is usually a volunteer who spent
     ten minutes filling in a form.
     """
+    _refuse_if_withdrawn(submission)
     event = submission.event
     if event is not None:
         event.status = Event.Status.REJECTED
@@ -177,6 +202,7 @@ def request_info(submission, moderator, *, body):
     right — a missing address, an ambiguous date — and asking costs far less
     than making someone start again.
     """
+    _refuse_if_withdrawn(submission)
     message = SubmissionMessage.objects.create(
         submission=submission,
         author=moderator,

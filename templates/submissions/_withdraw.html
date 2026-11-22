@@ -1,0 +1,18 @@
+{% if submission.is_open %}
+    <details class="mt-8 text-sm text-slate-600">
+        <summary class="cursor-pointer underline hover:text-slate-800">Withdraw this submission</summary>
+        <form method="post" action="{% url 'withdraw_submission' submission.pk %}" class="card mt-3 space-y-3 text-left">
+            {% csrf_token %}
+            <p>
+                Sent the wrong thing, or the event was called off? Withdrawing
+                takes it out of the moderators' queue and it won't be published.
+                This can't be undone; you can always submit it again.
+            </p>
+            <label class="block">
+                <span class="text-slate-500">Reason (optional)</span>
+                <input type="text" name="reason" maxlength="300" class="mt-1 w-full rounded border border-slate-300 px-2 py-1">
+            </label>
+            <button type="submit" class="btn-secondary">Withdraw it</button>
+        </form>
+    </details>
+{% endif %}

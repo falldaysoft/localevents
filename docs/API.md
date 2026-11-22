@@ -40,6 +40,7 @@ message and sometimes `errors`, which is keyed by field.
 | POST | `/api/submissions/` | Submit a listing (or check one with `dry_run`) |
 | GET | `/api/submissions/<id>/` | One of yours: its status, the decision, and moderators' messages |
 | POST | `/api/submissions/<id>/` | Send the listing for a submission that's waiting on you |
+| POST | `/api/submissions/<id>/withdraw/` | Take back one of yours that no moderator has decided on |
 
 ## A listing
 
@@ -166,6 +167,14 @@ appears under `messages`), `approved`, `rejected` and `withdrawn`.
 When the status is `info_requested`, POST the whole listing to
 `/api/submissions/<id>/` with your answer in `note`. That updates the same
 event and puts it back in the queue. At any other status that POST returns 409.
+
+To take a submission back (you sent the wrong thing, or the event was called
+off), POST to `/api/submissions/<id>/withdraw/`, optionally with
+`{"reason": "…"}`. It works at any status before a moderator decides,
+including while the site is still reading the page; the submission becomes
+`withdrawn`, leaves the queue, and its event is never published. Once it is
+`approved` or `rejected` the call returns 409; a published listing is changed
+or taken down through a moderator instead.
 
 | Status | Meaning |
 |---|---|
