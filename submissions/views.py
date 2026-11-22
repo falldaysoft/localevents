@@ -3,6 +3,7 @@ from datetime import datetime
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.http import require_POST
 from django.urls import reverse
 from django.utils import timezone
 
@@ -16,7 +17,7 @@ from .forms import (
     formset_with_more_rows,
 )
 from .models import Submission, SubmissionMessage, SubmissionQuota
-from .services import save_event_from_draft
+from .services import CannotWithdraw, save_event_from_draft, withdraw
 from .sources import advice_for
 from .tasks import enrich_submission
 
@@ -317,3 +318,27 @@ def my_submissions(request):
     return redirect(f"{reverse('my_events')}#submitted")
 
 
+
+
+@login_required
+@require_POST
+def withdraw_submission(request, pk):
+    """Take back a submission no moderator has decided on yet.
+
+    A POST behind a <details> on the submission's own page, so a stray click
+    or a mail scanner following links cannot withdraw anything.
+    """
+    submission = get_object_or_404(
+        Submission, pk=pk, submitted_by=request.user
+    )
+    try:
+        withdraw(submission, request.user, reason=request.POST.get("reason", ""))
+    except CannotWithdraw as exc:
+        messages.error(request, str(exc))
+        return redirect("submission_detail", pk=pk)
+
+    messages.success(
+        request,
+        f"“{submission.display_title}” is withdrawn. It won't be published.",
+    )
+    return redirect("my_submissions")
