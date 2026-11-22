@@ -226,7 +226,15 @@ def withdraw(order, buyer):
 
 
 def _locked(pk):
-    return SponsorOrder.objects.select_for_update().select_related("event").get(pk=pk)
+    # `of=("self",)` because `event` is nullable, so the join is an outer one,
+    # and Postgres refuses FOR UPDATE on the nullable side of an outer join.
+    # SQLite ignores FOR UPDATE entirely, which is how this first shipped
+    # broken: only Postgres can catch it.
+    return (
+        SponsorOrder.objects.select_for_update(of=("self",))
+        .select_related("event")
+        .get(pk=pk)
+    )
 
 
 def _claim(pk, outcome, *, moderator=None, note="", check=None):
