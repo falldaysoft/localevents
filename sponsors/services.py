@@ -8,6 +8,8 @@ a decision that rolls back never tells anyone anything.
 """
 
 import logging
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import timedelta
 
 import stripe
@@ -522,7 +524,12 @@ def approve(order, moderator, note=""):
             raise SponsorError("Its run has already ended. Reject it to release the hold.")
         # A deleted event leaves `event` empty (SET_NULL), and a charge for
         # a placement with nothing to place is the one thing never owed.
-        if not o.event_id or not promotable(o.event):
+        if not o.event_id:
+            raise SponsorError(
+                "Its event was deleted, so there is nothing to promote. "
+                "Reject it to release the hold."
+            )
+        if not promotable(o.event):
             raise SponsorError("The event is no longer published. Reject it, or republish the event first.")
         if _same_event_booked(o.event, o.starts_on, o.ends_on, exclude=o.pk, approved_only=True):
             raise SponsorError(
@@ -852,6 +859,23 @@ def housekeeping(now=None):
 # ---------------------------------------------------------------------------
 
 
+# Who is taking the event down, for the audit row. The stop runs from a model
+# signal, which knows nothing of the request, so the paths a person takes
+# (moderation's Unpublish and Duplicate, the edit form, the Django admin)
+# say who they are around the save with `acting`. A path that doesn't is
+# logged with no actor, as a system change.
+_actor = ContextVar("sponsors_actor", default=None)
+
+
+@contextmanager
+def acting(user):
+    token = _actor.set(user if getattr(user, "is_authenticated", False) else None)
+    try:
+        yield
+    finally:
+        _actor.reset(token)
+
+
 def live_placements(event):
     """Approved promotions of `event` that are running or still to run."""
     if event is None or event.pk is None:
@@ -882,7 +906,7 @@ def stop_placements(event, *, deleted=False):
             order.save(update_fields=["status", "updated_at"])
             why = "deleted" if deleted else event.get_status_display().lower()
             ModerationAction.record(
-                None, "sponsor_stopped", event=None if deleted else event,
+                _actor.get(), "sponsor_stopped", event=None if deleted else event,
                 detail=(
                     f"{order}: refund in Stripe if owed. “{event.title}” was {why}, "
                     f"so its paid placement ({order.starts_on:%-d %b}–{order.ends_on:%-d %b}) stopped."

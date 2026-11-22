@@ -1,4 +1,4 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.utils.html import format_html
 
 from .geocoding import geocode_venue
@@ -75,6 +75,45 @@ class CategoryAdmin(admin.ModelAdmin):
 
 @admin.register(Event)
 class EventAdmin(admin.ModelAdmin):
+    # Saves and deletes here say who is acting, so a paid promotion they stop
+    # (sponsors.signals) is logged as theirs; the delete confirmation names
+    # it first, because a sponsor order is not among the objects Django
+    # lists as deleted — it outlives the event, stopped.
+
+    def get_deleted_objects(self, objs, request):
+        from sponsors.services import live_placements
+
+        for event in objs:
+            for order in live_placements(event):
+                messages.warning(
+                    request,
+                    f"“{event.title}” has a paid promotion running until "
+                    f"{order.ends_on:%-d %b %Y}. Deleting the event stops it early; "
+                    f"nothing is refunded automatically, so refund it in Stripe "
+                    f"if it's owed.",
+                )
+        return super().get_deleted_objects(objs, request)
+
+    def save_model(self, request, obj, form, change):
+        from sponsors.services import acting
+
+        with acting(request.user):
+            super().save_model(request, obj, form, change)
+
+    def delete_model(self, request, obj):
+        from sponsors.services import acting
+
+        with acting(request.user):
+            super().delete_model(request, obj)
+
+    def delete_queryset(self, request, queryset):
+        from sponsors.services import acting
+
+        with acting(request.user):
+            # One by one, so each event's pre_delete signal fires.
+            for obj in queryset:
+                obj.delete()
+
     list_display = (
         "title",
         "status",

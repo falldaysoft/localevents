@@ -522,7 +522,9 @@ def event_edit(request, pk):
             changed = form.changed_data
             rows = dates.dates()
 
-            with transaction.atomic():
+            from sponsors.services import acting
+
+            with transaction.atomic(), acting(request.user):
                 event = form.save()
                 set_occurrences(event, rows)
 

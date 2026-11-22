@@ -1035,9 +1035,43 @@ def test_r2_1_an_order_whose_event_was_deleted_cannot_be_approved(
     Event.objects.filter(pk=held_order.event_id).delete()
     held_order.refresh_from_db()
     assert held_order.event_id is None
-    with pytest.raises(services.SponsorError, match="no longer published"):
+    with pytest.raises(services.SponsorError, match="was deleted"):
         services.approve(held_order, moderator)
     assert not any(call[0] == "capture" for call in stripe_calls)
+
+
+def test_r3_a_deleted_events_order_offers_only_reject(client, held_order, moderator):
+    Event.objects.filter(pk=held_order.event_id).delete()
+    client.force_login(moderator)
+    page = client.get(reverse("mod_sponsor", args=[held_order.pk])).content.decode()
+    assert "Approve and charge" not in page
+    assert "Reject and release the hold" in page
+
+
+def test_r3_deleting_a_promoted_event_in_the_admin_warns_first(client, running, moderator):
+    client.force_login(moderator)
+    page = client.get(
+        reverse("admin:events_event_delete", args=[running.event_id])
+    ).content.decode()
+    assert "paid promotion" in page
+    assert running.ends_on.strftime("%-d %b") in page
+    page = client.post(reverse("admin:events_event_changelist"), {
+        "action": "delete_selected", "_selected_action": [running.event_id],
+    }).content.decode()
+    assert "paid promotion" in page
+
+
+def test_r3_a_stop_names_the_moderator_who_caused_it(client, running, moderator):
+    from moderation import services as mod_services
+
+    mod_services.unpublish(running.event, moderator)
+    assert ModerationAction.objects.get(action="sponsor_stopped").actor == moderator
+
+
+def test_r3_a_stop_from_the_admin_names_who_pressed_it(client, running, moderator):
+    client.force_login(moderator)
+    client.post(reverse("admin:events_event_delete", args=[running.event_id]), {"post": "yes"})
+    assert ModerationAction.objects.get(action="sponsor_stopped").actor == moderator
 
 
 def test_r2_2_a_reject_whose_reply_was_lost_is_still_a_rejection(

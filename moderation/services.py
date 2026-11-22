@@ -483,8 +483,11 @@ def unpublish(event, moderator, *, duplicate=False):
     """
     if event.status in REMOVED_STATUSES:
         return event
+    from sponsors.services import acting
+
     event.status = Event.Status.DUPLICATE if duplicate else Event.Status.UNPUBLISHED
-    event.save(update_fields=["status", "updated_at"])
+    with acting(moderator):  # A paid placement it stops is logged as theirs.
+        event.save(update_fields=["status", "updated_at"])
     ModerationAction.record(
         moderator,
         "marked_duplicate" if duplicate else "unpublished",

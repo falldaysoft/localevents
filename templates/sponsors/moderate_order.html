@@ -69,12 +69,16 @@
                         Already at the daily limit on {% for day in full_days %}{{ day|date:"D j M" }}{% if not forloop.last %}, {% endif %}{% endfor %}.
                     </div>
                 {% endif %}
+                {% if order.event %}
                 <form method="post" action="{% url 'mod_sponsor_approve' order.pk %}" class="card space-y-3">
                     {% csrf_token %}
                     <label class="block text-sm font-medium" for="approve-note">Note to the buyer (optional)</label>
                     <textarea id="approve-note" name="note" rows="2" class="w-full rounded-lg border border-slate-300 px-3 py-2"></textarea>
                     <button type="submit" class="btn-primary w-full">Approve and charge</button>
                 </form>
+                {% else %}
+                <div class="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">Its event was deleted, so there is nothing to promote. Reject it to release the hold on the buyer's card.</div>
+                {% endif %}
                 <form method="post" action="{% url 'mod_sponsor_reject' order.pk %}" class="card space-y-3">
                     {% csrf_token %}
                     <label class="block text-sm font-medium" for="reject-note">Why not (sent to the buyer)</label>

@@ -672,7 +672,10 @@ on any day, checked at checkout and at approval. An event leaving the site by
 any path (a `post_save`/`pre_delete` signal in `sponsors/signals.py`) stops
 its running placement as `STOPPED`, with an audit row and a mail to
 moderators saying to refund in Stripe if it is owed; nothing is refunded
-automatically, and republishing does not restart it.
+automatically, and republishing does not restart it. The signal cannot see
+the request, so the paths a person takes wrap their save or delete in
+`services.acting(user)` to put their name on that audit row, and the admin's
+delete confirmation names the running promotion before it goes.
 A running promotion joins the pinned featured
 listings in `web.listing._listing` *after* the editor's own picks, marked
 `is_sponsored`, which every template that shows it (both themes' cards, the
