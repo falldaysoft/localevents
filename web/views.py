@@ -106,16 +106,20 @@ def event_detail(request, slug):
                 _schema_org(event, occurrences), ensure_ascii=False
             ),
             "site_config": SiteConfig.load(),
-            "can_promote": _sponsorships_on_sale(),
+            "can_promote": _can_promote(request, event),
             **_viewer(request),
         },
     )
 
 
-def _sponsorships_on_sale():
+def _can_promote(request, event):
+    """Offered to whoever may buy it, and to anyone signed out, who may be them."""
     from sponsors.models import SponsorConfig
+    from sponsors.services import may_promote
 
-    return SponsorConfig.load().on_sale
+    if not SponsorConfig.load().on_sale:
+        return False
+    return not request.user.is_authenticated or may_promote(event, request.user)
 
 
 @require_POST

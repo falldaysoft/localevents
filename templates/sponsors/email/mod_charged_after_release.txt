@@ -1,0 +1,6 @@
+{% autoescape off %}Stripe reports a charge on {{ order.buyer.email }}'s sponsorship of “{{ event.title|default:order.description }}”, but this site had already closed the order as {{ order.get_status_display|lower }} and told them nothing was charged.
+
+Someone needs to decide: refund it in the Stripe dashboard, or run the placement and tell the buyer.
+
+{{ review_url }}
+{% endautoescape %}

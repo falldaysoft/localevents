@@ -262,6 +262,12 @@ class SponsorOrder(models.Model):
     class Meta:
         ordering = ["-created_at"]
         indexes = [models.Index(fields=["status", "starts_on", "ends_on"])]
+        # Approving charges a card, so it is its own grant rather than part
+        # of being a moderator: every moderator sees the queue, and only
+        # those given this (superusers have it already) decide.
+        permissions = [
+            ("approve_sponsororder", "Can approve and charge, or reject, sponsorships"),
+        ]
 
     def __str__(self):
         return f"{self.get_product_display()} #{self.pk}"

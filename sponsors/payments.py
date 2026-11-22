@@ -8,6 +8,7 @@ the Stripe dashboard, so each instance's prices live in its own admin and two
 sites can share one Stripe account without sharing a price list.
 """
 
+from datetime import datetime, timezone as dt_timezone
 from decimal import Decimal
 
 import stripe
@@ -110,6 +111,7 @@ def read_checkout(session_id):
     )
     intent = session.payment_intent
     details = session.total_details
+    created = getattr(intent, "created", None)
     return {
         "session_status": session.status,
         "payment_intent_id": getattr(intent, "id", intent) or "",
@@ -118,6 +120,12 @@ def read_checkout(session_id):
         "amount_tax": from_minor(getattr(details, "amount_tax", None)),
         "amount_total": from_minor(session.amount_total),
         "livemode": bool(session.livemode),
+        # When the card was held, near enough: the intent is made as the
+        # buyer confirms. The seven days run from here, not from whenever
+        # this site happened to notice.
+        "authorized_at": (
+            datetime.fromtimestamp(created, tz=dt_timezone.utc) if created else None
+        ),
     }
 
 
@@ -188,6 +196,8 @@ def set_up_webhook(config):
     endpoint = client.v1.webhook_endpoints.create(params={
         "url": url,
         "enabled_events": WEBHOOK_EVENTS,
+        # Payloads in the version this SDK reads, not the account's default.
+        "api_version": stripe.api_version,
         "description": f"{settings.SITE_NAME} sponsorships",
     })
     config.stripe_webhook_endpoint_id = endpoint.id

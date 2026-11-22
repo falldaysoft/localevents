@@ -20,7 +20,8 @@ class SponsorConfigForm(forms.ModelForm):
         widget=forms.PasswordInput(render_value=False, attrs={"autocomplete": "off"}),
         help_text="sk_test_… or sk_live_… from Developers → API keys in the "
         "Stripe dashboard (a restricted rk_ key works too). Leave blank to keep "
-        "the stored key. Stored encrypted; never shown again.",
+        "the stored key. Stored encrypted; never shown again. A different key "
+        "forgets the webhook, which then needs setting up again.",
     )
     clear_stripe_secret_key = forms.BooleanField(
         label="Remove the stored secret key", required=False
@@ -62,7 +63,16 @@ class SponsorConfigForm(forms.ModelForm):
             config.stripe_webhook_endpoint_id = ""
             config.stripe_account_name = ""
         elif self.cleaned_data.get("stripe_secret_key"):
-            config.stripe_secret_key = self.cleaned_data["stripe_secret_key"]
+            new_key = self.cleaned_data["stripe_secret_key"]
+            if new_key != config.stripe_secret_key:
+                # A different key is usually a different mode or account, and
+                # the stored webhook belongs to the old one: keeping it would
+                # look ready while no event ever arrived.
+                config.stripe_webhook_secret = ""
+                config.stripe_webhook_endpoint_id = ""
+                config.stripe_account_name = ""
+                self.key_changed = True
+            config.stripe_secret_key = new_key
         if self.cleaned_data.get("stripe_webhook_secret"):
             config.stripe_webhook_secret = self.cleaned_data["stripe_webhook_secret"]
         if commit:
@@ -111,6 +121,17 @@ class SponsorConfigAdmin(SingletonAdmin):
         if obj.enabled and not obj.stripe_ready:
             parts.append("Sponsorships are switched on but can't be sold until both are in place.")
         return " ".join(parts)
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        if getattr(form, "key_changed", False):
+            messages.warning(
+                request,
+                "New secret key saved, so the old webhook was forgotten. Press "
+                "“Set up the webhook” to make one for this key; nothing is on "
+                "sale until you do. Orders paid under the old key can only be "
+                "decided with that key, or in the Stripe dashboard.",
+            )
 
     def has_module_permission(self, request):
         return request.user.is_superuser

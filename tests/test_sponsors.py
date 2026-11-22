@@ -47,10 +47,12 @@ def config(db):
 
 
 @pytest.fixture
-def event(db):
+def event(db, buyer):
+    # The buyer listed it: only the person who did, or the organiser's owner,
+    # may pay to promote a listing.
     event = Event.objects.create(
         title="Harvest Supper", status=Event.Status.PUBLISHED,
-        prominence=Event.Prominence.LISTED,
+        prominence=Event.Prominence.LISTED, submitted_by=buyer,
     )
     Occurrence.objects.create(event=event, start=timezone.now() + timedelta(days=5))
     return event
@@ -85,10 +87,18 @@ def outside_transactions():
 def stripe_calls(monkeypatch):
     """A fake Stripe that records what was asked of it."""
     calls = Calls()
-    state = {"intent_status": "requires_capture", "session_status": "complete", "fail": set()}
+    state = {
+        "intent_status": "requires_capture", "session_status": "complete",
+        "fail": set(), "errors": {}, "authorized_at": None, "livemode": False,
+    }
 
     def maybe_fail(name):
         outside_transactions()
+        # The real client refuses before any network call without a readable key.
+        if not SponsorConfig.load().stripe_secret_key:
+            raise payments.NotConfigured("No Stripe secret key is stored.")
+        if name in state["errors"]:
+            raise state["errors"][name]
         if name in state["fail"]:
             raise stripe.APIConnectionError("Stripe is unreachable")
 
@@ -106,7 +116,8 @@ def stripe_calls(monkeypatch):
             "amount_subtotal": Decimal("25.00"),
             "amount_tax": Decimal("3.25"),
             "amount_total": Decimal("28.25"),
-            "livemode": False,
+            "livemode": state["livemode"],
+            "authorized_at": state["authorized_at"],
         }
 
     def capture(intent_id):
@@ -129,7 +140,12 @@ def stripe_calls(monkeypatch):
     monkeypatch.setattr(payments, "capture", capture)
     monkeypatch.setattr(payments, "release", release)
     monkeypatch.setattr(payments, "expire_checkout", expire_checkout)
-    monkeypatch.setattr(payments, "read_intent_status", lambda intent_id: state["intent_status"])
+    def read_intent_status(intent_id):
+        maybe_fail("intent")
+        calls.append(("intent", intent_id))
+        return state["intent_status"]
+
+    monkeypatch.setattr(payments, "read_intent_status", read_intent_status)
     calls.state = state
     return calls
 
@@ -721,3 +737,278 @@ def test_a_refund_is_written_to_the_log(client, running):
     })
     post_webhook(client, payload)
     assert ModerationAction.objects.filter(action="sponsor_refunded").exists()
+
+
+# --- review findings, PR #3 --------------------------------------------------
+# Each of these failed before its fix. The numbers are the review's.
+
+
+def _captured_already():
+    return stripe.InvalidRequestError(
+        "You cannot cancel this PaymentIntent because it has a status of succeeded.",
+        param=None, code="payment_intent_unexpected_state",
+    )
+
+
+def test_1_a_reject_after_the_card_was_charged_is_refused_and_recorded_as_charged(
+    held_order, moderator, stripe_calls, django_capture_on_commit_callbacks
+):
+    # Captured in the dashboard, or by an approve whose reply was lost.
+    stripe_calls.state["errors"]["release"] = _captured_already()
+    stripe_calls.state["intent_status"] = "succeeded"
+    with django_capture_on_commit_callbacks(execute=True):
+        with pytest.raises(services.SponsorError, match="already been charged"):
+            services.reject(held_order, moderator, "Not a fit")
+    held_order.refresh_from_db()
+    assert held_order.status == Status.APPROVED
+    assert not ModerationAction.objects.filter(action="sponsor_rejected").exists()
+    assert not any("About your sponsorship request" in m.subject for m in mail.outbox)
+
+
+def test_1_an_approve_whose_reply_was_lost_is_recorded_as_charged(
+    held_order, moderator, stripe_calls
+):
+    # The capture went through and the response timed out on the way back.
+    stripe_calls.state["fail"].add("capture")
+    stripe_calls.state["intent_status"] = "succeeded"
+    order = services.approve(held_order, moderator)
+    assert order.status == Status.APPROVED
+    assert ModerationAction.objects.get(action="sponsor_approved").actor == moderator
+
+
+def test_1_a_payment_stripe_does_not_know_is_not_taken_as_released(
+    held_order, moderator, stripe_calls
+):
+    # "No such payment_intent" — another mode's key, or another account's.
+    missing = stripe.InvalidRequestError("No such payment_intent", param="intent")
+    stripe_calls.state["errors"].update(release=missing, intent=missing)
+    with pytest.raises(services.SponsorError):
+        services.reject(held_order, moderator, "Not a fit")
+    held_order.refresh_from_db()
+    assert held_order.status == Status.AWAITING_REVIEW
+
+
+def test_1_a_hold_already_cancelled_still_counts_as_released(
+    held_order, moderator, stripe_calls
+):
+    stripe_calls.state["errors"]["release"] = stripe.InvalidRequestError(
+        "status of canceled", param=None, code="payment_intent_unexpected_state"
+    )
+    stripe_calls.state["intent_status"] = "canceled"
+    assert services.reject(held_order, moderator, "Not a fit").status == Status.REJECTED
+
+
+def test_1_a_charge_arriving_for_a_released_order_raises_the_alarm(
+    client, held_order, moderator, stripe_calls, django_capture_on_commit_callbacks
+):
+    services.reject(held_order, moderator, "Not a fit")
+    mail.outbox.clear()
+    payload = stripe_event("payment_intent.succeeded", {
+        "id": held_order.stripe_payment_intent_id, "object": "payment_intent",
+    })
+    with django_capture_on_commit_callbacks(execute=True):
+        assert post_webhook(client, payload).status_code == 200
+    assert ModerationAction.objects.filter(action="sponsor_charged_after_release").exists()
+    assert any("Charged after" in m.subject for m in mail.outbox)
+
+
+def test_2_withdrawing_at_checkout_after_paying_releases_the_hold(
+    config, event, buyer, stripe_calls
+):
+    order, _url = services.start_promotion(event, buyer, timezone.localdate())
+    # Paid, but neither the return page nor the webhook has landed yet; a
+    # completed session can no longer be expired.
+    stripe_calls.state["errors"]["expire"] = stripe.InvalidRequestError(
+        "Only open sessions can be expired", param=None
+    )
+    order = services.withdraw(order, buyer)
+    assert order.status == Status.WITHDRAWN
+    assert ("release", order.stripe_payment_intent_id) in stripe_calls
+
+
+def test_2_withdrawing_at_checkout_while_stripe_is_down_changes_nothing(
+    config, event, buyer, stripe_calls
+):
+    order, _url = services.start_promotion(event, buyer, timezone.localdate())
+    stripe_calls.state["fail"].update({"expire", "read"})
+    with pytest.raises(services.SponsorError):
+        services.withdraw(order, buyer)
+    order.refresh_from_db()
+    assert order.status == Status.CHECKOUT
+
+
+def test_3_housekeeping_leaves_a_checkout_alone_when_stripe_is_unreachable(
+    config, event, buyer, stripe_calls
+):
+    order, _url = services.start_promotion(event, buyer, timezone.localdate())
+    SponsorOrder.objects.filter(pk=order.pk).update(created_at=timezone.now() - timedelta(hours=26))
+    stripe_calls.state["fail"].add("read")
+    assert services.housekeeping()["abandoned"] == 0
+    order.refresh_from_db()
+    assert order.status == Status.CHECKOUT
+
+
+@pytest.mark.django_db(transaction=True)
+def test_4_two_approvals_at_once_cannot_exceed_the_daily_limit(
+    config, event, buyer, moderator, stripe_calls, monkeypatch
+):
+    if connection.vendor != "postgresql":
+        pytest.skip("SQLite takes no row locks; the race needs Postgres to show.")
+    import threading
+
+    config.promote_daily_slots = 1
+    config.save()
+    today = timezone.localdate()
+    orders = [
+        SponsorOrder.objects.create(
+            buyer=buyer, event=event, starts_on=today, ends_on=today,
+            currency="cad", amount=Decimal("25"), status=Status.AWAITING_REVIEW,
+            stripe_payment_intent_id=f"pi_race_{n}",
+            hold_expires_at=timezone.now() + timedelta(days=5),
+        )
+        for n in range(2)
+    ]
+    # Hold both approvals between their slot count and their claim, so that
+    # without a lock each counts before the other has claimed.
+    barrier = threading.Barrier(2)
+    real_full_days = services.full_days
+
+    def full_days(*args, **kwargs):
+        result = real_full_days(*args, **kwargs)
+        try:
+            barrier.wait(timeout=2)
+        except threading.BrokenBarrierError:
+            pass
+        return result
+
+    monkeypatch.setattr(services, "full_days", full_days)
+    outcomes = []
+
+    def run(order):
+        from django.db import connection as thread_connection
+
+        try:
+            services.approve(order, moderator)
+            outcomes.append("approved")
+        except services.SponsorError:
+            outcomes.append("refused")
+        finally:
+            thread_connection.close()
+
+    threads = [threading.Thread(target=run, args=(order,)) for order in orders]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+    assert sorted(outcomes) == ["approved", "refused"]
+    assert SponsorOrder.objects.filter(status=Status.APPROVED).count() == 1
+
+
+def test_5_the_hold_deadline_counts_from_the_authorisation(config, event, buyer, stripe_calls):
+    order, _url = services.start_promotion(event, buyer, timezone.localdate())
+    authorized = timezone.now() - timedelta(hours=26)  # Found by the sweep, a day late.
+    stripe_calls.state["authorized_at"] = authorized
+    order = services.sync_checkout(order)
+    assert order.authorized_at == authorized
+    assert order.hold_expires_at == authorized + timedelta(days=6)
+
+
+@pytest.mark.parametrize("decide", ["approve", "reject"])
+def test_6_an_unreadable_key_refuses_the_decision_and_leaves_the_order_waiting(
+    held_order, moderator, stripe_calls, settings, decide
+):
+    settings.SECRET_KEY = "rotated-without-pasting-the-keys-again"
+    with pytest.raises(services.SponsorError, match="key"):
+        if decide == "approve":
+            services.approve(held_order, moderator)
+        else:
+            services.reject(held_order, moderator, "Not a fit")
+    held_order.refresh_from_db()
+    assert held_order.status == Status.AWAITING_REVIEW
+
+
+def test_7_a_new_key_forgets_the_old_webhook(config):
+    config.stripe_webhook_endpoint_id = "we_old"
+    config.save()
+    form = SponsorConfigForm(
+        data={"currency": "cad", "promote_price": "25.00", "promote_max_days": 14,
+              "promote_daily_slots": 2, "enabled": "on",
+              "stripe_secret_key": "sk_live_newkey9999"},
+        instance=config,
+    )
+    assert form.is_valid(), form.errors
+    form.save()
+    config = SponsorConfig.objects.get(pk=1)
+    assert config.stripe_secret_key == "sk_live_newkey9999"
+    assert config.stripe_webhook_secret == ""
+    assert config.stripe_webhook_endpoint_id == ""
+    assert not config.stripe_ready
+
+
+def test_7_saving_the_same_key_again_keeps_the_webhook(config):
+    form = SponsorConfigForm(
+        data={"currency": "cad", "promote_price": "25.00", "promote_max_days": 14,
+              "promote_daily_slots": 2, "enabled": "on",
+              "stripe_secret_key": "sk_test_abcd1234"},
+        instance=config,
+    )
+    assert form.is_valid(), form.errors
+    form.save()
+    assert SponsorConfig.objects.get(pk=1).stripe_webhook_secret == WEBHOOK_SECRET
+
+
+@pytest.mark.parametrize("decide", ["approve", "reject"])
+def test_7_an_order_from_the_other_mode_is_refused(held_order, moderator, stripe_calls, decide):
+    SponsorOrder.objects.filter(pk=held_order.pk).update(livemode=True)
+    held_order.refresh_from_db()
+    stripe_calls.clear()
+    with pytest.raises(services.SponsorError, match="live mode"):
+        if decide == "approve":
+            services.approve(held_order, moderator)
+        else:
+            services.reject(held_order, moderator, "Not a fit")
+    assert not any(call[0] in ("capture", "release") for call in stripe_calls)
+
+
+def test_8_only_the_lister_or_the_organiser_can_promote(
+    client, config, event, stripe_calls, django_user_model
+):
+    from events.models import Organizer
+
+    stranger = django_user_model.objects.create_user(
+        username="rival", email="rival@example.com", password="pw-12345678"
+    )
+    with pytest.raises(services.SponsorError, match="listed it"):
+        services.start_promotion(event, stranger, timezone.localdate())
+    client.force_login(stranger)
+    assert b"Promote this event" not in client.get(reverse("event_detail", args=[event.slug])).content
+    page = client.get(reverse("sponsor_promote", args=[event.slug]))
+    assert b"only the person who listed it" in page.content.lower()
+
+    event.organizer = Organizer.objects.create(name="Harvest Committee", owner=stranger)
+    event.save()
+    order, _url = services.start_promotion(event, stranger, timezone.localdate())
+    assert order.status == Status.CHECKOUT
+
+
+def test_9_approving_a_charge_needs_its_own_permission(
+    client, held_order, stripe_calls, django_user_model
+):
+    from django.contrib.auth.models import Group, Permission
+
+    helper = django_user_model.objects.create_user(
+        username="helper", email="helper@example.com", password="pw-12345678"
+    )
+    helper.groups.add(Group.objects.get_or_create(name="Moderators")[0])
+    with pytest.raises(services.SponsorError, match="permission"):
+        services.approve(held_order, helper)
+    with pytest.raises(services.SponsorError, match="permission"):
+        services.reject(held_order, helper, "Not a fit")
+    client.force_login(helper)
+    page = client.get(reverse("mod_sponsor", args=[held_order.pk]))
+    assert page.status_code == 200
+    assert b"Approve and charge" not in page.content
+
+    helper.user_permissions.add(Permission.objects.get(codename="approve_sponsororder"))
+    helper = django_user_model.objects.get(pk=helper.pk)  # Drop the permission cache.
+    assert services.approve(held_order, helper).status == Status.APPROVED

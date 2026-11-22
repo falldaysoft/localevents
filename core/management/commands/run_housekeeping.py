@@ -141,5 +141,5 @@ class Command(BaseCommand):
         if any(done.values()):
             self.stdout.write(
                 "  sponsorships: {abandoned} abandoned, {lapsed} lapsed, "
-                "{warned} warned".format(**done)
+                "{warned} warned, {settled} settled".format(**done)
             )

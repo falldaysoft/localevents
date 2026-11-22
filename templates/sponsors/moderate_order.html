@@ -34,7 +34,8 @@
             <dt class="text-slate-500">Runs</dt>
             <dd class="col-span-2">{{ order.starts_on|date:"D j M" }} – {{ order.ends_on|date:"D j M Y" }} ({{ order.days }} day{{ order.days|pluralize }})</dd>
             <dt class="text-slate-500">Buyer</dt>
-            <dd class="col-span-2">{{ order.buyer.display_name }} &lt;{{ order.buyer.email }}&gt;</dd>
+            <dd class="col-span-2">{{ order.buyer.display_name }} &lt;{{ order.buyer.email }}&gt;
+                <span class="block text-slate-500">{% if buyer_relation %}{{ buyer_relation|capfirst }}{% else %}Not linked to this event{% endif %}</span></dd>
             <dt class="text-slate-500">Amount</dt>
             <dd class="col-span-2">{{ order.amount }} {{ order.currency|upper }}{% if order.tax_amount %} + {{ order.tax_amount }} tax = {{ order.total }}{% endif %}</dd>
             {% if order.status == "awaiting_review" %}
@@ -60,7 +61,9 @@
         </dl>
 
         <div class="space-y-4">
-            {% if order.status == "awaiting_review" %}
+            {% if order.status == "awaiting_review" and not can_decide %}
+                <div class="card text-sm text-slate-600">Approving or rejecting moves money, so it needs the “approve and charge sponsorships” permission. An administrator can grant it.</div>
+            {% elif order.status == "awaiting_review" %}
                 {% if full_days %}
                     <div class="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
                         Already at the daily limit on {% for day in full_days %}{{ day|date:"D j M" }}{% if not forloop.last %}, {% endif %}{% endfor %}.

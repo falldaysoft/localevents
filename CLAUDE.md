@@ -649,7 +649,22 @@ claimed (`PROCESSING`, with `pending_status`, the moderator and the note
 committed), then Stripe is called, then `services.finish` applies the status,
 audit row and mail; a refused Stripe call un-claims, and an interrupted finish
 is completed by the webhook or by housekeeping after `STUCK_AFTER`. The test
-fakes for Stripe assert there is no open savepoint when they are called. A running promotion joins the pinned featured
+fakes for Stripe assert there is no open savepoint when they are called.
+**A Stripe error is not proof that nothing happened.** Cancel is refused for
+a payment already *captured* and for one the stored key cannot see, as well
+as for one already cancelled, so `_release` asks the intent's status before
+calling anything released; a capture whose reply was lost is checked the
+same way before the claim is undone. Taking every refusal as "released" told
+a buyer nothing was charged while their card had been. For the same reason
+housekeeping abandons a checkout only on Stripe's word, and a buyer
+withdrawing an order still marked "checkout" first has it brought up to
+date, since they may have paid. Approving locks the `SponsorConfig` row so
+two approvals cannot both pass the daily limit; deciding needs the
+`sponsors.approve_sponsororder` permission (superusers have it), and only the
+event's submitter or its organiser's owner may buy a promotion. Saving a
+different secret key forgets the webhook, and an order paid in the other
+mode is refused rather than released with a key that cannot see it.
+A running promotion joins the pinned featured
 listings in `web.listing._listing` *after* the editor's own picks, marked
 `is_sponsored`, which every template that shows it (both themes' cards, the
 weekly email in HTML and text) prints as "Sponsored". It is read through the

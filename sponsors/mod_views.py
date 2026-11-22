@@ -84,6 +84,8 @@ def detail(request, pk):
             ) if order.status == Status.AWAITING_REVIEW else []
         ),
         form=DecisionForm(),
+        can_decide=request.user.has_perm(services.APPROVE_PERMISSION),
+        buyer_relation=services.buyer_relation(order.event, order.buyer),
     ))
 
 

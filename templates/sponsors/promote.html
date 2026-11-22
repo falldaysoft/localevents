@@ -14,7 +14,9 @@
             <a href="{% url 'sponsor_info' %}" class="underline">How sponsorship works</a>.
         </p>
 
-        {% if not last_day %}
+        {% if not_yours %}
+            <div class="card mt-6 text-sm text-slate-600">{{ not_yours }} <a href="{% url 'sponsor_info' %}" class="underline">How sponsorship works</a>.</div>
+        {% elif not last_day %}
             <div class="card mt-6 text-sm text-slate-600">This event has no dates still to come, so there is nothing to promote.</div>
         {% else %}
             <form method="post" class="card mt-6 space-y-4">

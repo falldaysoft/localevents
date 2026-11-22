@@ -589,7 +589,10 @@ def queue_counts(moderator):
     # And sponsorships, each of which is on a card-hold clock.
     from sponsors.models import SponsorOrder
 
-    rows["sponsors"] = SponsorOrder.objects.awaiting_review().count()
+    # Processing too: one stuck there is the order that most needs a look.
+    rows["sponsors"] = SponsorOrder.objects.filter(
+        status__in=[SponsorOrder.Status.AWAITING_REVIEW, SponsorOrder.Status.PROCESSING]
+    ).count()
     return rows
 
 

@@ -36,6 +36,10 @@ def promote(request, slug):
     if not config.on_sale:
         raise Http404
     event = get_object_or_404(Event, slug=slug, status=Event.Status.PUBLISHED)
+    if not services.may_promote(event, request.user):
+        return render(request, "sponsors/promote.html", {
+            "config": config, "event": event, "not_yours": services.NOT_YOURS,
+        }, status=403)
     today = timezone.localdate()
     last_day = services.last_upcoming_day(event)
 

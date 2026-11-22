@@ -29,6 +29,27 @@ class SponsorError(Exception):
     """Something the person pressing the button should be told, in words."""
 
 
+class AlreadyCharged(SponsorError):
+    """A release was asked for, and Stripe had already taken the money."""
+
+
+# Everything a call into `payments` can raise that means "Stripe did not do
+# it": a refusal, an outage, or no readable key to ask with.
+STRIPE_FAILURES = (stripe.StripeError, payments.NotConfigured)
+
+
+def _stripe_said(exc):
+    if isinstance(exc, payments.NotConfigured):
+        return (
+            "no readable Stripe secret key is stored. Paste the key again in "
+            "the sponsorship settings."
+        )
+    return getattr(exc, "user_message", None) or str(exc)
+
+
+APPROVE_PERMISSION = "sponsors.approve_sponsororder"
+
+
 # ---------------------------------------------------------------------------
 # What is for sale
 # ---------------------------------------------------------------------------
@@ -41,6 +62,34 @@ def promotable(event):
     its own merits before anyone can pay to move it up.
     """
     return event.status == Event.Status.PUBLISHED
+
+
+def buyer_relation(event, user):
+    """How `user` is tied to `event`, in words, or "" for not at all."""
+    if event is None or not getattr(user, "is_authenticated", False):
+        return ""
+    if event.submitted_by_id == user.pk:
+        return "listed this event"
+    if event.organizer_id and event.organizer.owner_id == user.pk:
+        return "runs its organiser"
+    return ""
+
+
+def may_promote(event, user):
+    """Only the person who listed an event, or whoever runs its organiser.
+
+    Anyone else paying to push a listing up — a rival hall, a prankster, a
+    well-meaning fan — puts the editor in the position of approving a
+    placement the event's own people never asked for.
+    """
+    return bool(buyer_relation(event, user))
+
+
+NOT_YOURS = (
+    "Only the person who listed it, or the account that runs its organiser, "
+    "can promote an event. If that is you under another account, or you'd "
+    "like to sponsor it anyway, contact the editor."
+)
 
 
 def last_upcoming_day(event, now=None):
@@ -116,6 +165,8 @@ def start_promotion(event, buyer, starts_on, note="", now=None):
         raise SponsorError("Sponsorships are not on sale at the moment.")
     if not promotable(event):
         raise SponsorError("Only events already listed on the site can be promoted.")
+    if not may_promote(event, buyer):
+        raise SponsorError(NOT_YOURS)
     first, last = promote_window(event, starts_on, config, now)
     full = full_days(first, last, config)
     if full:
@@ -165,7 +216,9 @@ def sync_checkout(order):
         if order.status != Status.CHECKOUT:
             return order
         if info["intent_status"] == "requires_capture":
-            order.mark_authorized()
+            # From Stripe's clock, not ours: an order found by the 25-hour
+            # sweep has already used a day of its seven.
+            order.mark_authorized(now=info.get("authorized_at"))
             order.stripe_payment_intent_id = info["payment_intent_id"]
             order.tax_amount = info["amount_tax"]
             order.total = info["amount_total"]
@@ -184,26 +237,60 @@ def withdraw(order, buyer):
     if order.buyer_id != buyer.pk:
         raise SponsorError("That is not your order.")
     if order.status == Status.CHECKOUT:
-        if order.stripe_checkout_session_id:
-            try:
-                payments.expire_checkout(order.stripe_checkout_session_id)
-            except stripe.StripeError:
-                pass  # Already finished or expired; nothing to stop.
-        with transaction.atomic():
-            order = _locked(order.pk)
-            if order.status == Status.CHECKOUT:
-                order.status = Status.ABANDONED
-                order.decided_at = timezone.now()
-                order.save()
-        return order
+        order = _withdraw_checkout(order)
+        if order.status != Status.AWAITING_REVIEW:
+            return order
 
     def check(o):
         if o.status != Status.AWAITING_REVIEW:
             raise SponsorError("This order has already been decided.")
+        _check_stripe(o)
 
     order = _claim(order.pk, Status.WITHDRAWN, check=check)
-    _release_or_unclaim(order)
+    try:
+        _release_or_unclaim(order)
+    except AlreadyCharged as exc:
+        raise SponsorError(
+            "This order has already been approved and charged, so it can't be "
+            "withdrawn. Contact the editor if it shouldn't run."
+        ) from exc
     return _finish_quietly(order)
+
+
+def _withdraw_checkout(order):
+    """Close a checkout the buyer called off; returns the order as it now is.
+
+    The order may say "checkout" after the buyer has paid, while the return
+    page and the webhook are still on their way. Expiring the session is
+    refused then, and the hold is real: the order is brought up to date
+    instead, so the caller can withdraw it the ordinary way and release it.
+    Marking it abandoned would leave a week's hold on the card with the page
+    saying nothing was charged.
+    """
+    if order.stripe_checkout_session_id:
+        try:
+            payments.expire_checkout(order.stripe_checkout_session_id)
+        except STRIPE_FAILURES:
+            try:
+                order = sync_checkout(order)
+            except STRIPE_FAILURES as exc:
+                raise SponsorError(
+                    "Stripe can't be reached just now, so nothing has changed. "
+                    "Please try again in a few minutes."
+                ) from exc
+            if order.status == Status.CHECKOUT:
+                raise SponsorError(
+                    "The payment page is still open or finishing. Close it, "
+                    "then try again in a minute."
+                )
+            return order
+    with transaction.atomic():
+        order = _locked(order.pk)
+        if order.status == Status.CHECKOUT:
+            order.status = Status.ABANDONED
+            order.decided_at = timezone.now()
+            order.save()
+    return order
 
 
 # ---------------------------------------------------------------------------
@@ -330,9 +417,41 @@ def _finish_quietly(order):
 def _release_or_unclaim(order):
     try:
         _release(order)
+    except AlreadyCharged:
+        # The money was taken, so the placement is owed: record it as
+        # approved, as a capture made in the dashboard is, and say so.
+        order = _unclaim(order)
+        try:
+            _settle(order, "succeeded")
+        except SponsorError:
+            pass
+        raise
     except SponsorError:
         _unclaim(order)
         raise
+
+
+def _check_stripe(o):
+    """Refuse, before claiming, a decision this site's key cannot carry out."""
+    config = SponsorConfig.load()
+    if not config.stripe_secret_key:
+        raise SponsorError(f"Stripe can't be asked: {_stripe_said(payments.NotConfigured())}")
+    if o.stripe_payment_intent_id and o.livemode == config.test_mode:
+        paid = "live" if o.livemode else "test"
+        stored = "test" if config.test_mode else "live"
+        raise SponsorError(
+            f"This order was paid in {paid} mode, and the stored Stripe key is a "
+            f"{stored} key, which can't see it. Store the {paid} key again to "
+            f"decide it, or capture or cancel it in the Stripe dashboard."
+        )
+
+
+def _check_can_charge(moderator):
+    if moderator is None or not moderator.has_perm(APPROVE_PERMISSION):
+        raise SponsorError(
+            "Approving or rejecting a sponsorship needs the “approve and charge "
+            "sponsorships” permission, because it moves money. Ask an administrator."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -342,10 +461,17 @@ def _release_or_unclaim(order):
 
 def approve(order, moderator, note=""):
     """Charge the held card and start the run."""
+    _check_can_charge(moderator)
 
     def check(o):
         if o.status != Status.AWAITING_REVIEW:
             raise SponsorError(f"This order is {o.get_status_display().lower()}, not awaiting review.")
+        _check_stripe(o)
+        # One approval at a time: without this, two moderators approving at
+        # once each count the other as still waiting, and both capture past
+        # the daily limit. The lock is held until the claim commits, and a
+        # claimed order counts against the limit from then on.
+        SponsorConfig.objects.select_for_update().filter(pk=1).first()
         if o.ends_on < timezone.localdate():
             raise SponsorError("Its run has already ended. Reject it to release the hold.")
         if o.event_id and not promotable(o.event):
@@ -364,11 +490,13 @@ def approve(order, moderator, note=""):
     order = _claim(order.pk, Status.APPROVED, moderator=moderator, note=note, check=check)
     try:
         status = payments.capture(order.stripe_payment_intent_id)
-    except stripe.StripeError as exc:
+    except STRIPE_FAILURES as exc:
+        # An error is not proof that nothing happened: a capture whose reply
+        # was lost on the way back has charged the card. Ask before undoing.
+        if _intent_status_or_none(order) == "succeeded":
+            return _finish_quietly(order)
         _unclaim(order)
-        raise SponsorError(
-            f"Stripe would not take the payment: {exc.user_message or exc}"
-        ) from exc
+        raise SponsorError(f"Stripe would not take the payment: {_stripe_said(exc)}") from exc
     if status != "succeeded":
         _unclaim(order)
         raise SponsorError(f"Stripe reports the payment as {status}; not approved.")
@@ -377,31 +505,57 @@ def approve(order, moderator, note=""):
 
 def reject(order, moderator, reason):
     """Release the hold and tell the buyer why."""
+    _check_can_charge(moderator)
     if not reason.strip():
         raise SponsorError("Say why, briefly. The buyer gets this with the news.")
 
     def check(o):
         if o.status != Status.AWAITING_REVIEW:
             raise SponsorError(f"This order is {o.get_status_display().lower()}, not awaiting review.")
+        _check_stripe(o)
 
     order = _claim(order.pk, Status.REJECTED, moderator=moderator, note=reason, check=check)
     _release_or_unclaim(order)
     return _finish_quietly(order)
 
 
+def _intent_status_or_none(order):
+    try:
+        return payments.read_intent_status(order.stripe_payment_intent_id)
+    except STRIPE_FAILURES:
+        logger.exception("could not read payment %s", order.stripe_payment_intent_id)
+        return None
+
+
 def _release(order):
-    if not order.stripe_payment_intent_id:
+    """Cancel the hold, or raise.
+
+    Stripe refuses to cancel for more than one reason, and only one of them
+    means the hold is gone. A payment already *captured* is refused too, and
+    so is one this key cannot see (another mode, another account); taking
+    either as "released" told a buyer nothing was charged while their card
+    had been, or still was. So a refusal is followed by asking what the
+    payment actually is.
+    """
+    intent = order.stripe_payment_intent_id
+    if not intent:
         return
     try:
-        payments.release(order.stripe_payment_intent_id)
-    except stripe.InvalidRequestError:
-        # Already cancelled — the hold lapsed on Stripe's side, or someone
-        # cancelled it in the dashboard. Either way there is nothing to free.
-        logger.info("payment %s was already released", order.stripe_payment_intent_id)
-    except stripe.StripeError as exc:
-        raise SponsorError(
-            f"Stripe would not release the hold: {exc.user_message or exc}"
-        ) from exc
+        payments.release(intent)
+    except stripe.InvalidRequestError as exc:
+        status = _intent_status_or_none(order)
+        if status == "canceled":
+            logger.info("payment %s was already released", intent)
+            return
+        if status == "succeeded":
+            raise AlreadyCharged(
+                "The card had already been charged (in the Stripe dashboard, or "
+                "by an earlier approval), so this is now recorded as approved. "
+                "Refund it in Stripe if it shouldn't run."
+            ) from exc
+        raise SponsorError(f"Stripe would not release the hold: {_stripe_said(exc)}") from exc
+    except STRIPE_FAILURES as exc:
+        raise SponsorError(f"Stripe would not release the hold: {_stripe_said(exc)}") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -434,6 +588,21 @@ def _settle(order, intent_status):
     with no moderator, so it gets the same audit row and mail as any other.
     """
     if intent_status == "succeeded":
+        if order.status in RELEASED:
+            _charged_after_release(order)
+            return order
+        if order.status == Status.PROCESSING and order.pending_status in RELEASED:
+            # Heading for a release, but the money was taken first: the
+            # placement is owed, and nobody here decided to charge it.
+            with transaction.atomic():
+                locked = _locked(order.pk)
+                if locked.status == Status.PROCESSING:
+                    logger.warning("sponsor order %s was charged while being %s", order.pk, locked.pending_status)
+                    locked.pending_status = Status.APPROVED
+                    locked.decided_by = None
+                    locked.decision_note = ""
+                    locked.save()
+            order.refresh_from_db()
         if order.status == Status.AWAITING_REVIEW:
             # Money taken means the placement is owed.
             order = _claim(order.pk, Status.APPROVED, check=_still(Status.AWAITING_REVIEW))
@@ -459,6 +628,21 @@ def _settle(order, intent_status):
         _release(order)
         return finish(order)
     return order
+
+
+def _charged_after_release(order):
+    """A charge for an order this site told its buyer was not charged.
+
+    Nothing here can make that right on its own (refund it, or run it), so a
+    person is told, once per order.
+    """
+    detail = f"{order}: charged in Stripe after it was {order.get_status_display().lower()}"
+    if ModerationAction.objects.filter(action="sponsor_charged_after_release", detail=detail[:300]).exists():
+        return
+    logger.error("%s", detail)
+    with transaction.atomic():
+        ModerationAction.record(None, "sponsor_charged_after_release", event=order.event, detail=detail)
+        _mail_moderators(order, "charged_after_release")
 
 
 def _still(status):
@@ -531,24 +715,45 @@ def housekeeping(now=None):
     for order in SponsorOrder.objects.filter(
         status=Status.CHECKOUT, created_at__lt=now - timedelta(hours=25)
     ):
+        # Abandoned only on Stripe's word. If Stripe can't be read, the
+        # checkout may have finished with a hold nobody has recorded, and
+        # dropping it from the queue would leave the card held unseen.
         try:
             order = sync_checkout(order)
-        except (stripe.StripeError, payments.NotConfigured):
+        except STRIPE_FAILURES:
             logger.exception("could not read checkout for sponsor order %s", order.pk)
-        if order.status == Status.CHECKOUT:
-            order.status = Status.ABANDONED
-            order.save(update_fields=["status", "updated_at"])
-            done["abandoned"] += 1
+            continue
+        if order.status != Status.CHECKOUT:
+            continue
+        if order.stripe_checkout_session_id:
+            # Still open past its 24 hours is unexpected; shut it so it
+            # cannot complete after the order is closed.
+            try:
+                payments.expire_checkout(order.stripe_checkout_session_id)
+            except stripe.InvalidRequestError:
+                pass  # Already closed.
+            except STRIPE_FAILURES:
+                logger.exception("could not expire checkout for sponsor order %s", order.pk)
+                continue
+        with transaction.atomic():
+            locked = _locked(order.pk)
+            if locked.status == Status.CHECKOUT:
+                locked.status = Status.ABANDONED
+                locked.save(update_fields=["status", "updated_at"])
+                done["abandoned"] += 1
 
     for order in SponsorOrder.objects.filter(
         status=Status.PROCESSING, updated_at__lt=now - STUCK_AFTER
     ):
         try:
-            _settle(order, payments.read_intent_status(order.stripe_payment_intent_id))
-        except (stripe.StripeError, payments.NotConfigured, SponsorError):
+            settled = _settle(order, payments.read_intent_status(order.stripe_payment_intent_id))
+        except (*STRIPE_FAILURES, SponsorError):
             logger.exception("could not settle sponsor order %s", order.pk)
             continue
-        done["settled"] += 1
+        if settled.status != Status.PROCESSING:
+            done["settled"] += 1
+        else:
+            logger.error("sponsor order %s is still processing after settling", order.pk)
 
     for order in SponsorOrder.objects.awaiting_review().filter(hold_expires_at__lte=now):
         try:

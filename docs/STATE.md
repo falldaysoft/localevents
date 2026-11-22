@@ -27,7 +27,7 @@ Last updated after the multi-day work that followed Phase 4.
 | event submissions by email: IMAP poll, AI triage, `/moderate/inbox/` | done | this commit |
 | mail servers in the admin (`MailConfig`), Test buttons for SMTP and IMAP | done | this commit |
 | weekly email: signup, per-reader content, sending, moderator screens, master switch, each run's plain copy kept (localevents.14.1–14.5) | done | this commit |
-| sponsorships: Promote an event, Stripe Checkout held until approval, moderator queue (localevents.19.1–19.3) | done, not yet run against Stripe | this commit |
+| sponsorships: Promote an event, Stripe Checkout held until approval, moderator queue (localevents.19.1–19.3) | done; review findings 1–9 fixed with regression tests; not yet run against Stripe | this commit |
 | 5 — feed importers | **next** | |
 | 6 — outbound feeds (ICS/RSS/JSON) | not started | |
 | 7 — interest button, My events | done | this commit |
