@@ -1,0 +1,14 @@
+{% load event_dates %}{% autoescape off %}{% if resubmitted %}{{ submission.submitted_by.email }} has sent “{{ submission.display_title }}” back for review.{% else %}{{ submission.submitted_by.email }} has submitted “{{ submission.display_title }}”{% if submission.inbound_email_id %} by email{% endif %}.{% endif %}
+{% if occurrences %}
+When: {% dates_summary occurrences %}{% endif %}{% if event.venue %}
+Where: {{ event.venue }}{% endif %}{% if submission.source_url %}
+Source: {{ submission.source_url }}{% endif %}
+
+Review it:
+{{ review_url }}
+
+Everything waiting:
+{{ queue_url }}
+
+— {{ site_name }}
+{% endautoescape %}

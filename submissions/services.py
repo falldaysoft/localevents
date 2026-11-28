@@ -87,7 +87,23 @@ def save_event_from_draft(submission, data):
         detail=event.title,
     )
 
+    # A moderator's agent can send forty listings in one scouting run, and its
+    # owner is already watching the queue, so those arrive without mail.
+    if not submission.api_token_id:
+        _mail_moderators(submission, "new" if is_new else "resubmitted")
+
     return event
+
+
+def _mail_moderators(submission, kind):
+    """Queue the "something to review" mail, once the save has committed.
+
+    Imported here because `moderation` reads this app's models, not the other
+    way round; on commit so a confirmation that rolls back mails nobody.
+    """
+    from moderation.tasks import email_moderators
+
+    transaction.on_commit(lambda: email_moderators.enqueue(submission.pk, kind))
 
 
 class CannotWithdraw(Exception):

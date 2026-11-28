@@ -225,6 +225,16 @@ mail to the submitter — and a view that did three of the four would look fine 
 review and leave someone waiting forever. That mail is queued with
 `transaction.on_commit`, so a decision that rolls back never mails anyone.
 
+**Moderators are mailed when something reaches the queue.** For a long time
+the site mailed the submitter about every decision and nobody about the thing
+to decide, so a stranger's listing waited until a moderator happened to look.
+`save_event_from_draft` — the one door all three ways in share — queues
+`moderation.tasks.email_moderators` on commit: every active superuser and
+member of Moderators except the submitter, one message each so addresses are
+not shown to each other. An agent's submission sends none (a scouting run is
+forty at once and its owner is watching), and the task sends nothing if the
+submission has left the queue by the time the worker runs.
+
 **A likely duplicate is shown to the moderator, never blocked.** Two
 copies of one fair, submitted from two different pages, were both published
 because each looked fine alone. `events.duplicates.possible_duplicates`
